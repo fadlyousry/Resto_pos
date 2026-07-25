@@ -11,8 +11,8 @@ type Update = (updater: (current: AppState) => AppState) => void;
 interface Props { state: AppState; update: Update; notify: (message: string) => void }
 
 const uid = () => crypto.randomUUID();
-const money = (value: number) => `${value.toLocaleString("ar-EG")} ج.م`;
-const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG", {
+const money = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
   day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit"
 }).format(new Date(value));
 

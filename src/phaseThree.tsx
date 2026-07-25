@@ -8,8 +8,8 @@ import type {
   AppState, CashTransaction, Ingredient, Offer, Product, RecipeItem, StockMovement
 } from "./types";
 
-const money = (value: number) => `${value.toLocaleString("ar-EG", { maximumFractionDigits: 2 })} ج.م`;
-const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG", {
+const money = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
   day: "numeric", month: "short", hour: "numeric", minute: "2-digit"
 }).format(new Date(value));
 const uid = () => crypto.randomUUID();
@@ -127,8 +127,8 @@ export function InventoryView({ state, update, notify }: PhaseThreeProps) {
               return (
                 <div className={`inventory-row ${isLow ? "low" : ""}`} key={ingredient.id}>
                   <span><strong>{ingredient.name}</strong><small>{ingredient.unit}</small></span>
-                  <span><b>{ingredient.stockQty.toLocaleString("ar-EG")}</b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
-                  <span>{ingredient.minStock.toLocaleString("ar-EG")} {ingredient.unit}</span>
+                  <span><b>{ingredient.stockQty.toLocaleString("en-US")}</b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
+                  <span>{ingredient.minStock.toLocaleString("en-US")} {ingredient.unit}</span>
                   <span>{money(ingredient.unitCost)}</span>
                   <span><strong>{money(ingredient.stockQty * ingredient.unitCost)}</strong></span>
                   <span><button className="stock-add-button" onClick={() => { setStockIngredient(ingredient); setPurchase({ quantity: 0, unitCost: ingredient.unitCost, note: "" }); }}><PackagePlus /> إضافة رصيد</button></span>
@@ -180,7 +180,7 @@ export function InventoryView({ state, update, notify }: PhaseThreeProps) {
               <div key={movement.id}>
                 <span className={`movement-icon ${movement.type}`}><History /></span>
                 <span><strong>{movement.ingredientName}</strong><small>{movement.description} · {shortDate(movement.createdAt)}</small></span>
-                <b>{movement.type === "consume" || movement.type === "waste" ? "-" : "+"}{movement.quantity.toLocaleString("ar-EG")}</b>
+                <b>{movement.type === "consume" || movement.type === "waste" ? "-" : "+"}{movement.quantity.toLocaleString("en-US")}</b>
                 <span>{money(movement.quantity * movement.unitCost)}</span>
               </div>
             ))}
@@ -282,7 +282,7 @@ export function GrowthView({ state, update, notify }: PhaseThreeProps) {
     <div className="growth-page">
       <div className="growth-hero">
         <div><Sparkles /><span><strong>الولاء والعروض</strong><small>حوّل العملاء المتكررين لمجتمع دائم حوالين بيتنا</small></span></div>
-        <span className="points-total"><small>إجمالي نقاط العملاء</small><strong>{state.customers.reduce((sum, customer) => sum + (customer.loyaltyPoints ?? 0), 0).toLocaleString("ar-EG")}</strong></span>
+        <span className="points-total"><small>إجمالي نقاط العملاء</small><strong>{state.customers.reduce((sum, customer) => sum + (customer.loyaltyPoints ?? 0), 0).toLocaleString("en-US")}</strong></span>
       </div>
       <div className="growth-grid">
         <div className="panel">
@@ -313,7 +313,7 @@ export function GrowthView({ state, update, notify }: PhaseThreeProps) {
             <div key={customer.id}>
               <span className="loyalty-avatar"><Gift /></span>
               <span><strong>{customer.name}</strong><small>{customer.phone} · {customer.ordersCount} طلبات</small></span>
-              <span><small>النقاط المتاحة</small><b>{(customer.loyaltyPoints ?? 0).toLocaleString("ar-EG")}</b></span>
+              <span><small>النقاط المتاحة</small><b>{(customer.loyaltyPoints ?? 0).toLocaleString("en-US")}</b></span>
               <div><button onClick={() => adjustPoints(customer.id, -10)}>-10</button><button onClick={() => adjustPoints(customer.id, 10)}>+10</button></div>
             </div>
           ))}

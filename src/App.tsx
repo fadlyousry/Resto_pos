@@ -18,8 +18,8 @@ import {
 
 type View = "pos" | "orders" | "kitchen" | "delivery" | "customers" | "products" | "inventory" | "growth" | "cash" | "reports" | "settings";
 
-const money = (value: number) => `${value.toLocaleString("ar-EG")} ج.م`;
-const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG", {
+const money = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
   day: "numeric", month: "short", hour: "numeric", minute: "2-digit"
 }).format(new Date(value));
 const dateKey = (value: string | Date) => {
@@ -119,7 +119,7 @@ export default function App() {
         <header className="topbar">
           <div>
             <h1>{navItems.find((item) => item.id === view)?.label}</h1>
-            <p>{new Intl.DateTimeFormat("ar-EG", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p>
+            <p>{new Intl.DateTimeFormat("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p>
           </div>
           <div className="top-actions">
             {pendingCount > 0 && <button className="pending-pill" onClick={() => setView("orders")}><Clock3 size={17} /> {pendingCount} تحصيل معلق</button>}
@@ -344,17 +344,20 @@ function PosView({ state, update, notify }: ViewProps) {
           )}
         </div>
         <div className="cart-items">
+          {cart.length > 0 && <div className="cart-table-head"><span>الصنف</span><span>الكمية</span><span>الإجمالي</span><span /></div>}
           {cart.map((item) => (
             <div className="cart-item" key={item.productId}>
-              <div className="cart-item-top"><div><strong>{item.name}</strong><small>{item.unit} · {money(item.price)}</small></div><b>{money(item.price * item.quantity)}</b></div>
-              <div className="cart-item-footer">
-                <div className="quantity">
-                  <button onClick={() => setQuantity(item.productId, -1)}><Minus size={15} /></button>
-                  <span>{item.quantity}</span>
-                  <button onClick={() => setQuantity(item.productId, 1)}><Plus size={15} /></button>
-                </div>
-                <button className="remove-cart-item" title="حذف الصنف" onClick={() => setQuantity(item.productId, -item.quantity)}><Trash2 /></button>
+              <div className="cart-product-cell">
+                <strong>{item.name}</strong>
+                <small>{item.unit} · {money(item.price)}</small>
               </div>
+              <div className="quantity">
+                <button onClick={() => setQuantity(item.productId, -1)}><Minus size={15} /></button>
+                <span>{item.quantity}</span>
+                <button onClick={() => setQuantity(item.productId, 1)}><Plus size={15} /></button>
+              </div>
+              <b className="cart-line-total">{money(item.price * item.quantity)}</b>
+              <button className="remove-cart-item" title="حذف الصنف" onClick={() => setQuantity(item.productId, -item.quantity)}><Trash2 /></button>
             </div>
           ))}
           {!cart.length && <div className="empty-cart"><ShoppingBag size={44} /><strong>الطلب لسه فاضي</strong><span>اختار الأصناف من المنيو</span></div>}
