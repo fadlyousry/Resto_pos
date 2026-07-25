@@ -12,6 +12,7 @@
     "desktop:build": "tauri build"
   },
   "dependencies": {
+    "@fontsource/cairo": "^5.3.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-sql": "^2.4.0",
     "lucide-react": "^0.468.0",

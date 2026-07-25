@@ -1,33 +1,42 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Banknote, BarChart3, Bell, Bike, Boxes, CalendarClock, Check, ChevronLeft,
-  CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard, LayoutGrid,
-  MapPin, Minus, PackageCheck, Phone, Plus, Printer, ReceiptText, Search,
-  ShoppingBag, Store, Trash2, Truck, UserPlus, Users, Utensils, WalletCards, X
+  BadgePercent, Banknote, BarChart3, Bell, Bike, Boxes, Calculator, CalendarClock, Check,
+  ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
+  Info, LayoutGrid, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
+  ReceiptText, Search, Settings2, ShoppingBag, Store, Trash2, Truck, UserPlus, Users,
+  Utensils, WalletCards, Warehouse, X
 } from "lucide-react";
 import { loadState, saveState } from "./db";
 import type {
   AppState, CashTransaction, Customer, Driver, DriverSettlement, Order, OrderItem,
   OrderStage, PaymentMethod, Product, ProductSection
 } from "./types";
+import { GrowthView, InventoryView } from "./phaseThree";
+import {
+  CustomerFile, CustomerRecordsView, OrderEditorModal, ProductCatalogView, SettingsView
+} from "./phaseFour";
 
-type View = "pos" | "orders" | "kitchen" | "delivery" | "customers" | "products" | "cash" | "reports";
+type View = "pos" | "orders" | "kitchen" | "delivery" | "customers" | "products" | "inventory" | "growth" | "cash" | "reports" | "settings";
 
 const money = (value: number) => `${value.toLocaleString("ar-EG")} ج.م`;
 const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG", {
   day: "numeric", month: "short", hour: "numeric", minute: "2-digit"
 }).format(new Date(value));
-const todayKey = () => new Date().toISOString().slice(0, 10);
+const dateKey = (value: string | Date) => {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+const todayKey = () => dateKey(new Date());
 const uid = () => crypto.randomUUID();
 
 const paymentLabels: Record<PaymentMethod, string> = {
   cash: "نقدي", instapay: "إنستاباي", vodafone: "فودافون كاش"
 };
 const stageLabels: Record<OrderStage, string> = {
-  confirmed: "تم التأكيد", preparing: "قيد التحضير", ready: "جاهز",
+  confirmed: "تم التأكيد", preparing: "قيد التحضير", packing: "تغليف وتجميع", ready: "جاهز",
   out_for_delivery: "خرج للتوصيل", delivered: "تم التسليم", cancelled: "ملغي"
 };
-const stageSequence: OrderStage[] = ["confirmed", "preparing", "ready", "out_for_delivery", "delivered"];
+const stageSequence: OrderStage[] = ["confirmed", "preparing", "packing", "ready", "out_for_delivery", "delivered"];
 
 const navItems: Array<{ id: View; label: string; icon: typeof Store }> = [
   { id: "pos", label: "نقطة البيع", icon: LayoutGrid },
@@ -36,8 +45,11 @@ const navItems: Array<{ id: View; label: string; icon: typeof Store }> = [
   { id: "delivery", label: "التوصيل والمندوبين", icon: Bike },
   { id: "customers", label: "العملاء", icon: Users },
   { id: "products", label: "الأصناف", icon: Boxes },
+  { id: "inventory", label: "المخزون والوصفات", icon: Warehouse },
+  { id: "growth", label: "الولاء والعروض", icon: BadgePercent },
   { id: "cash", label: "الخزنة", icon: WalletCards },
   { id: "reports", label: "التقارير", icon: BarChart3 }
+  ,{ id: "settings", label: "الإعدادات", icon: Settings2 }
 ];
 
 export default function App() {
@@ -69,6 +81,10 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (state?.settings.restaurantName) document.title = `${state.settings.restaurantName} — إدارة المطعم`;
+  }, [state?.settings.restaurantName]);
+
   if (!state) {
     return <div className="loading"><CookingPot size={44} /><strong>بنجهّز المطبخ...</strong></div>;
   }
@@ -80,8 +96,8 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark"><CookingPot /></div>
-          <div><strong>بيتنا</strong><span>إدارة المطعم</span></div>
+          <div className="brand-mark">{state.settings.logoDataUrl ? <img src={state.settings.logoDataUrl} alt="" /> : <CookingPot />}</div>
+          <div><strong>{state.settings.restaurantName}</strong><span>{state.settings.subtitle || "إدارة المطعم"}</span></div>
         </div>
         <nav>
           {navItems.map(({ id, label, icon: Icon }) => (
@@ -117,10 +133,13 @@ export default function App() {
           {view === "orders" && <OrdersView state={state} update={update} notify={setToast} />}
           {view === "kitchen" && <KitchenView state={state} update={update} notify={setToast} />}
           {view === "delivery" && <DeliveryView state={state} update={update} notify={setToast} />}
-          {view === "customers" && <CustomersView state={state} update={update} notify={setToast} />}
-          {view === "products" && <ProductsView state={state} update={update} notify={setToast} />}
+          {view === "customers" && <CustomerRecordsView state={state} update={update} notify={setToast} />}
+          {view === "products" && <ProductCatalogView state={state} update={update} notify={setToast} />}
+          {view === "inventory" && <InventoryView state={state} update={update} notify={setToast} />}
+          {view === "growth" && <GrowthView state={state} update={update} notify={setToast} />}
           {view === "cash" && <CashView state={state} update={update} notify={setToast} />}
           {view === "reports" && <ReportsView state={state} />}
+          {view === "settings" && <SettingsView state={state} update={update} notify={setToast} />}
         </section>
       </main>
       {toast && <div className="toast"><Check size={18} /> {toast}</div>}
@@ -136,6 +155,11 @@ function PosView({ state, update, notify }: ViewProps) {
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [customerQuery, setCustomerQuery] = useState("");
   const [showCustomers, setShowCustomers] = useState(false);
+  const [customerCandidate, setCustomerCandidate] = useState<Customer | null>(null);
+  const [customerRegistrationOpen, setCustomerRegistrationOpen] = useState(false);
+  const [customerForm, setCustomerForm] = useState({ name: "", phone: "", zone: "", address: "", notes: "" });
+  const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
+  const [historyOrder, setHistoryOrder] = useState<Order | null>(null);
   const [checkout, setCheckout] = useState(false);
 
   const products = state.products.filter((product) =>
@@ -145,16 +169,61 @@ function PosView({ state, update, notify }: ViewProps) {
   );
   const categories = ["الكل", ...new Set(state.products.filter((product) => product.section === section).map((product) => product.category))];
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalUnits = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const normalizedCustomerQuery = customerQuery.trim().toLocaleLowerCase("ar");
   const customerResults = state.customers.filter((item) =>
-    item.name.includes(customerQuery) || item.phone.includes(customerQuery)
+    item.name.toLocaleLowerCase("ar").includes(normalizedCustomerQuery) ||
+    item.phone.replace(/\s/g, "").includes(normalizedCustomerQuery.replace(/\s/g, ""))
   ).slice(0, 5);
+  const customerNotFound = normalizedCustomerQuery.length >= 2 && customerResults.length === 0;
+
+  const openCustomerPicker = () => {
+    setCustomerQuery("");
+    setCustomerCandidate(null);
+    setCustomerRegistrationOpen(false);
+    setCustomerForm({ name: "", phone: "", zone: "", address: "", notes: "" });
+    setShowCustomers(true);
+  };
+  const changeCustomerSearch = (value: string) => {
+    setCustomerQuery(value);
+    setCustomerCandidate(null);
+    setCustomerRegistrationOpen(false);
+    const looksLikePhone = /^[\d+\s-]+$/.test(value.trim());
+    setCustomerForm((current) => ({
+      ...current,
+      name: looksLikePhone ? "" : value,
+      phone: looksLikePhone ? value.replace(/[^\d+]/g, "") : ""
+    }));
+  };
+  const confirmExistingCustomer = () => {
+    if (!customerCandidate?.name.trim() || !customerCandidate.phone.trim() || !customerCandidate.address.trim()) return;
+    update((current) => ({
+      ...current,
+      customers: current.customers.map((item) => item.id === customerCandidate.id ? customerCandidate : item)
+    }));
+    setCustomer(customerCandidate);
+    setShowCustomers(false);
+    notify("تم اختيار العميل وعنوان التوصيل");
+  };
+  const registerCustomerFromSearch = () => {
+    if (!customerForm.name.trim() || !customerForm.phone.trim() || !customerForm.address.trim()) return;
+    const item: Customer = {
+      id: uid(), ...customerForm, name: customerForm.name.trim(), phone: customerForm.phone.trim(),
+      address: customerForm.address.trim(), zone: customerForm.zone.trim(),
+      ordersCount: 0, totalSpent: 0, loyaltyPoints: 0
+    };
+    update((current) => ({ ...current, customers: [item, ...current.customers] }));
+    setCustomer(item);
+    setShowCustomers(false);
+    notify("تم تسجيل العميل واختياره للطلب");
+  };
 
   const addProduct = (product: Product) => {
     setCart((current) => {
       const exists = current.find((item) => item.productId === product.id);
       return exists
         ? current.map((item) => item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item)
-        : [...current, { productId: product.id, name: product.name, unit: product.unit, price: product.price, quantity: 1 }];
+        : [...current, { productId: product.id, name: product.name, unit: product.unit, price: product.price, cost: product.cost, quantity: 1, section: product.section }];
     });
   };
 
@@ -168,13 +237,29 @@ function PosView({ state, update, notify }: ViewProps) {
     if (!customer) return;
     const createdAt = new Date().toISOString();
     const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
+    const loyaltyEarned = Math.floor(Math.max(0, subtotal - details.discount) / 10);
     const orderId = uid();
+    const consumption = new Map<string, number>();
+    cart.forEach((item) => state.recipes.filter((recipe) => recipe.productId === item.productId).forEach((recipe) => {
+      consumption.set(recipe.ingredientId, (consumption.get(recipe.ingredientId) ?? 0) + recipe.quantity * item.quantity);
+    }));
+    const stockMovements = [...consumption.entries()].map(([ingredientId, quantity]) => {
+      const ingredient = state.ingredients.find((item) => item.id === ingredientId)!;
+      return {
+        id: uid(), ingredientId, ingredientName: ingredient?.name ?? "مكون",
+        type: "consume" as const, quantity, unitCost: ingredient?.unitCost ?? 0,
+        description: `استهلاك طلب #${state.nextOrderNumber}`, orderId, createdAt
+      };
+    });
     const order: Order = {
       id: orderId, number: state.nextOrderNumber, customerId: customer.id,
       customerName: customer.name, customerPhone: customer.phone, address: customer.address,
       items: cart, subtotal, deliveryFee: details.deliveryFee, discount: details.discount, total,
       paymentMethod: details.paymentMethod, paymentStatus: details.paymentStatus,
-      stage: "confirmed", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined
+      stage: "confirmed", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
+      driverId: details.driverId, driver: details.driver,
+      deliveryCompanyId: details.deliveryCompanyId, deliveryCompany: details.deliveryCompany,
+      inventoryDeducted: stockMovements.length > 0, loyaltyEarned, loyaltyRedeemed: details.pointsRedeemed, source: "pos"
     };
     const transaction: CashTransaction | null = details.paymentStatus === "paid" ? {
       id: uid(), type: "sale", method: details.paymentMethod, amount: total, direction: "in",
@@ -183,9 +268,14 @@ function PosView({ state, update, notify }: ViewProps) {
     update((current) => ({
       ...current,
       orders: [order, ...current.orders],
+      ingredients: current.ingredients.map((ingredient) => ({
+        ...ingredient, stockQty: Math.max(0, ingredient.stockQty - (consumption.get(ingredient.id) ?? 0))
+      })),
+      stockMovements: [...stockMovements, ...current.stockMovements],
       cashTransactions: transaction ? [transaction, ...current.cashTransactions] : current.cashTransactions,
       customers: current.customers.map((item) => item.id === customer.id ? {
-        ...item, ordersCount: item.ordersCount + 1, totalSpent: item.totalSpent + total, lastOrder: createdAt
+        ...item, ordersCount: item.ordersCount + 1, totalSpent: item.totalSpent + total, lastOrder: createdAt,
+        loyaltyPoints: Math.max(0, (item.loyaltyPoints ?? 0) - details.pointsRedeemed + loyaltyEarned)
       } : item),
       nextOrderNumber: current.nextOrderNumber + 1
     }));
@@ -231,33 +321,48 @@ function PosView({ state, update, notify }: ViewProps) {
       </div>
 
       <aside className="cart-panel">
-        <div className="cart-title"><div><span>الطلب الحالي</span><strong>#{state.nextOrderNumber}</strong></div><button onClick={() => setCart([])} disabled={!cart.length}><Trash2 size={18} /></button></div>
+        <div className="cart-title">
+          <div className="cart-heading">
+            <span className="cart-heading-icon"><ShoppingBag /></span>
+            <span><b>الطلب الحالي</b><small>{cart.length ? `${cart.length} صنف · ${totalUnits} وحدة` : "ابدأ بإضافة الأصناف"}</small></span>
+            <strong>#{state.nextOrderNumber}</strong>
+          </div>
+          <button className="clear-cart-button" title="تفريغ السلة" onClick={() => setCart([])} disabled={!cart.length}><Trash2 size={18} /></button>
+        </div>
         <div className="customer-picker">
           {customer ? (
             <div className="selected-customer">
               <span className="customer-avatar">{customer.name.charAt(0)}</span>
-              <div><strong>{customer.name}</strong><small><Phone size={12} /> {customer.phone}</small></div>
-              <button onClick={() => setCustomer(null)}><X size={17} /></button>
+              <div><strong>{customer.name}</strong><small><Phone size={12} /> {customer.phone}</small><p>{customer.address}</p></div>
+              <span className="selected-customer-actions">
+                <button title="تعديل عنوان التوصيل" onClick={() => { setCustomerCandidate({ ...customer }); setShowCustomers(true); }}><MapPin size={16} /></button>
+                <button title="إلغاء اختيار العميل" onClick={() => setCustomer(null)}><X size={17} /></button>
+              </span>
             </div>
           ) : (
-            <button className="select-customer" onClick={() => setShowCustomers(true)}><UserPlus size={19} /> اختيار العميل وعنوان التوصيل <ChevronLeft size={18} /></button>
+            <button className="select-customer" onClick={openCustomerPicker}><UserPlus size={19} /> اختيار العميل وعنوان التوصيل <ChevronLeft size={18} /></button>
           )}
         </div>
         <div className="cart-items">
           {cart.map((item) => (
             <div className="cart-item" key={item.productId}>
               <div className="cart-item-top"><div><strong>{item.name}</strong><small>{item.unit} · {money(item.price)}</small></div><b>{money(item.price * item.quantity)}</b></div>
-              <div className="quantity">
-                <button onClick={() => setQuantity(item.productId, -1)}><Minus size={15} /></button>
-                <span>{item.quantity}</span>
-                <button onClick={() => setQuantity(item.productId, 1)}><Plus size={15} /></button>
+              <div className="cart-item-footer">
+                <div className="quantity">
+                  <button onClick={() => setQuantity(item.productId, -1)}><Minus size={15} /></button>
+                  <span>{item.quantity}</span>
+                  <button onClick={() => setQuantity(item.productId, 1)}><Plus size={15} /></button>
+                </div>
+                <button className="remove-cart-item" title="حذف الصنف" onClick={() => setQuantity(item.productId, -item.quantity)}><Trash2 /></button>
               </div>
             </div>
           ))}
           {!cart.length && <div className="empty-cart"><ShoppingBag size={44} /><strong>الطلب لسه فاضي</strong><span>اختار الأصناف من المنيو</span></div>}
         </div>
         <div className="cart-summary">
-          <div><span>الإجمالي المبدئي</span><strong>{money(subtotal)}</strong></div>
+          <span className="cart-summary-title">ملخص الطلب</span>
+          <div><span>عدد الوحدات</span><b>{totalUnits}</b></div>
+          <div className="cart-total-row"><span>الإجمالي المبدئي</span><strong>{money(subtotal)}</strong></div>
           <button className="primary-button checkout-button" disabled={!cart.length || !customer} onClick={() => setCheckout(true)}>
             متابعة الدفع <span>{money(subtotal)}</span>
           </button>
@@ -266,20 +371,102 @@ function PosView({ state, update, notify }: ViewProps) {
       </aside>
 
       {showCustomers && (
-        <Modal title="اختيار العميل" onClose={() => setShowCustomers(false)}>
-          <label className="search-box modal-search"><Search size={18} /><input autoFocus value={customerQuery} onChange={(event) => setCustomerQuery(event.target.value)} placeholder="الاسم أو رقم الموبايل" /></label>
-          <div className="customer-results">
-            {customerResults.map((item) => (
-              <button key={item.id} onClick={() => { setCustomer(item); setShowCustomers(false); }}>
-                <span className="customer-avatar">{item.name.charAt(0)}</span>
-                <div><strong>{item.name}</strong><small>{item.phone}</small><p>{item.address}</p></div>
-                <ChevronLeft />
+        <Modal title="اختيار العميل" onClose={() => setShowCustomers(false)} medium>
+          {!customerCandidate && <label className="search-box modal-search"><Search size={18} /><input
+            autoFocus
+            value={customerQuery}
+            onChange={(event) => changeCustomerSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && customerNotFound && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                setCustomerRegistrationOpen(true);
+              }
+            }}
+            placeholder="ابحث بالاسم أو رقم الموبايل..."
+          /></label>}
+
+          {customerCandidate ? (
+            <div className="customer-address-step" onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                !(event.target instanceof HTMLButtonElement)
+              ) {
+                event.preventDefault();
+                confirmExistingCustomer();
+              }
+            }}>
+              <button className="back-to-results" onClick={() => setCustomerCandidate(null)}><ChevronLeft /> الرجوع لنتائج البحث</button>
+              <div className="customer-address-head">
+                <span className="customer-avatar">{customerCandidate.name.charAt(0)}</span>
+                <span><strong>{customerCandidate.name}</strong><small>{customerCandidate.phone}</small></span>
+              </div>
+              <div className="inline-customer-form">
+                <label>اسم العميل<input value={customerCandidate.name} onChange={(event) => setCustomerCandidate({ ...customerCandidate, name: event.target.value })} /></label>
+                <label>رقم الهاتف<input value={customerCandidate.phone} onChange={(event) => setCustomerCandidate({ ...customerCandidate, phone: event.target.value })} /></label>
+                <label className="full-field">العنوان بالتفصيل<textarea autoFocus value={customerCandidate.address} onChange={(event) => setCustomerCandidate({ ...customerCandidate, address: event.target.value })} placeholder="اكتب عنوان التوصيل بالتفصيل" /></label>
+              </div>
+              <p className="address-save-note"><MapPin /> العنوان المعدل هيُحفظ في ملف العميل ويُستخدم للطلب الحالي.</p>
+              <button className="primary-button customer-confirm-button" onClick={confirmExistingCustomer}>
+                <Check /> تأكيد العميل والعنوان
               </button>
-            ))}
-          </div>
+            </div>
+          ) : customerNotFound && customerRegistrationOpen ? (
+            <div className="customer-inline-register">
+              <div className="not-found-title"><UserPlus /><span><strong>العميل غير مسجل</strong><small>كمّل البيانات علشان يتسجل ويتضاف للطلب</small></span></div>
+              <div className="inline-customer-form">
+                <label>اسم العميل<input autoFocus={!customerForm.name} value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} /></label>
+                <label>رقم الهاتف<input autoFocus={!customerForm.phone} value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} /></label>
+                <label className="full-field">العنوان بالتفصيل<textarea value={customerForm.address} onChange={(event) => setCustomerForm({ ...customerForm, address: event.target.value })} placeholder="اكتب عنوان التوصيل بالتفصيل" /></label>
+              </div>
+              <button className="primary-button customer-confirm-button" onClick={registerCustomerFromSearch}><UserPlus /> تسجيل واختيار العميل</button>
+            </div>
+          ) : (
+            <div className="customer-results">
+              {customerResults.map((item) => {
+                const orderCount = Math.max(item.ordersCount, state.orders.filter((order) => order.customerId === item.id).length);
+                return <div className="customer-result-item" role="button" tabIndex={0} key={item.id} onClick={() => setCustomerCandidate({ ...item })} onKeyDown={(event) => event.key === "Enter" && setCustomerCandidate({ ...item })}>
+                  <span className="customer-avatar">{item.name.charAt(0)}</span>
+                  <div><strong>{item.name}</strong><small>{item.phone}</small><p>{item.address}</p></div>
+                  <span className="customer-result-actions">
+                    {orderCount > 0 && <em>{orderCount === 1 ? "طلب واحد" : `${orderCount} طلبات`}</em>}
+                    <button title="فتح سجل العميل" onClick={(event) => {
+                      event.stopPropagation();
+                      setHistoryCustomer({ ...item });
+                      setShowCustomers(false);
+                    }}><Info /></button>
+                    <ChevronLeft />
+                  </span>
+                </div>;
+              })}
+              {customerNotFound && <div className="customer-enter-hint">
+                <UserPlus />
+                <span><strong>العميل غير موجود</strong><small>اضغط Enter لتسجيله كعميل جديد</small></span>
+                <kbd>Enter ↵</kbd>
+              </div>}
+            </div>
+          )}
         </Modal>
       )}
-      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
+      {historyCustomer && <CustomerFile
+        customer={historyCustomer}
+        state={state}
+        onClose={() => { setHistoryCustomer(null); setShowCustomers(true); }}
+        onEdit={(item) => {
+          update((current) => ({
+            ...current,
+            customers: current.customers.map((customerItem) => customerItem.id === item.id ? item : customerItem),
+            orders: current.orders.map((order) => order.customerId === item.id ? { ...order, customerName: item.name, customerPhone: item.phone, address: item.address } : order)
+          }));
+          setHistoryCustomer(item);
+          setCustomer((current) => current?.id === item.id ? item : current);
+          notify("تم تحديث بيانات العميل");
+        }}
+        onOrder={setHistoryOrder}
+      />}
+      {historyOrder && <OrderEditorModal order={historyOrder} state={state} update={update} notify={notify} onClose={() => setHistoryOrder(null)} />}
+      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} offers={state.offers} drivers={state.drivers} companies={state.deliveryCompanies} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
     </div>
   );
 }
@@ -291,17 +478,33 @@ interface CheckoutDetails {
   discount: number;
   scheduledFor: string;
   note: string;
+  pointsRedeemed: number;
+  driverId?: string;
+  driver?: string;
+  deliveryCompanyId?: string;
+  deliveryCompany?: string;
 }
 
-function CheckoutModal({ subtotal, customer, onClose, onComplete }: {
-  subtotal: number; customer: Customer; onClose: () => void; onComplete: (details: CheckoutDetails) => void;
+function CheckoutModal({ subtotal, customer, offers, drivers, companies, defaultFee, onClose, onComplete }: {
+  subtotal: number; customer: Customer; offers: AppState["offers"]; drivers: AppState["drivers"];
+  companies: AppState["deliveryCompanies"]; defaultFee: number; onClose: () => void; onComplete: (details: CheckoutDetails) => void;
 }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("pending");
-  const [deliveryFee, setDeliveryFee] = useState(30);
-  const [discount, setDiscount] = useState(0);
+  const [deliveryFee, setDeliveryFee] = useState(defaultFee);
+  const [manualDiscount, setManualDiscount] = useState(0);
+  const [offerId, setOfferId] = useState("");
+  const [pointsRedeemed, setPointsRedeemed] = useState(0);
   const [scheduledFor, setScheduledFor] = useState("");
   const [note, setNote] = useState("");
+  const [deliveryType, setDeliveryType] = useState<"later" | "driver" | "company">("later");
+  const [deliveryId, setDeliveryId] = useState("");
+  const eligibleOffers = offers.filter((offer) => offer.active && subtotal >= offer.minOrder && (!offer.expiresAt || new Date(offer.expiresAt).getTime() > Date.now()));
+  const selectedOffer = eligibleOffers.find((offer) => offer.id === offerId);
+  const offerDiscount = selectedOffer ? selectedOffer.type === "percentage" ? subtotal * selectedOffer.value / 100 : selectedOffer.value : 0;
+  const maxPoints = Math.min(customer.loyaltyPoints ?? 0, Math.max(0, Math.floor(subtotal + deliveryFee - manualDiscount - offerDiscount)));
+  const safePoints = Math.min(pointsRedeemed, maxPoints);
+  const discount = manualDiscount + offerDiscount + safePoints;
   const total = Math.max(0, subtotal + deliveryFee - discount);
   return (
     <Modal title="تأكيد الطلب والدفع" onClose={onClose} wide>
@@ -319,19 +522,37 @@ function CheckoutModal({ subtotal, customer, onClose, onComplete }: {
             <button className={paymentStatus === "paid" ? "active paid" : ""} onClick={() => setPaymentStatus("paid")}><Check /> تم التحصيل</button>
             <button className={paymentStatus === "pending" ? "active pending" : ""} onClick={() => setPaymentStatus("pending")}><Clock3 /> معلق مع الدليفري</button>
           </div>
+          <h3>العروض ونقاط الولاء</h3>
+          <div className="loyalty-checkout">
+            <label>عرض متاح<select value={offerId} onChange={(event) => setOfferId(event.target.value)}><option value="">بدون عرض</option>{eligibleOffers.map((offer) => <option value={offer.id} key={offer.id}>{offer.name} — {offer.type === "percentage" ? `${offer.value}%` : money(offer.value)}</option>)}</select></label>
+            <label>استخدام نقاط ({customer.loyaltyPoints ?? 0} متاحة)<input type="number" min="0" max={maxPoints} value={pointsRedeemed || ""} onChange={(event) => setPointsRedeemed(Math.min(maxPoints, Number(event.target.value)))} /></label>
+          </div>
           <div className="form-row">
             <label>موعد التوصيل<input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} /></label>
             <label>ملاحظات الطلب<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="مثال: الاتصال قبل الوصول" /></label>
           </div>
+          <h3>جهة التوصيل</h3>
+          <div className="delivery-choice">
+            <button className={deliveryType === "later" ? "active" : ""} onClick={() => { setDeliveryType("later"); setDeliveryId(""); }}>تحديد لاحقًا</button>
+            <button className={deliveryType === "driver" ? "active" : ""} onClick={() => { setDeliveryType("driver"); setDeliveryId(drivers.find((item) => item.active)?.id ?? ""); }}>مندوب المطعم</button>
+            <button className={deliveryType === "company" ? "active" : ""} onClick={() => { setDeliveryType("company"); const company = companies.find((item) => item.active); setDeliveryId(company?.id ?? ""); if (company) setDeliveryFee(company.baseFee); }}>شركة توصيل</button>
+          </div>
+          {deliveryType === "driver" && <label className="delivery-select">اختيار المندوب<select value={deliveryId} onChange={(event) => setDeliveryId(event.target.value)}><option value="">اختر...</option>{drivers.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>}
+          {deliveryType === "company" && <label className="delivery-select">اختيار الشركة<select value={deliveryId} onChange={(event) => { setDeliveryId(event.target.value); const company = companies.find((item) => item.id === event.target.value); if (company) setDeliveryFee(company.baseFee); }}><option value="">اختر...</option>{companies.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name} — {money(item.baseFee)}</option>)}</select></label>}
         </div>
         <div className="total-card">
           <h3>ملخص الحساب</h3>
           <div><span>قيمة الأصناف</span><b>{money(subtotal)}</b></div>
           <div><span>التوصيل</span><input type="number" min="0" value={deliveryFee} onChange={(event) => setDeliveryFee(Number(event.target.value))} /></div>
-          <div><span>الخصم</span><input type="number" min="0" value={discount} onChange={(event) => setDiscount(Number(event.target.value))} /></div>
+          <div><span>خصم يدوي</span><input type="number" min="0" value={manualDiscount} onChange={(event) => setManualDiscount(Number(event.target.value))} /></div>
+          {(offerDiscount > 0 || safePoints > 0) && <div className="applied-discount"><span>عروض ونقاط</span><b>- {money(offerDiscount + safePoints)}</b></div>}
           <hr />
           <div className="grand-total"><span>الإجمالي</span><strong>{money(total)}</strong></div>
-          <button className="primary-button" onClick={() => onComplete({ paymentMethod, paymentStatus, deliveryFee, discount, scheduledFor, note })}><PackageCheck /> تأكيد الطلب</button>
+          <button className="primary-button" onClick={() => {
+            const driver = deliveryType === "driver" ? drivers.find((item) => item.id === deliveryId) : undefined;
+            const company = deliveryType === "company" ? companies.find((item) => item.id === deliveryId) : undefined;
+            onComplete({ paymentMethod, paymentStatus, deliveryFee, discount, scheduledFor, note, pointsRedeemed: safePoints, driverId: driver?.id, driver: driver?.name, deliveryCompanyId: company?.id, deliveryCompany: company?.name });
+          }}><PackageCheck /> تأكيد الطلب</button>
         </div>
       </div>
     </Modal>
@@ -345,6 +566,7 @@ function PaymentOption({ active, icon, label, onClick }: { active: boolean; icon
 function OrdersView({ state, update, notify }: ViewProps) {
   const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered">("all");
   const [invoice, setInvoice] = useState<Order | null>(null);
+  const [editing, setEditing] = useState<Order | null>(null);
   const filtered = state.orders.filter((order) => {
     if (filter === "pending") return order.paymentStatus === "pending" && order.stage !== "cancelled";
     if (filter === "active") return !["delivered", "cancelled"].includes(order.stage);
@@ -371,11 +593,24 @@ function OrdersView({ state, update, notify }: ViewProps) {
     }));
     notify(`تم تحصيل ${money(order.total)}`);
   };
+  const openWhatsApp = (order: Order) => {
+    const phone = order.customerPhone.replace(/\D/g, "").replace(/^0/, "20");
+    const items = order.items.map((item) => `${item.quantity}× ${item.name}`).join("، ");
+    const message = [
+      `أهلًا ${order.customerName} 👋`,
+      `تم تأكيد طلبك رقم #${order.number} من ${state.settings.restaurantName}.`,
+      `الطلب: ${items}`,
+      `الإجمالي: ${money(order.total)}`,
+      order.scheduledFor ? `موعد التوصيل: ${shortDate(order.scheduledFor)}` : "هنبلغك أول ما الطلب يخرج للتوصيل.",
+      `شكرًا لاختيارك ${state.settings.restaurantName} ❤️`
+    ].join("\n");
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  };
 
   return (
     <div>
       <div className="stat-strip">
-        <MiniStat icon={<ReceiptText />} label="طلبات اليوم" value={String(state.orders.filter((o) => o.createdAt.slice(0, 10) === todayKey()).length)} tone="green" />
+        <MiniStat icon={<ReceiptText />} label="طلبات اليوم" value={String(state.orders.filter((o) => dateKey(o.createdAt) === todayKey()).length)} tone="green" />
         <MiniStat icon={<Clock3 />} label="تحصيلات معلقة" value={String(state.orders.filter((o) => o.paymentStatus === "pending").length)} tone="orange" />
         <MiniStat icon={<Truck />} label="خارج للتوصيل" value={String(state.orders.filter((o) => o.stage === "out_for_delivery").length)} tone="blue" />
         <MiniStat icon={<CircleDollarSign />} label="قيمة المعلق" value={money(state.orders.filter((o) => o.paymentStatus === "pending").reduce((sum, o) => sum + o.total, 0))} tone="red" />
@@ -399,8 +634,10 @@ function OrdersView({ state, update, notify }: ViewProps) {
               <span><StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "out_for_delivery" ? "info" : "neutral"}>{stageLabels[order.stage]}</StatusBadge></span>
               <span className="row-actions">
                 <button className="icon-row-button" title="طباعة الفاتورة" onClick={() => setInvoice(order)}><Printer size={15} /></button>
-                {order.paymentStatus === "pending" && !order.driverId && <button className="collect-button" onClick={() => collect(order)}><Banknote size={16} /> تحصيل</button>}
-                {order.paymentStatus === "pending" && order.driverId && <StatusBadge type="info">مع {order.driver}</StatusBadge>}
+                <button className="icon-row-button" title="تعديل الطلب" onClick={() => setEditing(order)}><ClipboardCheck size={15} /></button>
+                <button className="icon-row-button whatsapp" title="تأكيد واتساب" onClick={() => openWhatsApp(order)}><MessageCircle size={15} /></button>
+                {order.paymentStatus === "pending" && !order.driverId && !order.deliveryCompanyId && <button className="collect-button" onClick={() => collect(order)}><Banknote size={16} /> تحصيل</button>}
+                {order.paymentStatus === "pending" && (order.driverId || order.deliveryCompanyId) && <StatusBadge type="info">مع {order.driver || order.deliveryCompany}</StatusBadge>}
                 {!["delivered", "cancelled"].includes(order.stage) && <button className="soft-button" onClick={() => advance(order)}>التالي</button>}
               </span>
             </div>
@@ -408,12 +645,13 @@ function OrdersView({ state, update, notify }: ViewProps) {
           {!filtered.length && <Empty icon={<ReceiptText />} title="لا توجد طلبات هنا" text="الطلبات الجديدة هتظهر تلقائيًا" />}
         </div>
       </div>
-      {invoice && <InvoiceModal order={invoice} onClose={() => setInvoice(null)} />}
+      {invoice && <InvoiceModal order={invoice} settings={state.settings} onClose={() => setInvoice(null)} />}
+      {editing && <OrderEditorModal order={editing} state={state} update={update} notify={notify} onClose={() => setEditing(null)} />}
     </div>
   );
 }
 
-function InvoiceModal({ order, onClose }: { order: Order; onClose: () => void }) {
+function InvoiceModal({ order, settings, onClose }: { order: Order; settings: AppState["settings"]; onClose: () => void }) {
   const printInvoice = () => {
     document.body.classList.add("print-receipt");
     window.print();
@@ -422,7 +660,7 @@ function InvoiceModal({ order, onClose }: { order: Order; onClose: () => void })
   return (
     <Modal title={`فاتورة #${order.number}`} onClose={onClose}>
       <div className="receipt-paper">
-        <header><CookingPot /><h2>بيتنا</h2><p>أكل بيتي معمول بحب</p></header>
+        <header>{settings.logoDataUrl ? <img className="receipt-logo" src={settings.logoDataUrl} alt="" /> : <CookingPot />}<h2>{settings.restaurantName}</h2><p>{settings.subtitle}</p>{settings.phone && <small>{settings.phone}</small>}{settings.address && <small>{settings.address}</small>}</header>
         <div className="receipt-meta">
           <span>رقم الطلب <b>#{order.number}</b></span>
           <span>التاريخ <b>{shortDate(order.createdAt)}</b></span>
@@ -446,7 +684,8 @@ function InvoiceModal({ order, onClose }: { order: Order; onClose: () => void })
         <div className="receipt-footer">
           <span>{paymentLabels[order.paymentMethod]} · {order.paymentStatus === "paid" ? "تم الدفع" : "التحصيل عند التوصيل"}</span>
           {order.note && <p>ملاحظة: {order.note}</p>}
-          <small>شكرًا لاختياركم بيتنا</small>
+          {(order.driver || order.deliveryCompany) && <p>التوصيل: {order.driver || order.deliveryCompany}</p>}
+          <small>{settings.invoiceFooter}</small>
         </div>
       </div>
       <button className="primary-button print-receipt-button" onClick={printInvoice}><Printer /> طباعة الفاتورة</button>
@@ -456,24 +695,38 @@ function InvoiceModal({ order, onClose }: { order: Order; onClose: () => void })
 
 function KitchenView({ state, update, notify }: ViewProps) {
   const [scope, setScope] = useState<"all" | "now" | "scheduled">("all");
+  const [kitchenSection, setKitchenSection] = useState<"all" | ProductSection>("all");
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const itemSection = (item: OrderItem) => item.section ?? state.products.find((product) => product.id === item.productId)?.section;
+  const sectionItems = (order: Order) => order.items.filter((item) => kitchenSection === "all" || itemSection(item) === kitchenSection);
   const activeOrders = state.orders.filter((order) => {
-    if (["delivered", "cancelled"].includes(order.stage)) return false;
+    if (["out_for_delivery", "delivered", "cancelled"].includes(order.stage)) return false;
     const scheduled = order.scheduledFor && new Date(order.scheduledFor).getTime() > Date.now() + 60 * 60 * 1000;
-    if (scope === "now") return !scheduled;
-    if (scope === "scheduled") return Boolean(scheduled);
-    return true;
+    if (scope === "now" && scheduled) return false;
+    if (scope === "scheduled" && !scheduled) return false;
+    return sectionItems(order).length > 0;
   });
   const grouped = new Map<string, { name: string; unit: string; quantity: number; section: ProductSection | undefined }>();
-  activeOrders.flatMap((order) => order.items).forEach((item) => {
+  activeOrders.flatMap(sectionItems).forEach((item) => {
     const existing = grouped.get(item.productId);
     if (existing) existing.quantity += item.quantity;
     else grouped.set(item.productId, { name: item.name, unit: item.unit, quantity: item.quantity, section: undefined });
   });
   const moveKitchenOrder = (order: Order) => {
-    const next: OrderStage | null = order.stage === "confirmed" ? "preparing" : order.stage === "preparing" ? "ready" : null;
+    const next: OrderStage | null = order.stage === "confirmed" ? "preparing" : order.stage === "preparing" ? "packing" : order.stage === "packing" ? "ready" : null;
     if (!next) return;
     update((current) => ({ ...current, orders: current.orders.map((item) => item.id === order.id ? { ...item, stage: next } : item) }));
-    notify(next === "ready" ? `الطلب #${order.number} جاهز` : `بدأ تحضير الطلب #${order.number}`);
+    notify(next === "ready" ? `الطلب #${order.number} جاهز` : next === "packing" ? `الطلب #${order.number} دخل التغليف` : `بدأ تحضير الطلب #${order.number}`);
+  };
+  const elapsed = (order: Order) => Math.max(0, Math.floor((clock - new Date(order.createdAt).getTime()) / 60000));
+  const timerTone = (minutes: number) => minutes >= state.settings.kitchenLateMinutes ? "late" : minutes >= state.settings.kitchenWarningMinutes ? "warning" : "ok";
+  const timerText = (order: Order) => {
+    const seconds = Math.max(0, Math.floor((clock - new Date(order.createdAt).getTime()) / 1000));
+    return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   };
   const printKitchen = () => {
     document.body.classList.add("print-kitchen");
@@ -483,10 +736,15 @@ function KitchenView({ state, update, notify }: ViewProps) {
   return (
     <div>
       <div className="kitchen-toolbar">
-        <div className="filter-tabs">
+        <div className="filter-tabs kitchen-scopes">
           <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>كل التحضير</button>
           <button className={scope === "now" ? "active" : ""} onClick={() => setScope("now")}>مطلوب الآن</button>
           <button className={scope === "scheduled" ? "active" : ""} onClick={() => setScope("scheduled")}>طلبات مجدولة</button>
+        </div>
+        <div className="filter-tabs kitchen-sections">
+          <button className={kitchenSection === "all" ? "active" : ""} onClick={() => setKitchenSection("all")}>الكل</button>
+          <button className={kitchenSection === "cooked" ? "active" : ""} onClick={() => setKitchenSection("cooked")}>مطبخ مطبوخ</button>
+          <button className={kitchenSection === "fresh" ? "active" : ""} onClick={() => setKitchenSection("fresh")}>تجهيز طازة</button>
         </div>
         <button className="soft-button print-kitchen-button" onClick={printKitchen}><Printer /> طباعة التجميع</button>
       </div>
@@ -508,12 +766,13 @@ function KitchenView({ state, update, notify }: ViewProps) {
         <div className="panel-title"><div><ReceiptText /><span><strong>كروت التحضير</strong><small>مرتبة حسب الأقدم</small></span></div></div>
         <div className="kitchen-orders">
           {activeOrders.slice().reverse().map((order) => (
-            <article key={order.id}>
-              <header><strong>طلب #{order.number}</strong><StatusBadge type={order.stage === "ready" ? "success" : "neutral"}>{stageLabels[order.stage]}</StatusBadge></header>
+            <article className={`timed-order ${timerTone(elapsed(order))}`} key={order.id}>
+              <header><strong>طلب #{order.number}</strong><span className={`kitchen-timer ${timerTone(elapsed(order))}`}><Clock3 /> {timerText(order)}</span><StatusBadge type={order.stage === "ready" ? "success" : order.stage === "packing" ? "warning" : "neutral"}>{stageLabels[order.stage]}</StatusBadge></header>
               <p>{order.customerName} · {order.scheduledFor ? `موعد ${shortDate(order.scheduledFor)}` : shortDate(order.createdAt)}</p>
-              <ul>{order.items.map((item) => <li key={item.productId}><b>{item.quantity}×</b> {item.name}</li>)}</ul>
+              <div className="kitchen-card-meta"><span>{sectionItems(order).reduce((sum, item) => sum + item.quantity, 0)} وحدة</span>{order.driver && <span>مندوب: {order.driver}</span>}{order.deliveryCompany && <span>شركة: {order.deliveryCompany}</span>}</div>
+              <ul>{sectionItems(order).map((item) => <li key={item.productId}><b>{item.quantity}×</b> {item.name}<em>{itemSection(item) === "cooked" ? "مطبوخ" : "طازة"}</em></li>)}</ul>
               {order.note && <small className="order-note">{order.note}</small>}
-              {["confirmed", "preparing"].includes(order.stage) && <button className="kitchen-action" onClick={() => moveKitchenOrder(order)}>{order.stage === "confirmed" ? "بدء التحضير" : "تم التجهيز"}</button>}
+              {["confirmed", "preparing", "packing"].includes(order.stage) && <button className="kitchen-action" onClick={() => moveKitchenOrder(order)}>{order.stage === "confirmed" ? "بدء التحضير" : order.stage === "preparing" ? "إرسال للتغليف" : "تم التغليف والطلب جاهز"}</button>}
             </article>
           ))}
         </div>
@@ -564,9 +823,9 @@ function DeliveryView({ state, update, notify }: ViewProps) {
       grossCollected, deliveryFees, expenses, amountReceived, difference, note: note || undefined, createdAt
     };
     const transactions: CashTransaction[] = [];
-    if (amountReceived > 0) transactions.push({
-      id: uid(), type: "collection", method: "cash", amount: amountReceived, direction: "in",
-      description: `تسوية المندوب ${driver.name} — ${orders.length} طلب`, createdAt
+    if (amountReceived + expenses > 0) transactions.push({
+      id: uid(), type: "collection", method: "cash", amount: amountReceived + expenses, direction: "in",
+      description: `إجمالي تسوية المندوب ${driver.name} — ${orders.length} طلب`, createdAt
     });
     if (expenses > 0) transactions.push({
       id: uid(), type: "expense", method: "cash", amount: expenses, direction: "out",
@@ -595,7 +854,7 @@ function DeliveryView({ state, update, notify }: ViewProps) {
         <MiniStat icon={<PackageCheck />} label="جاهز للإسناد" value={String(unassigned.length)} tone="orange" />
         <MiniStat icon={<Bike />} label="خارج للتوصيل" value={String(state.orders.filter((order) => order.stage === "out_for_delivery").length)} tone="blue" />
         <MiniStat icon={<Banknote />} label="عهدة مع المندوبين" value={money(state.orders.filter((order) => order.driverId && order.paymentStatus === "pending" && !order.settlementId).reduce((sum, order) => sum + order.total, 0))} tone="red" />
-        <MiniStat icon={<ClipboardCheck />} label="تسويات اليوم" value={String(state.driverSettlements.filter((item) => item.createdAt.slice(0, 10) === todayKey()).length)} tone="green" />
+        <MiniStat icon={<ClipboardCheck />} label="تسويات اليوم" value={String(state.driverSettlements.filter((item) => dateKey(item.createdAt) === todayKey()).length)} tone="green" />
       </div>
 
       {unassigned.length > 0 && (
@@ -759,7 +1018,7 @@ function CustomersView({ state, update, notify }: ViewProps) {
           <article key={customer.id}>
             <div className="customer-card-head"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><strong>{customer.name}</strong><small>{customer.phone}</small></div></div>
             <p>{customer.address}</p>
-            <div className="customer-metrics"><span><small>عدد الطلبات</small><b>{customer.ordersCount}</b></span><span><small>إجمالي المشتريات</small><b>{money(customer.totalSpent)}</b></span></div>
+            <div className="customer-metrics"><span><small>عدد الطلبات</small><b>{customer.ordersCount}</b></span><span><small>إجمالي المشتريات</small><b>{money(customer.totalSpent)}</b></span><span><small>نقاط الولاء</small><b>{customer.loyaltyPoints ?? 0}</b></span></div>
           </article>
         ))}
       </div>
@@ -801,7 +1060,7 @@ function ProductsView({ state, update, notify }: ViewProps) {
 function CashView({ state, update, notify }: ViewProps) {
   const [expense, setExpense] = useState(false);
   const [expenseData, setExpenseData] = useState({ amount: 0, description: "" });
-  const todayTransactions = state.cashTransactions.filter((transaction) => transaction.createdAt.slice(0, 10) === todayKey());
+  const todayTransactions = state.cashTransactions.filter((transaction) => dateKey(transaction.createdAt) === todayKey());
   const cashIn = todayTransactions.filter((t) => t.direction === "in" && t.method === "cash").reduce((sum, t) => sum + t.amount, 0);
   const cashOut = todayTransactions.filter((t) => t.direction === "out" && t.method === "cash").reduce((sum, t) => sum + t.amount, 0);
   const digital = todayTransactions.filter((t) => t.direction === "in" && t.method !== "cash").reduce((sum, t) => sum + t.amount, 0);
@@ -844,17 +1103,21 @@ function CashView({ state, update, notify }: ViewProps) {
 }
 
 function ReportsView({ state }: { state: AppState }) {
-  const orders = state.orders.filter((order) => order.createdAt.slice(0, 10) === todayKey() && order.stage !== "cancelled");
+  const orders = state.orders.filter((order) => dateKey(order.createdAt) === todayKey() && order.stage !== "cancelled");
   const sales = orders.reduce((sum, order) => sum + order.total, 0);
   const collected = orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.total, 0);
   const pending = sales - collected;
-  const expenses = state.cashTransactions.filter((t) => t.createdAt.slice(0, 10) === todayKey() && t.direction === "out").reduce((sum, t) => sum + t.amount, 0);
+  const expenses = state.cashTransactions.filter((t) => dateKey(t.createdAt) === todayKey() && t.direction === "out").reduce((sum, t) => sum + t.amount, 0);
+  const productCost = (productId: string) => state.products.find((product) => product.id === productId)?.cost ?? 0;
+  const costOfSales = orders.flatMap((order) => order.items).reduce((sum, item) => sum + (item.cost ?? productCost(item.productId)) * item.quantity, 0);
+  const itemRevenue = orders.flatMap((order) => order.items).reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const grossProfit = itemRevenue - costOfSales;
   const itemTotals = new Map<string, number>();
   orders.flatMap((order) => order.items).forEach((item) => itemTotals.set(item.name, (itemTotals.get(item.name) ?? 0) + item.quantity));
   const topItems = [...itemTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
   const max = Math.max(1, ...topItems.map((item) => item[1]));
   const methodTotal = (method: PaymentMethod) => orders.filter((order) => order.paymentMethod === method).reduce((sum, order) => sum + order.total, 0);
-  const todaySettlements = state.driverSettlements.filter((item) => item.createdAt.slice(0, 10) === todayKey());
+  const todaySettlements = state.driverSettlements.filter((item) => dateKey(item.createdAt) === todayKey());
   return (
     <div>
       <div className="report-heading"><div><span>ملخص أداء اليوم</span><strong>{money(sales)}</strong><small>إجمالي قيمة المبيعات</small></div><div className="report-ring"><span>{orders.length}</span><small>طلب</small></div></div>
@@ -863,6 +1126,11 @@ function ReportsView({ state }: { state: AppState }) {
         <MiniStat icon={<Clock3 />} label="معلق" value={money(pending)} tone="orange" />
         <MiniStat icon={<CircleDollarSign />} label="مصروفات" value={money(expenses)} tone="red" />
         <MiniStat icon={<BarChart3 />} label="متوسط الطلب" value={money(orders.length ? sales / orders.length : 0)} tone="blue" />
+      </div>
+      <div className="profit-strip">
+        <div><span><Calculator /><small>تكلفة الأصناف المباعة</small></span><strong>{money(costOfSales)}</strong></div>
+        <div><span><CircleDollarSign /><small>مجمل ربح الأصناف</small></span><strong>{money(grossProfit)}</strong></div>
+        <div><span><BarChart3 /><small>هامش الربح</small></span><strong>{itemRevenue ? `${Math.round((grossProfit / itemRevenue) * 100)}%` : "0%"}</strong></div>
       </div>
       <div className="report-grid">
         <div className="panel">
@@ -919,10 +1187,10 @@ function Empty({ icon, title, text }: { icon: ReactNode; title: string; text: st
   return <div className="empty-state wide">{icon}<strong>{title}</strong><span>{text}</span></div>;
 }
 
-function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
+function Modal({ title, children, onClose, wide = false, medium = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; medium?: boolean }) {
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={wide ? "modal wide" : "modal"}>
+      <div className={wide ? "modal wide" : medium ? "modal medium" : "modal"}>
         <header><h2>{title}</h2><button onClick={onClose}><X /></button></header>
         <div className="modal-body">{children}</div>
       </div>
