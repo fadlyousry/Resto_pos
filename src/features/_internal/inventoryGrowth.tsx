@@ -1,26 +1,19 @@
-import { useMemo, useState, type ChangeEvent, type ReactNode } from "react";
+// Internal implementation. Consume it through the public feature index files.
+import { useState, type ChangeEvent } from "react";
 import {
-  AlertTriangle, ArchiveRestore, BadgePercent, Boxes, Calculator, Check, ChevronLeft,
-  CircleDollarSign, DatabaseBackup, Download, Gift, History, PackagePlus, Plus,
-  Save, Scale, Sparkles, Upload, Users, X
+  AlertTriangle, ArchiveRestore, BadgePercent, Boxes, Calculator, ChevronLeft,
+  DatabaseBackup, Download, Gift, History, PackagePlus, Plus,
+  Save, Scale, Sparkles, Upload, Users
 } from "lucide-react";
 import type {
   AppState, CashTransaction, Ingredient, Offer, Product, RecipeItem, StockMovement
-} from "./types";
+} from "../../domain/types";
+import type { ViewProps } from "../../shared/contracts";
+import { money, shortDate } from "../../shared/format";
+import { uid } from "../../shared/id";
+import { Empty, MiniStat, Modal } from "../../shared/ui";
 
-const money = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
-  day: "numeric", month: "short", hour: "numeric", minute: "2-digit"
-}).format(new Date(value));
-const uid = () => crypto.randomUUID();
-
-interface PhaseThreeProps {
-  state: AppState;
-  update: (updater: (current: AppState) => AppState) => void;
-  notify: (message: string) => void;
-}
-
-export function InventoryView({ state, update, notify }: PhaseThreeProps) {
+export function InventoryView({ state, update, notify }: ViewProps) {
   const [tab, setTab] = useState<"stock" | "recipes" | "movements">("stock");
   const [stockIngredient, setStockIngredient] = useState<Ingredient | null>(null);
   const [addingIngredient, setAddingIngredient] = useState(false);
@@ -220,7 +213,7 @@ export function InventoryView({ state, update, notify }: PhaseThreeProps) {
   );
 }
 
-export function GrowthView({ state, update, notify }: PhaseThreeProps) {
+export function GrowthView({ state, update, notify }: ViewProps) {
   const [addingOffer, setAddingOffer] = useState(false);
   const [offerForm, setOfferForm] = useState<Omit<Offer, "id" | "active">>({ name: "", type: "percentage", value: 10, minOrder: 0 });
 
@@ -336,16 +329,4 @@ export function GrowthView({ state, update, notify }: PhaseThreeProps) {
 
 function recipeRecord(recipes: RecipeItem[], productId: string) {
   return Object.fromEntries(recipes.filter((item) => item.productId === productId).map((item) => [item.ingredientId, item.quantity]));
-}
-
-function MiniStat({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: string }) {
-  return <div className={`mini-stat ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div>;
-}
-
-function Empty({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
-  return <div className="empty-state wide">{icon}<strong>{title}</strong><span>{text}</span></div>;
-}
-
-function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="modal"><header><h2>{title}</h2><button onClick={onClose}><X /></button></header><div className="modal-body">{children}</div></div></div>;
 }

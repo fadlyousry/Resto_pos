@@ -1,3 +1,4 @@
+// Shared domain models. Keep these types independent from React and storage.
 export type ProductSection = "cooked" | "fresh";
 export type PaymentMethod = "cash" | "instapay" | "vodafone";
 export type PaymentStatus = "paid" | "pending";

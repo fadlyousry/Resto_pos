@@ -1,4 +1,4 @@
-import type { AppState, Product, ProductCategory } from "./types";
+import type { AppState, Product, ProductCategory } from "../domain/types";
 
 export const products: Product[] = [
   { id: "p1", name: "مكرونة بشاميل", category: "صواني", section: "cooked", unit: "صينية وسط", price: 280, cost: 175, available: true, accent: "#e9a15c" },

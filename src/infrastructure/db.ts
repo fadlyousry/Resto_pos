@@ -3,7 +3,7 @@ import { initialState } from "./seed";
 import type {
   AppState, CashTransaction, Customer, DeliveryCompany, Driver, DriverSettlement, Ingredient,
   Offer, Order, Product, ProductCategory, RecipeItem, StockMovement
-} from "./types";
+} from "../domain/types";
 
 const STORAGE_KEY = "beitna-pos-state-v1";
 let database: Database | null = null;

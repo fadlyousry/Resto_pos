@@ -1,36 +1,23 @@
-import { useMemo, useState, type ReactNode } from "react";
+// Internal implementation. Consume it through the public feature index files.
+import { useState } from "react";
 import {
   Boxes, Building2, ChevronLeft, ClipboardList, Edit3, ImagePlus, PackagePlus,
-  Plus, ReceiptText, Save, Search, Settings, Trash2, UserRound, X
+  Plus, ReceiptText, Save, Search, Settings, Trash2
 } from "lucide-react";
 import type {
   AppState, Customer, Order, OrderItem, Product, ProductCategory, ProductSection
-} from "./types";
-
-type Update = (updater: (current: AppState) => AppState) => void;
-interface Props { state: AppState; update: Update; notify: (message: string) => void }
-
-const uid = () => crypto.randomUUID();
-const money = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
-  day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit"
-}).format(new Date(value));
-
-function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
-  return <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-    <div className={wide ? "modal wide" : "modal"}>
-      <header><h2>{title}</h2><button onClick={onClose}><X /></button></header>
-      <div className="modal-body">{children}</div>
-    </div>
-  </div>;
-}
+} from "../../domain/types";
+import type { ViewProps } from "../../shared/contracts";
+import { money, shortDate } from "../../shared/format";
+import { uid } from "../../shared/id";
+import { Modal } from "../../shared/ui";
 
 const emptyProduct = (category?: ProductCategory): Product => ({
   id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? "cooked",
   unit: "طبق", price: 0, cost: 0, available: true, accent: category?.color ?? "#6f927d"
 });
 
-export function ProductCatalogView({ state, update, notify }: Props) {
+export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [section, setSection] = useState<"all" | ProductSection>("all");
@@ -86,7 +73,7 @@ export function ProductCatalogView({ state, update, notify }: Props) {
       </div>
     </div>
 
-    {editing && <Modal title={state.products.some((item) => item.id === editing.id) ? "تعديل الصنف" : "إضافة صنف"} onClose={() => setEditing(null)} wide>
+    {editing && <Modal title={state.products.some((item) => item.id === editing.id) ? "تعديل الصنف" : "إضافة صنف"} onClose={() => setEditing(null)} size="wide">
       <div className="editor-grid">
         <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label>
         <label>القسم<select value={editing.section} onChange={(event) => {
@@ -109,7 +96,7 @@ export function ProductCatalogView({ state, update, notify }: Props) {
   </div>;
 }
 
-function CategoryManager({ state, update, notify, onClose }: Props & { onClose: () => void }) {
+function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
   const [form, setForm] = useState<Omit<ProductCategory, "id">>({ name: "", section: "cooked", color: "#6f927d", active: true });
   const [editingId, setEditingId] = useState("");
   const add = () => {
@@ -133,7 +120,7 @@ function CategoryManager({ state, update, notify, onClose }: Props & { onClose: 
     });
     setEditingId(""); setForm({ ...form, name: "" }); notify(editingId ? "تم تعديل التصنيف وتحديث أصنافه" : "تمت إضافة التصنيف");
   };
-  return <Modal title="إدارة التصنيفات" onClose={onClose} wide>
+  return <Modal title="إدارة التصنيفات" onClose={onClose} size="wide">
     <div className="category-create">
       <label>اسم التصنيف<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
       <label>القسم<select value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value as ProductSection })}><option value="cooked">مطبوخ</option><option value="fresh">طازة</option></select></label>
@@ -151,7 +138,7 @@ function CategoryManager({ state, update, notify, onClose }: Props & { onClose: 
   </Modal>;
 }
 
-export function CustomerRecordsView({ state, update, notify }: Props) {
+export function CustomerRecordsView({ state, update, notify }: ViewProps) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
   const [adding, setAdding] = useState(false);
@@ -207,7 +194,7 @@ export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
 }) {
   const [form, setForm] = useState({ ...customer });
   const orders = state.orders.filter((order) => order.customerId === customer.id);
-  return <Modal title={`ملف العميل: ${customer.name}`} onClose={onClose} wide>
+  return <Modal title={`ملف العميل: ${customer.name}`} onClose={onClose} size="wide">
     <div className="customer-file">
       <div className="customer-profile-editor">
         <div className="customer-file-title"><span className="customer-avatar">{customer.name.charAt(0)}</span><span><strong>{customer.name}</strong><small>{orders.length} طلب مسجل</small></span></div>
@@ -230,7 +217,7 @@ export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
   </Modal>;
 }
 
-export function OrderEditorModal({ order, state, update, notify, onClose }: Props & { order: Order; onClose: () => void }) {
+export function OrderEditorModal({ order, state, update, notify, onClose }: ViewProps & { order: Order; onClose: () => void }) {
   const [draft, setDraft] = useState<Order>({ ...order, items: order.items.map((item) => ({ ...item })) });
   const [productId, setProductId] = useState("");
   const subtotal = draft.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -297,7 +284,7 @@ export function OrderEditorModal({ order, state, update, notify, onClose }: Prop
     onClose();
   };
   const deliveryType = draft.driverId ? "driver" : draft.deliveryCompanyId ? "company" : "later";
-  return <Modal title={`تعديل الطلب #${order.number}`} onClose={onClose} wide>
+  return <Modal title={`تعديل الطلب #${order.number}`} onClose={onClose} size="wide">
     <div className="order-editor">
       <div className="order-editor-items">
         <div className="add-order-item"><select value={productId} onChange={(event) => setProductId(event.target.value)}><option value="">إضافة صنف...</option>{state.products.filter((item) => item.available).map((item) => <option value={item.id} key={item.id}>{item.name} — {money(item.price)}</option>)}</select><button onClick={addProduct}><Plus /></button></div>
@@ -334,7 +321,7 @@ function recipeUsage(items: OrderItem[], state: AppState) {
   return usage;
 }
 
-export function SettingsView({ state, update, notify }: Props) {
+export function SettingsView({ state, update, notify }: ViewProps) {
   const [settings, setSettings] = useState({ ...state.settings });
   const [company, setCompany] = useState({ name: "", phone: "", baseFee: state.settings.defaultDeliveryFee, notes: "" });
   const readLogo = (file?: File) => {

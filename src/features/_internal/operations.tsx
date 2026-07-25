@@ -1,153 +1,24 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  BadgePercent, Banknote, BarChart3, Bell, Bike, Boxes, Calculator, CalendarClock, Check,
+  Banknote, BarChart3, Bike, Calculator, Check,
   ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
-  Info, LayoutGrid, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
-  ReceiptText, Search, Settings2, ShoppingBag, Store, Trash2, Truck, UserPlus, Users,
-  Utensils, WalletCards, Warehouse, X
+  Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
+  ReceiptText, Search, ShoppingBag, Trash2, Truck, UserPlus,
+  Utensils, WalletCards, X
 } from "lucide-react";
-import { loadState, saveState } from "./db";
 import type {
   AppState, CashTransaction, Customer, Driver, DriverSettlement, Order, OrderItem,
   OrderStage, PaymentMethod, Product, ProductSection
-} from "./types";
-import { GrowthView, InventoryView } from "./phaseThree";
+} from "../../domain/types";
+import { CustomerFile, OrderEditorModal } from "./management";
+import type { ViewProps } from "../../shared/contracts";
 import {
-  CustomerFile, CustomerRecordsView, OrderEditorModal, ProductCatalogView, SettingsView
-} from "./phaseFour";
+  dateKey, money, paymentLabels, shortDate, stageLabels, stageSequence, todayKey
+} from "../../shared/format";
+import { uid } from "../../shared/id";
+import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
 
-type View = "pos" | "orders" | "kitchen" | "delivery" | "customers" | "products" | "inventory" | "growth" | "cash" | "reports" | "settings";
-
-const money = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-const shortDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
-  day: "numeric", month: "short", hour: "numeric", minute: "2-digit"
-}).format(new Date(value));
-const dateKey = (value: string | Date) => {
-  const date = typeof value === "string" ? new Date(value) : value;
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-};
-const todayKey = () => dateKey(new Date());
-const uid = () => crypto.randomUUID();
-
-const paymentLabels: Record<PaymentMethod, string> = {
-  cash: "نقدي", instapay: "إنستاباي", vodafone: "فودافون كاش"
-};
-const stageLabels: Record<OrderStage, string> = {
-  confirmed: "تم التأكيد", preparing: "قيد التحضير", packing: "تغليف وتجميع", ready: "جاهز",
-  out_for_delivery: "خرج للتوصيل", delivered: "تم التسليم", cancelled: "ملغي"
-};
-const stageSequence: OrderStage[] = ["confirmed", "preparing", "packing", "ready", "out_for_delivery", "delivered"];
-
-const navItems: Array<{ id: View; label: string; icon: typeof Store }> = [
-  { id: "pos", label: "نقطة البيع", icon: LayoutGrid },
-  { id: "orders", label: "الطلبات", icon: ReceiptText },
-  { id: "kitchen", label: "المطبخ والتجميع", icon: CookingPot },
-  { id: "delivery", label: "التوصيل والمندوبين", icon: Bike },
-  { id: "customers", label: "العملاء", icon: Users },
-  { id: "products", label: "الأصناف", icon: Boxes },
-  { id: "inventory", label: "المخزون والوصفات", icon: Warehouse },
-  { id: "growth", label: "الولاء والعروض", icon: BadgePercent },
-  { id: "cash", label: "الخزنة", icon: WalletCards },
-  { id: "reports", label: "التقارير", icon: BarChart3 }
-  ,{ id: "settings", label: "الإعدادات", icon: Settings2 }
-];
-
-export default function App() {
-  const [state, setState] = useState<AppState | null>(null);
-  const [view, setView] = useState<View>("pos");
-  const [toast, setToast] = useState("");
-
-  useEffect(() => {
-    loadState().then(setState).catch((error) => {
-      console.error(error);
-      setToast("تعذر فتح قاعدة البيانات");
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!state) return;
-    const timer = window.setTimeout(() => {
-      saveState(state).catch((error) => {
-        console.error(error);
-        setToast("تعذر حفظ آخر تعديل");
-      });
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [state]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 3000);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
-
-  useEffect(() => {
-    if (state?.settings.restaurantName) document.title = `${state.settings.restaurantName} — إدارة المطعم`;
-  }, [state?.settings.restaurantName]);
-
-  if (!state) {
-    return <div className="loading"><CookingPot size={44} /><strong>بنجهّز المطبخ...</strong></div>;
-  }
-
-  const update = (updater: (current: AppState) => AppState) => setState((current) => current ? updater(current) : current);
-  const pendingCount = state.orders.filter((order) => order.paymentStatus === "pending" && order.stage !== "cancelled").length;
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">{state.settings.logoDataUrl ? <img src={state.settings.logoDataUrl} alt="" /> : <CookingPot />}</div>
-          <div><strong>{state.settings.restaurantName}</strong><span>{state.settings.subtitle || "إدارة المطعم"}</span></div>
-        </div>
-        <nav>
-          {navItems.map(({ id, label, icon: Icon }) => (
-            <button className={view === id ? "nav-item active" : "nav-item"} onClick={() => setView(id)} key={id}>
-              <Icon size={20} />
-              <span>{label}</span>
-              {id === "orders" && pendingCount > 0 && <em>{pendingCount}</em>}
-            </button>
-          ))}
-        </nav>
-        <div className="shift-card">
-          <div><span className="live-dot" /> وردية مفتوحة</div>
-          <strong>{shortDate(state.shiftOpenedAt)}</strong>
-          <small>كاشير: المدير</small>
-        </div>
-      </aside>
-
-      <main className="main">
-        <header className="topbar">
-          <div>
-            <h1>{navItems.find((item) => item.id === view)?.label}</h1>
-            <p>{new Intl.DateTimeFormat("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long" }).format(new Date())}</p>
-          </div>
-          <div className="top-actions">
-            {pendingCount > 0 && <button className="pending-pill" onClick={() => setView("orders")}><Clock3 size={17} /> {pendingCount} تحصيل معلق</button>}
-            <button className="icon-button"><Bell size={20} /></button>
-            <div className="avatar">م</div>
-          </div>
-        </header>
-
-        <section className="page">
-          {view === "pos" && <PosView state={state} update={update} notify={setToast} />}
-          {view === "orders" && <OrdersView state={state} update={update} notify={setToast} />}
-          {view === "kitchen" && <KitchenView state={state} update={update} notify={setToast} />}
-          {view === "delivery" && <DeliveryView state={state} update={update} notify={setToast} />}
-          {view === "customers" && <CustomerRecordsView state={state} update={update} notify={setToast} />}
-          {view === "products" && <ProductCatalogView state={state} update={update} notify={setToast} />}
-          {view === "inventory" && <InventoryView state={state} update={update} notify={setToast} />}
-          {view === "growth" && <GrowthView state={state} update={update} notify={setToast} />}
-          {view === "cash" && <CashView state={state} update={update} notify={setToast} />}
-          {view === "reports" && <ReportsView state={state} />}
-          {view === "settings" && <SettingsView state={state} update={update} notify={setToast} />}
-        </section>
-      </main>
-      {toast && <div className="toast"><Check size={18} /> {toast}</div>}
-    </div>
-  );
-}
-
-function PosView({ state, update, notify }: ViewProps) {
+export function PosView({ state, update, notify }: ViewProps) {
   const [section, setSection] = useState<ProductSection>("cooked");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("الكل");
@@ -374,7 +245,7 @@ function PosView({ state, update, notify }: ViewProps) {
       </aside>
 
       {showCustomers && (
-        <Modal title="اختيار العميل" onClose={() => setShowCustomers(false)} medium>
+        <Modal title="اختيار العميل" onClose={() => setShowCustomers(false)} size="medium">
           {!customerCandidate && <label className="search-box modal-search"><Search size={18} /><input
             autoFocus
             value={customerQuery}
@@ -510,7 +381,7 @@ function CheckoutModal({ subtotal, customer, offers, drivers, companies, default
   const discount = manualDiscount + offerDiscount + safePoints;
   const total = Math.max(0, subtotal + deliveryFee - discount);
   return (
-    <Modal title="تأكيد الطلب والدفع" onClose={onClose} wide>
+    <Modal title="تأكيد الطلب والدفع" onClose={onClose} size="wide">
       <div className="checkout-grid">
         <div>
           <div className="checkout-customer"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><strong>{customer.name}</strong><small>{customer.address}</small></div></div>
@@ -566,7 +437,7 @@ function PaymentOption({ active, icon, label, onClick }: { active: boolean; icon
   return <button className={active ? "active" : ""} onClick={onClick}>{icon}<span>{label}</span>{active && <Check className="option-check" />}</button>;
 }
 
-function OrdersView({ state, update, notify }: ViewProps) {
+export function OrdersView({ state, update, notify }: ViewProps) {
   const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered">("all");
   const [invoice, setInvoice] = useState<Order | null>(null);
   const [editing, setEditing] = useState<Order | null>(null);
@@ -696,7 +567,7 @@ function InvoiceModal({ order, settings, onClose }: { order: Order; settings: Ap
   );
 }
 
-function KitchenView({ state, update, notify }: ViewProps) {
+export function KitchenView({ state, update, notify }: ViewProps) {
   const [scope, setScope] = useState<"all" | "now" | "scheduled">("all");
   const [kitchenSection, setKitchenSection] = useState<"all" | ProductSection>("all");
   const [clock, setClock] = useState(Date.now());
@@ -785,7 +656,7 @@ function KitchenView({ state, update, notify }: ViewProps) {
   );
 }
 
-function DeliveryView({ state, update, notify }: ViewProps) {
+export function DeliveryView({ state, update, notify }: ViewProps) {
   const [addingDriver, setAddingDriver] = useState(false);
   const [driverForm, setDriverForm] = useState({ name: "", phone: "", vehicle: "موتوسيكل" });
   const [settlementDriver, setSettlementDriver] = useState<Driver | null>(null);
@@ -973,7 +844,7 @@ function DriverSettlementModal({ driver, orders, onClose, onSettle }: {
     current.includes(order.id) ? current.filter((id) => id !== order.id) : [...current, order.id]
   );
   return (
-    <Modal title={`تسوية عهدة — ${driver.name}`} onClose={onClose} wide>
+    <Modal title={`تسوية عهدة — ${driver.name}`} onClose={onClose} size="wide">
       <div className="settlement-modal-grid">
         <div className="settlement-orders">
           <h3>الفواتير الداخلة في التسوية</h3>
@@ -1000,67 +871,7 @@ function DriverSettlementModal({ driver, orders, onClose, onSettle }: {
   );
 }
 
-function CustomersView({ state, update, notify }: ViewProps) {
-  const [search, setSearch] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", address: "", zone: "" });
-  const customers = state.customers.filter((customer) => customer.name.includes(search) || customer.phone.includes(search));
-  const add = () => {
-    if (!form.name || !form.phone || !form.address) return;
-    update((current) => ({ ...current, customers: [{ id: uid(), ...form, ordersCount: 0, totalSpent: 0 }, ...current.customers] }));
-    setAdding(false); setForm({ name: "", phone: "", address: "", zone: "" }); notify("تم إضافة العميل");
-  };
-  return (
-    <div className="panel">
-      <div className="panel-head">
-        <label className="search-box"><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو الموبايل..." /></label>
-        <button className="primary-button compact" onClick={() => setAdding(true)}><UserPlus /> عميل جديد</button>
-      </div>
-      <div className="customer-cards">
-        {customers.map((customer) => (
-          <article key={customer.id}>
-            <div className="customer-card-head"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><strong>{customer.name}</strong><small>{customer.phone}</small></div></div>
-            <p>{customer.address}</p>
-            <div className="customer-metrics"><span><small>عدد الطلبات</small><b>{customer.ordersCount}</b></span><span><small>إجمالي المشتريات</small><b>{money(customer.totalSpent)}</b></span><span><small>نقاط الولاء</small><b>{customer.loyaltyPoints ?? 0}</b></span></div>
-          </article>
-        ))}
-      </div>
-      {adding && <Modal title="إضافة عميل جديد" onClose={() => setAdding(false)}>
-        <div className="form-stack">
-          <label>اسم العميل<input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></label>
-          <label>رقم الموبايل<input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></label>
-          <label>المنطقة<input value={form.zone} onChange={(e) => setForm({ ...form, zone: e.target.value })} /></label>
-          <label>العنوان بالتفصيل<textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></label>
-          <button className="primary-button" onClick={add}>حفظ العميل</button>
-        </div>
-      </Modal>}
-    </div>
-  );
-}
-
-function ProductsView({ state, update, notify }: ViewProps) {
-  const toggle = (id: string) => {
-    update((current) => ({ ...current, products: current.products.map((product) => product.id === id ? { ...product, available: !product.available } : product) }));
-    notify("تم تحديث توفر الصنف");
-  };
-  return (
-    <div className="panel">
-      <div className="panel-title"><div><Boxes /><span><strong>قائمة الأصناف</strong><small>{state.products.filter((p) => p.available).length} صنف متاح للبيع</small></span></div></div>
-      <div className="product-management">
-        {state.products.map((product) => (
-          <div className={product.available ? "product-manage-row" : "product-manage-row unavailable"} key={product.id}>
-            <span className="color-dot" style={{ background: product.accent }} />
-            <div><strong>{product.name}</strong><small>{product.section === "cooked" ? "مطبوخ" : "طازة"} · {product.category}</small></div>
-            <span>{product.unit}</span><b>{money(product.price)}</b>
-            <button className={product.available ? "toggle active" : "toggle"} onClick={() => toggle(product.id)}><i /></button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CashView({ state, update, notify }: ViewProps) {
+export function CashView({ state, update, notify }: ViewProps) {
   const [expense, setExpense] = useState(false);
   const [expenseData, setExpenseData] = useState({ amount: 0, description: "" });
   const todayTransactions = state.cashTransactions.filter((transaction) => dateKey(transaction.createdAt) === todayKey());
@@ -1105,7 +916,7 @@ function CashView({ state, update, notify }: ViewProps) {
   );
 }
 
-function ReportsView({ state }: { state: AppState }) {
+export function ReportsView({ state }: { state: AppState }) {
   const orders = state.orders.filter((order) => dateKey(order.createdAt) === todayKey() && order.stage !== "cancelled");
   const sales = orders.reduce((sum, order) => sum + order.total, 0);
   const collected = orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.total, 0);
@@ -1167,35 +978,6 @@ function ReportsView({ state }: { state: AppState }) {
             return <div key={driver.id}><span className="driver-avatar"><Bike /></span><span><strong>{driver.name}</strong><small>{delivered} توصيلات · {settlements.length} تسويات</small></span><b>{money(settlements.reduce((sum, item) => sum + item.amountReceived, 0))}</b></div>;
           })}
         </div>
-      </div>
-    </div>
-  );
-}
-
-interface ViewProps {
-  state: AppState;
-  update: (updater: (current: AppState) => AppState) => void;
-  notify: (message: string) => void;
-}
-
-function MiniStat({ icon, label, value, tone }: { icon: ReactNode; label: string; value: string; tone: string }) {
-  return <div className={`mini-stat ${tone}`}><span>{icon}</span><div><small>{label}</small><strong>{value}</strong></div></div>;
-}
-
-function StatusBadge({ children, type }: { children: ReactNode; type: "success" | "warning" | "info" | "neutral" }) {
-  return <span className={`status-badge ${type}`}>{children}</span>;
-}
-
-function Empty({ icon, title, text }: { icon: ReactNode; title: string; text: string }) {
-  return <div className="empty-state wide">{icon}<strong>{title}</strong><span>{text}</span></div>;
-}
-
-function Modal({ title, children, onClose, wide = false, medium = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean; medium?: boolean }) {
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={wide ? "modal wide" : medium ? "modal medium" : "modal"}>
-        <header><h2>{title}</h2><button onClick={onClose}><X /></button></header>
-        <div className="modal-body">{children}</div>
       </div>
     </div>
   );
