@@ -10,15 +10,19 @@ import type {
   AppState, CashTransaction, Customer, Driver, DriverSettlement, Order, OrderItem,
   OrderStage, PaymentMethod, Product, ProductSection
 } from "../../domain/types";
-import { CustomerFile, OrderEditorModal } from "./management";
+import { CustomerFile } from "./management";
 import type { ViewProps } from "../../shared/contracts";
 import {
-  dateKey, money, paymentLabels, shortDate, stageLabels, stageSequence, todayKey
+  dateKey, money, paymentLabels, shortDate, stageLabels, todayKey
 } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
 
-export function PosView({ state, update, notify }: ViewProps) {
+export function PosView({ state, update, notify, editingOrder, onEditOrder, onFinishEditing }: ViewProps & {
+  editingOrder: Order | null;
+  onEditOrder: (order: Order) => void;
+  onFinishEditing: () => void;
+}) {
   const [section, setSection] = useState<ProductSection>("cooked");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("الكل");
@@ -30,8 +34,30 @@ export function PosView({ state, update, notify }: ViewProps) {
   const [customerRegistrationOpen, setCustomerRegistrationOpen] = useState(false);
   const [customerForm, setCustomerForm] = useState({ name: "", phone: "", zone: "", address: "", notes: "" });
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
-  const [historyOrder, setHistoryOrder] = useState<Order | null>(null);
   const [checkout, setCheckout] = useState(false);
+
+  useEffect(() => {
+    if (!editingOrder) return;
+    const savedCustomer = state.customers.find((item) => item.id === editingOrder.customerId);
+    const firstSection = editingOrder.items[0]?.section
+      ?? state.products.find((product) => product.id === editingOrder.items[0]?.productId)?.section;
+    setCart(editingOrder.items.map((item) => ({ ...item })));
+    setCustomer(savedCustomer ?? {
+      id: editingOrder.customerId,
+      name: editingOrder.customerName,
+      phone: editingOrder.customerPhone,
+      address: editingOrder.address,
+      zone: "",
+      ordersCount: 1,
+      totalSpent: editingOrder.total
+    });
+    if (firstSection) setSection(firstSection);
+    setCategory("الكل");
+    setSearch("");
+    setCheckout(false);
+    setShowCustomers(false);
+    setHistoryCustomer(null);
+  }, [editingOrder?.id]);
 
   const products = state.products.filter((product) =>
     product.section === section && product.available &&
@@ -104,8 +130,136 @@ export function PosView({ state, update, notify }: ViewProps) {
       .filter((item) => item.quantity > 0));
   };
 
+  const saveEditedOrder = (details: CheckoutDetails) => {
+    if (!customer || !editingOrder) return;
+    const createdAt = new Date().toISOString();
+    const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
+    const oldUsage = editingOrder.inventoryDeducted === false
+      ? new Map<string, number>()
+      : orderRecipeUsage(editingOrder.items, state);
+    const newUsage = orderRecipeUsage(cart, state);
+    const totalDifference = total - editingOrder.total;
+    const paymentTransactions: CashTransaction[] = [];
+
+    if (editingOrder.paymentStatus === "pending" && details.paymentStatus === "paid") {
+      paymentTransactions.push({
+        id: uid(), type: "collection", method: details.paymentMethod, amount: total, direction: "in",
+        description: `تحصيل بعد تعديل فاتورة #${editingOrder.number}`, orderId: editingOrder.id, createdAt
+      });
+    } else if (editingOrder.paymentStatus === "paid" && details.paymentStatus === "pending") {
+      paymentTransactions.push({
+        id: uid(), type: "withdrawal", method: editingOrder.paymentMethod, amount: editingOrder.total, direction: "out",
+        description: `عكس تحصيل فاتورة #${editingOrder.number}`, orderId: editingOrder.id, createdAt
+      });
+    } else if (editingOrder.paymentStatus === "paid" && details.paymentStatus === "paid") {
+      if (editingOrder.paymentMethod !== details.paymentMethod) {
+        paymentTransactions.push(
+          {
+            id: uid(), type: "withdrawal", method: editingOrder.paymentMethod, amount: editingOrder.total, direction: "out",
+            description: `عكس طريقة دفع فاتورة #${editingOrder.number}`, orderId: editingOrder.id, createdAt
+          },
+          {
+            id: uid(), type: "deposit", method: details.paymentMethod, amount: total, direction: "in",
+            description: `إعادة تسجيل دفع فاتورة #${editingOrder.number}`, orderId: editingOrder.id, createdAt
+          }
+        );
+      } else if (totalDifference !== 0) {
+        paymentTransactions.push({
+          id: uid(), type: totalDifference > 0 ? "deposit" : "withdrawal",
+          method: details.paymentMethod, amount: Math.abs(totalDifference),
+          direction: totalDifference > 0 ? "in" : "out",
+          description: `فرق تعديل فاتورة #${editingOrder.number}`, orderId: editingOrder.id, createdAt
+        });
+      }
+    }
+
+    const updatedOrder: Order = {
+      ...editingOrder,
+      customerId: customer.id,
+      customerName: customer.name,
+      customerPhone: customer.phone,
+      address: customer.address,
+      items: cart,
+      subtotal,
+      deliveryFee: details.deliveryFee,
+      discount: details.discount,
+      total,
+      paymentMethod: details.paymentMethod,
+      paymentStatus: details.paymentStatus,
+      scheduledFor: details.scheduledFor || undefined,
+      note: details.note || undefined,
+      driverId: details.driverId,
+      driver: details.driver,
+      deliveryCompanyId: details.deliveryCompanyId,
+      deliveryCompany: details.deliveryCompany,
+      inventoryDeducted: newUsage.size > 0
+    };
+
+    update((current) => {
+      const movementIngredients = [...new Set([...oldUsage.keys(), ...newUsage.keys()])];
+      const stockAdjustments = movementIngredients.flatMap((ingredientId) => {
+        const delta = (newUsage.get(ingredientId) ?? 0) - (oldUsage.get(ingredientId) ?? 0);
+        if (!delta) return [];
+        const ingredient = current.ingredients.find((item) => item.id === ingredientId);
+        return [{
+          id: uid(),
+          ingredientId,
+          ingredientName: ingredient?.name ?? "مكون",
+          type: delta > 0 ? "consume" as const : "adjustment" as const,
+          quantity: Math.abs(delta),
+          unitCost: ingredient?.unitCost ?? 0,
+          description: `تسوية تعديل طلب #${editingOrder.number}`,
+          orderId: editingOrder.id,
+          createdAt
+        }];
+      });
+
+      return {
+        ...current,
+        orders: current.orders.map((order) => order.id === editingOrder.id ? updatedOrder : order),
+        ingredients: current.ingredients.map((ingredient) => {
+          const delta = (newUsage.get(ingredient.id) ?? 0) - (oldUsage.get(ingredient.id) ?? 0);
+          return { ...ingredient, stockQty: Math.max(0, ingredient.stockQty - delta) };
+        }),
+        stockMovements: [...stockAdjustments, ...current.stockMovements],
+        customers: current.customers.map((item) => {
+          if (editingOrder.customerId === customer.id && item.id === customer.id) {
+            return { ...item, totalSpent: Math.max(0, item.totalSpent + totalDifference) };
+          }
+          if (item.id === editingOrder.customerId) {
+            return {
+              ...item,
+              ordersCount: Math.max(0, item.ordersCount - 1),
+              totalSpent: Math.max(0, item.totalSpent - editingOrder.total)
+            };
+          }
+          if (item.id === customer.id) {
+            return {
+              ...item,
+              ordersCount: item.ordersCount + 1,
+              totalSpent: item.totalSpent + total,
+              lastOrder: editingOrder.createdAt
+            };
+          }
+          return item;
+        }),
+        cashTransactions: [...paymentTransactions, ...current.cashTransactions]
+      };
+    });
+
+    setCart([]);
+    setCustomer(null);
+    setCheckout(false);
+    notify(`تم تعديل الطلب #${editingOrder.number} وتسوية الحساب والمخزون`);
+    onFinishEditing();
+  };
+
   const completeOrder = (details: CheckoutDetails) => {
     if (!customer) return;
+    if (editingOrder) {
+      saveEditedOrder(details);
+      return;
+    }
     const createdAt = new Date().toISOString();
     const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
     const orderId = uid();
@@ -157,6 +311,19 @@ export function PosView({ state, update, notify }: ViewProps) {
   return (
     <div className="pos-layout">
       <div className="catalog">
+        {editingOrder && <div className="pos-edit-banner">
+          <ClipboardCheck />
+          <span>
+            <strong>تعديل الطلب #{editingOrder.number}</strong>
+            <small>عدّل العميل أو الأصناف ثم راجع بيانات الدفع واحفظ التعديل</small>
+          </span>
+          <button onClick={() => {
+            setCart([]);
+            setCustomer(null);
+            setCheckout(false);
+            onFinishEditing();
+          }}>إلغاء التعديل والرجوع</button>
+        </div>}
         <div className="section-switch">
           <button className={section === "cooked" ? "active cooked" : ""} onClick={() => { setSection("cooked"); setCategory("الكل"); }}>
             <Utensils /> <span><strong>أكل مطبوخ</strong><small>جاهز للتقديم</small></span>
@@ -193,8 +360,8 @@ export function PosView({ state, update, notify }: ViewProps) {
         <div className="cart-title">
           <div className="cart-heading">
             <span className="cart-heading-icon"><ShoppingBag /></span>
-            <span><b>الطلب الحالي</b><small>{cart.length ? `${cart.length} صنف · ${totalUnits} وحدة` : "ابدأ بإضافة الأصناف"}</small></span>
-            <strong>#{state.nextOrderNumber}</strong>
+            <span><b>{editingOrder ? "تعديل الطلب" : "الطلب الحالي"}</b><small>{cart.length ? `${cart.length} صنف · ${totalUnits} وحدة` : "ابدأ بإضافة الأصناف"}</small></span>
+            <strong>#{editingOrder?.number ?? state.nextOrderNumber}</strong>
           </div>
           <button className="clear-cart-button" title="تفريغ السلة" onClick={() => setCart([])} disabled={!cart.length}><Trash2 size={18} /></button>
         </div>
@@ -236,7 +403,7 @@ export function PosView({ state, update, notify }: ViewProps) {
           <div><span>عدد الوحدات</span><b>{totalUnits}</b></div>
           <div className="cart-total-row"><span>الإجمالي المبدئي</span><strong>{money(subtotal)}</strong></div>
           <button className="primary-button checkout-button" disabled={!cart.length || !customer} onClick={() => setCheckout(true)}>
-            متابعة الدفع <span>{money(subtotal)}</span>
+            {editingOrder ? "مراجعة وحفظ التعديل" : "متابعة الدفع"} <span>{money(subtotal)}</span>
           </button>
           {!customer && cart.length > 0 && <small className="hint">اختار العميل الأول لإكمال الطلب</small>}
         </div>
@@ -335,10 +502,13 @@ export function PosView({ state, update, notify }: ViewProps) {
           setCustomer((current) => current?.id === item.id ? item : current);
           notify("تم تحديث بيانات العميل");
         }}
-        onOrder={setHistoryOrder}
+        onOrder={(order) => {
+          setHistoryCustomer(null);
+          setShowCustomers(false);
+          onEditOrder(order);
+        }}
       />}
-      {historyOrder && <OrderEditorModal order={historyOrder} state={state} update={update} notify={notify} onClose={() => setHistoryOrder(null)} />}
-      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} drivers={state.drivers} companies={state.deliveryCompanies} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
+      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} editingOrder={editingOrder} drivers={state.drivers} companies={state.deliveryCompanies} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
     </div>
   );
 }
@@ -356,24 +526,27 @@ interface CheckoutDetails {
   deliveryCompany?: string;
 }
 
-function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onClose, onComplete }: {
+function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, defaultFee, onClose, onComplete }: {
   subtotal: number; customer: Customer; drivers: AppState["drivers"];
-  companies: AppState["deliveryCompanies"]; defaultFee: number; onClose: () => void; onComplete: (details: CheckoutDetails) => void;
+  editingOrder?: Order | null; companies: AppState["deliveryCompanies"]; defaultFee: number;
+  onClose: () => void; onComplete: (details: CheckoutDetails) => void;
 }) {
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
-  const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("pending");
-  const [deliveryFee, setDeliveryFee] = useState(defaultFee);
-  const [manualDiscount, setManualDiscount] = useState(0);
-  const [scheduledFor, setScheduledFor] = useState("");
-  const [note, setNote] = useState("");
-  const [deliveryType, setDeliveryType] = useState<"later" | "driver" | "company">("later");
-  const [deliveryId, setDeliveryId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(editingOrder?.paymentMethod ?? "cash");
+  const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">(editingOrder?.paymentStatus ?? "pending");
+  const [deliveryFee, setDeliveryFee] = useState(editingOrder?.deliveryFee ?? defaultFee);
+  const [manualDiscount, setManualDiscount] = useState(editingOrder?.discount ?? 0);
+  const [scheduledFor, setScheduledFor] = useState(editingOrder?.scheduledFor?.slice(0, 16) ?? "");
+  const [note, setNote] = useState(editingOrder?.note ?? "");
+  const [deliveryType, setDeliveryType] = useState<"later" | "driver" | "company">(
+    editingOrder?.driverId ? "driver" : editingOrder?.deliveryCompanyId ? "company" : "later"
+  );
+  const [deliveryId, setDeliveryId] = useState(editingOrder?.driverId ?? editingOrder?.deliveryCompanyId ?? "");
 
   const discount = manualDiscount;
   const total = Math.max(0, subtotal + deliveryFee - discount);
 
   return (
-    <Modal title="تأكيد الطلب والدفع" onClose={onClose} size="wide">
+    <Modal title={editingOrder ? `مراجعة تعديل الطلب #${editingOrder.number}` : "تأكيد الطلب والدفع"} onClose={onClose} size="wide">
       <div className="checkout-grid">
         <div className="checkout-main-fields">
           {/* Customer info header */}
@@ -538,7 +711,6 @@ function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onC
                   value={deliveryFee}
                   onChange={(event) => setDeliveryFee(Math.max(0, Number(event.target.value)))}
                 />
-                <small>ج.م</small>
               </div>
             </div>
 
@@ -551,7 +723,6 @@ function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onC
                   value={manualDiscount}
                   onChange={(event) => setManualDiscount(Math.max(0, Number(event.target.value)))}
                 />
-                <small>ج.م</small>
               </div>
             </div>
           </div>
@@ -581,7 +752,7 @@ function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onC
               });
             }}>
               <PackageCheck size={22} />
-              <span>تأكيد الطلب والدفع</span>
+              <span>{editingOrder ? "حفظ تعديل الطلب" : "تأكيد الطلب والدفع"}</span>
             </button>
           </div>
         </div>
@@ -602,24 +773,41 @@ function PaymentOption({ active, icon, label, method, onClick }: {
   );
 }
 
-export function OrdersView({ state, update, notify }: ViewProps) {
-  const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered">("all");
-  const [invoice, setInvoice] = useState<Order | null>(null);
-  const [editing, setEditing] = useState<Order | null>(null);
-  const filtered = state.orders.filter((order) => {
-    if (filter === "pending") return order.paymentStatus === "pending" && order.stage !== "cancelled";
-    if (filter === "active") return !["delivered", "cancelled"].includes(order.stage);
-    if (filter === "scheduled") return Boolean(order.scheduledFor) && new Date(order.scheduledFor!).getTime() > Date.now();
-    if (filter === "delivered") return order.stage === "delivered";
-    return true;
+function orderRecipeUsage(items: OrderItem[], state: AppState) {
+  const usage = new Map<string, number>();
+  items.forEach((item) => {
+    state.recipes
+      .filter((recipe) => recipe.productId === item.productId)
+      .forEach((recipe) => {
+        usage.set(recipe.ingredientId, (usage.get(recipe.ingredientId) ?? 0) + recipe.quantity * item.quantity);
+      });
   });
+  return usage;
+}
 
-  const advance = (order: Order) => {
-    const index = stageSequence.indexOf(order.stage);
-    if (index < 0 || index === stageSequence.length - 1) return;
-    update((current) => ({ ...current, orders: current.orders.map((item) => item.id === order.id ? { ...item, stage: stageSequence[index + 1] } : item) }));
-    notify(`تم تحديث الطلب #${order.number}`);
-  };
+export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {
+  const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered">("all");
+  const [search, setSearch] = useState("");
+  const [invoice, setInvoice] = useState<Order | null>(null);
+  const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
+  const normalizedSearch = search.trim().toLocaleLowerCase("ar");
+  const searchDigits = normalizedSearch.replace(/\D/g, "");
+  const searchOrderNumber = normalizedSearch.replace("#", "").trim();
+  const filtered = state.orders.filter((order) => {
+    const matchesFilter =
+      filter === "pending" ? order.paymentStatus === "pending" && order.stage !== "cancelled"
+        : filter === "active" ? !["delivered", "cancelled"].includes(order.stage)
+          : filter === "scheduled" ? Boolean(order.scheduledFor) && new Date(order.scheduledFor!).getTime() > Date.now()
+            : filter === "delivered" ? order.stage === "delivered"
+              : true;
+    const matchesSearch = !normalizedSearch
+      || order.customerName.toLocaleLowerCase("ar").includes(normalizedSearch)
+      || Boolean(searchDigits && order.customerPhone.replace(/\D/g, "").includes(searchDigits))
+      || Boolean(searchOrderNumber && String(order.number).includes(searchOrderNumber));
+    return matchesFilter && matchesSearch;
+  });
+  const detailsOrder = detailsOrderId ? state.orders.find((order) => order.id === detailsOrderId) : null;
+
   const collect = (order: Order) => {
     const createdAt = new Date().toISOString();
     update((current) => ({
@@ -655,38 +843,135 @@ export function OrdersView({ state, update, notify }: ViewProps) {
         <MiniStat icon={<CircleDollarSign />} label="قيمة المعلق" value={money(state.orders.filter((o) => o.paymentStatus === "pending").reduce((sum, o) => sum + o.total, 0))} tone="red" />
       </div>
       <div className="panel">
-        <div className="panel-head">
+        <div className="panel-head orders-toolbar">
+          <label className="search-box orders-search">
+            <Search size={18} />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم العميل أو رقم الهاتف أو رقم الطلب..." />
+          </label>
           <div className="filter-tabs">
             {[["all", "الكل"], ["active", "طلبات نشطة"], ["scheduled", "مجدولة"], ["pending", "تحصيل معلق"], ["delivered", "تم التسليم"]].map(([id, label]) => (
               <button className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)} key={id}>{label}</button>
             ))}
           </div>
+          <span className="orders-result-count">{filtered.length} طلب</span>
         </div>
         <div className="orders-table">
-          <div className="table-row table-head"><span>الطلب</span><span>العميل</span><span>القيمة</span><span>الدفع</span><span>حالة الطلب</span><span>الإجراء</span></div>
+          <div className="orders-row orders-head">
+            <span>الطلب</span><span>العميل</span><span>الأصناف</span><span>الإجمالي</span><span>الدفع</span><span>الحالة والتوصيل</span><span />
+          </div>
           {filtered.map((order) => (
-            <div className="table-row" key={order.id}>
-              <span><strong>#{order.number}</strong><small>{order.scheduledFor ? `موعد: ${shortDate(order.scheduledFor)}` : shortDate(order.createdAt)}</small></span>
-              <span><strong>{order.customerName}</strong><small>{order.customerPhone}</small></span>
-              <span><strong>{money(order.total)}</strong><small>{order.items.length} أصناف</small></span>
-              <span><StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "معلق"}</StatusBadge><small>{paymentLabels[order.paymentMethod]}</small></span>
-              <span><StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "out_for_delivery" ? "info" : "neutral"}>{stageLabels[order.stage]}</StatusBadge></span>
-              <span className="row-actions">
-                <button className="icon-row-button" title="طباعة الفاتورة" onClick={() => setInvoice(order)}><Printer size={15} /></button>
-                <button className="icon-row-button" title="تعديل الطلب" onClick={() => setEditing(order)}><ClipboardCheck size={15} /></button>
-                <button className="icon-row-button whatsapp" title="تأكيد واتساب" onClick={() => openWhatsApp(order)}><MessageCircle size={15} /></button>
-                {order.paymentStatus === "pending" && !order.driverId && !order.deliveryCompanyId && <button className="collect-button" onClick={() => collect(order)}><Banknote size={16} /> تحصيل</button>}
-                {order.paymentStatus === "pending" && (order.driverId || order.deliveryCompanyId) && <StatusBadge type="info">مع {order.driver || order.deliveryCompany}</StatusBadge>}
-                {!["delivered", "cancelled"].includes(order.stage) && <button className="soft-button" onClick={() => advance(order)}>التالي</button>}
+            <button className="orders-row" key={order.id} onClick={() => setDetailsOrderId(order.id)}>
+              <span className="order-number-cell">
+                <strong>#{order.number}</strong>
+                <small>{order.scheduledFor ? `موعد ${shortDate(order.scheduledFor)}` : shortDate(order.createdAt)}</small>
               </span>
-            </div>
+              <span className="order-customer-cell"><strong>{order.customerName}</strong><small><Phone size={12} /> {order.customerPhone}</small></span>
+              <span className="order-items-cell">
+                <strong>{order.items.slice(0, 2).map((item) => `${item.quantity}× ${item.name}`).join("، ")}</strong>
+                <small>{order.items.reduce((sum, item) => sum + item.quantity, 0)} وحدة · {order.items.length} صنف</small>
+              </span>
+              <span className="order-total-cell"><strong>{money(order.total)}</strong><small>شامل التوصيل</small></span>
+              <span><StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge><small>{paymentLabels[order.paymentMethod]}</small></span>
+              <span><StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "out_for_delivery" ? "info" : order.stage === "cancelled" ? "danger" : "neutral"}>{stageLabels[order.stage]}</StatusBadge><small>{order.driver || order.deliveryCompany || "جهة التوصيل غير محددة"}</small></span>
+              <span className="order-row-arrow"><ChevronLeft /></span>
+            </button>
           ))}
-          {!filtered.length && <Empty icon={<ReceiptText />} title="لا توجد طلبات هنا" text="الطلبات الجديدة هتظهر تلقائيًا" />}
+          {!filtered.length && <Empty
+            icon={<ReceiptText />}
+            title={search ? "لا توجد طلبات مطابقة" : "لا توجد طلبات هنا"}
+            text={search ? "راجع اسم العميل أو رقم الهاتف أو رقم الطلب" : "الطلبات الجديدة هتظهر تلقائيًا"}
+          />}
         </div>
       </div>
+      {detailsOrder && <OrderDetailsModal
+        order={detailsOrder}
+        onClose={() => setDetailsOrderId(null)}
+        onPrint={() => {
+          setDetailsOrderId(null);
+          setInvoice(detailsOrder);
+        }}
+        onEdit={() => {
+          setDetailsOrderId(null);
+          onEditOrder(detailsOrder);
+        }}
+        onWhatsApp={() => openWhatsApp(detailsOrder)}
+        onCollect={detailsOrder.paymentStatus === "pending" ? () => collect(detailsOrder) : undefined}
+      />}
       {invoice && <InvoiceModal order={invoice} settings={state.settings} onClose={() => setInvoice(null)} />}
-      {editing && <OrderEditorModal order={editing} state={state} update={update} notify={notify} onClose={() => setEditing(null)} />}
     </div>
+  );
+}
+
+function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onCollect }: {
+  order: Order;
+  onClose: () => void;
+  onPrint: () => void;
+  onEdit: () => void;
+  onWhatsApp: () => void;
+  onCollect?: () => void;
+}) {
+  return (
+    <Modal title={`تفاصيل الطلب رقم ${order.number}`} onClose={onClose} size="wide">
+      <div className="order-details">
+        <div className="order-details-hero">
+          <span className="order-details-icon"><ReceiptText /></span>
+          <span>
+            <small>رقم الطلب</small>
+            <strong>#{order.number}</strong>
+            <em>{shortDate(order.createdAt)}</em>
+          </span>
+          <div>
+            <StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "out_for_delivery" ? "info" : order.stage === "cancelled" ? "danger" : "neutral"}>{stageLabels[order.stage]}</StatusBadge>
+            <StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge>
+          </div>
+          <span className="order-details-grand-total"><small>إجمالي الطلب</small><strong>{money(order.total)}</strong></span>
+        </div>
+
+        <div className="order-details-layout">
+          <div className="order-details-main">
+            <div className="order-details-section-title"><ShoppingBag /><span><strong>أصناف الطلب</strong><small>{order.items.length} صنف مسجل</small></span></div>
+            <div className="order-details-items">
+              <div className="order-details-items-head"><span>الصنف</span><span>الكمية</span><span>السعر</span><span>الإجمالي</span></div>
+              {order.items.map((item) => <div key={item.productId}>
+                <span><strong>{item.name}</strong><small>{item.unit}{item.note ? ` · ${item.note}` : ""}</small></span>
+                <b>{item.quantity}</b>
+                <span>{money(item.price)}</span>
+                <strong>{money(item.price * item.quantity)}</strong>
+              </div>)}
+            </div>
+            <div className="order-details-totals">
+              <span><small>قيمة الأصناف</small><b>{money(order.subtotal)}</b></span>
+              <span><small>التوصيل</small><b>{money(order.deliveryFee)}</b></span>
+              <span><small>الخصم</small><b>{money(order.discount)}</b></span>
+              <span className="final"><small>الإجمالي النهائي</small><strong>{money(order.total)}</strong></span>
+            </div>
+          </div>
+
+          <aside className="order-details-side">
+            <div className="order-info-card">
+              <strong><Info /> بيانات العميل</strong>
+              <span><b>{order.customerName}</b></span>
+              <span><Phone /> {order.customerPhone}</span>
+              <span><MapPin /> {order.address}</span>
+            </div>
+            <div className="order-info-card">
+              <strong><Truck /> التوصيل والدفع</strong>
+              <span><b>{order.driver || order.deliveryCompany || "لم يتم تحديد جهة التوصيل"}</b></span>
+              <span><CreditCard /> {paymentLabels[order.paymentMethod]}</span>
+              {order.scheduledFor && <span><Clock3 /> موعد التوصيل: {shortDate(order.scheduledFor)}</span>}
+            </div>
+            {order.note && <div className="order-info-card order-note-card"><strong><ClipboardCheck /> ملاحظات الطلب</strong><p>{order.note}</p></div>}
+          </aside>
+        </div>
+
+        <div className="order-details-actions">
+          <button className="primary-button" onClick={onEdit}><ClipboardCheck /> تعديل داخل نقطة البيع</button>
+          {onCollect && <button className="collect-button" onClick={onCollect}><Banknote /> تسجيل التحصيل</button>}
+          <button className="soft-button whatsapp-detail" onClick={onWhatsApp}><MessageCircle /> إرسال واتساب</button>
+          <button className="soft-button" onClick={onPrint}><Printer /> طباعة الفاتورة</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

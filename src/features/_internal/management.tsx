@@ -2,10 +2,10 @@
 import { useState } from "react";
 import {
   Boxes, Building2, ChevronLeft, ClipboardList, DatabaseBackup, Edit3, ImagePlus,
-  PackagePlus, Plus, ReceiptText, Save, Search, SlidersHorizontal, Store, Trash2
+  PackagePlus, Plus, ReceiptText, Save, Search, SlidersHorizontal, Store
 } from "lucide-react";
 import type {
-  AppState, Customer, Order, OrderItem, Product, ProductCategory, ProductSection
+  AppState, Customer, Order, Product, ProductCategory, ProductSection
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { money, shortDate } from "../../shared/format";
@@ -139,11 +139,10 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
   </Modal>;
 }
 
-export function CustomerRecordsView({ state, update, notify }: ViewProps) {
+export function CustomerRecordsView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
   const [adding, setAdding] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const customers = state.customers.filter((customer) => customer.name.includes(search) || customer.phone.includes(search));
   return <div className="panel">
     <div className="panel-head">
@@ -170,8 +169,7 @@ export function CustomerRecordsView({ state, update, notify }: ViewProps) {
         } : order)
       }));
       setSelected(customer); notify("تم تحديث بيانات العميل");
-    }} onOrder={setEditingOrder} />}
-    {editingOrder && <OrderEditorModal order={editingOrder} state={state} update={update} notify={notify} onClose={() => setEditingOrder(null)} />}
+    }} onOrder={(order) => { setSelected(null); onEditOrder(order); }} />}
   </div>;
 }
 
@@ -216,110 +214,6 @@ export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
       </div>
     </div>
   </Modal>;
-}
-
-export function OrderEditorModal({ order, state, update, notify, onClose }: ViewProps & { order: Order; onClose: () => void }) {
-  const [draft, setDraft] = useState<Order>({ ...order, items: order.items.map((item) => ({ ...item })) });
-  const [productId, setProductId] = useState("");
-  const subtotal = draft.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const total = Math.max(0, subtotal + draft.deliveryFee - draft.discount);
-  const changeQty = (id: string, delta: number) => setDraft({
-    ...draft, items: draft.items.map((item) => item.productId === id ? { ...item, quantity: item.quantity + delta } : item).filter((item) => item.quantity > 0)
-  });
-  const addProduct = () => {
-    const product = state.products.find((item) => item.id === productId);
-    if (!product) return;
-    const found = draft.items.find((item) => item.productId === product.id);
-    setDraft({
-      ...draft,
-      items: found ? draft.items.map((item) => item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item)
-        : [...draft.items, { productId: product.id, name: product.name, unit: product.unit, price: product.price, cost: product.cost, quantity: 1, section: product.section }]
-    });
-    setProductId("");
-  };
-  const save = () => {
-    if (!draft.items.length) return;
-    const oldUsage = recipeUsage(order.items, state);
-    const newUsage = recipeUsage(draft.items, state);
-    const now = new Date().toISOString();
-    const totalDifference = total - order.total;
-    const paymentTransactions: AppState["cashTransactions"] = [];
-    if (order.paymentStatus === "pending" && draft.paymentStatus === "paid") paymentTransactions.push({
-      id: uid(), type: "collection", method: draft.paymentMethod, amount: total, direction: "in",
-      description: `تحصيل بعد تعديل فاتورة #${order.number}`, orderId: order.id, createdAt: now
-    });
-    if (order.paymentStatus === "paid" && draft.paymentStatus === "pending") paymentTransactions.push({
-      id: uid(), type: "withdrawal", method: order.paymentMethod, amount: order.total, direction: "out",
-      description: `عكس تحصيل فاتورة #${order.number}`, orderId: order.id, createdAt: now
-    });
-    if (order.paymentStatus === "paid" && draft.paymentStatus === "paid" && totalDifference !== 0) paymentTransactions.push({
-      id: uid(), type: totalDifference > 0 ? "deposit" : "withdrawal",
-      method: draft.paymentMethod, amount: Math.abs(totalDifference),
-      direction: totalDifference > 0 ? "in" : "out",
-      description: `فرق تعديل فاتورة #${order.number}`, orderId: order.id, createdAt: now
-    });
-    update((current) => ({
-      ...current,
-      orders: current.orders.map((item) => item.id === order.id ? { ...draft, subtotal, total } : item),
-      ingredients: current.ingredients.map((ingredient) => {
-        const delta = (newUsage.get(ingredient.id) ?? 0) - (oldUsage.get(ingredient.id) ?? 0);
-        return { ...ingredient, stockQty: Math.max(0, ingredient.stockQty - delta) };
-      }),
-      stockMovements: [...current.stockMovements, ...[...new Set([...oldUsage.keys(), ...newUsage.keys()])].flatMap((ingredientId) => {
-        const delta = (newUsage.get(ingredientId) ?? 0) - (oldUsage.get(ingredientId) ?? 0);
-        if (!delta) return [];
-        const ingredient = current.ingredients.find((item) => item.id === ingredientId);
-        return [{
-          id: uid(), ingredientId, ingredientName: ingredient?.name ?? "مكون",
-          type: delta > 0 ? "consume" as const : "adjustment" as const,
-          quantity: Math.abs(delta), unitCost: ingredient?.unitCost ?? 0,
-          description: `تسوية تعديل طلب #${order.number}`, orderId: order.id, createdAt: now
-        }];
-      })],
-      customers: current.customers.map((customer) => customer.id === order.customerId ? {
-        ...customer, totalSpent: Math.max(0, customer.totalSpent + totalDifference)
-      } : customer),
-      cashTransactions: [...paymentTransactions, ...current.cashTransactions]
-    }));
-    notify(`تم تعديل الطلب #${order.number} وتسوية المخزون`);
-    onClose();
-  };
-  const deliveryType = draft.driverId ? "driver" : draft.deliveryCompanyId ? "company" : "later";
-  return <Modal title={`تعديل الطلب #${order.number}`} onClose={onClose} size="wide">
-    <div className="order-editor">
-      <div className="order-editor-items">
-        <div className="add-order-item"><select value={productId} onChange={(event) => setProductId(event.target.value)}><option value="">إضافة صنف...</option>{state.products.filter((item) => item.available).map((item) => <option value={item.id} key={item.id}>{item.name} — {money(item.price)}</option>)}</select><button onClick={addProduct}><Plus /></button></div>
-        {draft.items.map((item) => <div key={item.productId}><span><strong>{item.name}</strong><small>{money(item.price)} / {item.unit}</small></span><span className="edit-quantity"><button onClick={() => changeQty(item.productId, -1)}>-</button><b>{item.quantity}</b><button onClick={() => changeQty(item.productId, 1)}>+</button></span><b>{money(item.price * item.quantity)}</b><button className="icon-row-button" onClick={() => changeQty(item.productId, -item.quantity)}><Trash2 /></button></div>)}
-      </div>
-      <div className="order-editor-fields">
-        <label>عنوان التوصيل<textarea value={draft.address} onChange={(event) => setDraft({ ...draft, address: event.target.value })} /></label>
-        <label>موعد التوصيل<input type="datetime-local" value={draft.scheduledFor?.slice(0, 16) ?? ""} onChange={(event) => setDraft({ ...draft, scheduledFor: event.target.value || undefined })} /></label>
-        <label>ملاحظات<textarea value={draft.note ?? ""} onChange={(event) => setDraft({ ...draft, note: event.target.value })} /></label>
-        <div className="form-row"><label>التوصيل<input type="number" min="0" value={draft.deliveryFee} onChange={(event) => setDraft({ ...draft, deliveryFee: Number(event.target.value) })} /></label><label>الخصم<input type="number" min="0" value={draft.discount} onChange={(event) => setDraft({ ...draft, discount: Number(event.target.value) })} /></label></div>
-        <div className="form-row">
-          <label>طريقة الدفع<select value={draft.paymentMethod} onChange={(event) => setDraft({ ...draft, paymentMethod: event.target.value as Order["paymentMethod"] })}><option value="cash">نقدي</option><option value="instapay">إنستاباي</option><option value="vodafone">فودافون كاش</option></select></label>
-          <label>حالة التحصيل<select value={draft.paymentStatus} onChange={(event) => setDraft({ ...draft, paymentStatus: event.target.value as Order["paymentStatus"] })}><option value="pending">معلق</option><option value="paid">تم التحصيل</option></select></label>
-        </div>
-        <label>جهة التوصيل<select value={deliveryType} onChange={(event) => {
-          if (event.target.value === "later") setDraft({ ...draft, driverId: undefined, driver: undefined, deliveryCompanyId: undefined, deliveryCompany: undefined });
-          else if (event.target.value === "driver") setDraft({ ...draft, deliveryCompanyId: undefined, deliveryCompany: undefined, driverId: state.drivers.find((item) => item.active)?.id, driver: state.drivers.find((item) => item.active)?.name });
-          else setDraft({ ...draft, driverId: undefined, driver: undefined, deliveryCompanyId: state.deliveryCompanies.find((item) => item.active)?.id, deliveryCompany: state.deliveryCompanies.find((item) => item.active)?.name });
-        }}><option value="later">تحديد لاحقًا</option><option value="driver">مندوب المطعم</option><option value="company">شركة توصيل</option></select></label>
-        {deliveryType === "driver" && <label>المندوب<select value={draft.driverId} onChange={(event) => { const item = state.drivers.find((driver) => driver.id === event.target.value); setDraft({ ...draft, driverId: item?.id, driver: item?.name }); }}>{state.drivers.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>}
-        {deliveryType === "company" && <label>الشركة<select value={draft.deliveryCompanyId} onChange={(event) => { const item = state.deliveryCompanies.find((company) => company.id === event.target.value); setDraft({ ...draft, deliveryCompanyId: item?.id, deliveryCompany: item?.name }); }}>{state.deliveryCompanies.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>}
-        <div className="editor-total"><span>الإجمالي بعد التعديل</span><strong>{money(total)}</strong></div>
-        <button className="primary-button" onClick={save}><Save /> حفظ التعديل</button>
-      </div>
-    </div>
-  </Modal>;
-}
-
-function recipeUsage(items: OrderItem[], state: AppState) {
-  const usage = new Map<string, number>();
-  items.forEach((item) => state.recipes.filter((recipe) => recipe.productId === item.productId).forEach((recipe) => {
-    usage.set(recipe.ingredientId, (usage.get(recipe.ingredientId) ?? 0) + recipe.quantity * item.quantity);
-  }));
-  return usage;
 }
 
 export function SettingsView({ state, update, notify }: ViewProps) {

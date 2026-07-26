@@ -10,6 +10,7 @@ import { OrdersView } from "../features/orders";
 import { PosView } from "../features/pos";
 import { ReportsView } from "../features/reports";
 import { SettingsView } from "../features/settings";
+import type { Order } from "../domain/types";
 import { currentArabicDate, shortDate } from "../shared/format";
 import { navigationItems, type AppView } from "./navigation";
 import { useRestaurantState } from "./useRestaurantState";
@@ -17,6 +18,8 @@ import { useRestaurantState } from "./useRestaurantState";
 export default function App() {
   const { state, update, toast, notify } = useRestaurantState();
   const [view, setView] = useState<AppView>("pos");
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editReturnView, setEditReturnView] = useState<AppView>("orders");
 
   if (!state) {
     return <div className="loading"><CookingPot size={44} /><strong>بنجهّز المطبخ...</strong></div>;
@@ -26,6 +29,15 @@ export default function App() {
     (order) => order.paymentStatus === "pending" && order.stage !== "cancelled"
   ).length;
   const viewProps = { state, update, notify };
+  const editOrderInPos = (order: Order) => {
+    setEditingOrder(order);
+    setEditReturnView(view);
+    setView("pos");
+  };
+  const finishOrderEditing = () => {
+    setEditingOrder(null);
+    setView(editReturnView);
+  };
 
   return (
     <div className="app-shell">
@@ -77,11 +89,11 @@ export default function App() {
         </header>
 
         <section className="page">
-          {view === "pos" && <PosView {...viewProps} />}
-          {view === "orders" && <OrdersView {...viewProps} />}
+          {view === "pos" && <PosView {...viewProps} editingOrder={editingOrder} onEditOrder={editOrderInPos} onFinishEditing={finishOrderEditing} />}
+          {view === "orders" && <OrdersView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "kitchen" && <KitchenView {...viewProps} />}
           {view === "delivery" && <DeliveryView {...viewProps} />}
-          {view === "customers" && <CustomerRecordsView {...viewProps} />}
+          {view === "customers" && <CustomerRecordsView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "products" && <ProductCatalogView {...viewProps} />}
           {view === "inventory" && <InventoryView {...viewProps} />}
           {view === "cash" && <CashView {...viewProps} />}

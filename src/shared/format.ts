@@ -41,12 +41,3 @@ export const stageLabels: Record<OrderStage, string> = {
   delivered: "تم التسليم",
   cancelled: "ملغي"
 };
-
-export const stageSequence: OrderStage[] = [
-  "confirmed",
-  "preparing",
-  "packing",
-  "ready",
-  "out_for_delivery",
-  "delivered"
-];

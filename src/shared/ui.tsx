@@ -16,7 +16,7 @@ export function Modal({
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <div className={sizeClass}>
-        <header><h2>{title}</h2><button onClick={onClose}><X /></button></header>
+        <header><h2>{title}</h2><button aria-label="إغلاق" onClick={onClose}><X /></button></header>
         <div className="modal-body">{children}</div>
       </div>
     </div>
@@ -34,7 +34,7 @@ export function MiniStat({ icon, label, value, tone }: {
 
 export function StatusBadge({ children, type }: {
   children: ReactNode;
-  type: "success" | "warning" | "info" | "neutral";
+  type: "success" | "warning" | "info" | "neutral" | "danger";
 }) {
   return <span className={`status-badge ${type}`}>{children}</span>;
 }
