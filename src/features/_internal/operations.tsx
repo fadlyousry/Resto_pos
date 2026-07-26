@@ -934,10 +934,11 @@ function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onColl
           <div className="order-details-main">
             <div className="order-details-section-title"><ShoppingBag /><span><strong>أصناف الطلب</strong><small>{order.items.length} صنف مسجل</small></span></div>
             <div className="order-details-items">
-              <div className="order-details-items-head"><span>الصنف</span><span>الكمية</span><span>السعر</span><span>الإجمالي</span></div>
+              <div className="order-details-items-head"><span>الصنف</span><span>الكمية</span><span>الوحدة</span><span>السعر</span><span>الإجمالي</span></div>
               {order.items.map((item) => <div key={item.productId}>
-                <span><strong>{item.name}</strong><small>{item.unit}{item.note ? ` · ${item.note}` : ""}</small></span>
+                <span><strong>{item.name}</strong>{item.note && <small>{item.note}</small>}</span>
                 <b>{item.quantity}</b>
+                <span className="order-item-unit">{item.unit}</span>
                 <span>{money(item.price)}</span>
                 <strong>{money(item.price * item.quantity)}</strong>
               </div>)}
@@ -951,7 +952,7 @@ function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onColl
           </div>
 
           <aside className="order-details-side">
-            <div className="order-info-card">
+            <div className="order-info-card customer-info-card">
               <strong><Info /> بيانات العميل</strong>
               <span><b>{order.customerName}</b></span>
               <span><Phone /> {order.customerPhone}</span>

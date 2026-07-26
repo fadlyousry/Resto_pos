@@ -448,9 +448,10 @@ button.orders-row:hover { position: relative; z-index: 1; background: #f7faf8; b
 .order-details-section-title > span { display: grid; gap: 3px; }
 .order-details-section-title strong { font-size: 13px; }
 .order-details-section-title small { color: var(--muted); font-size: 10px; }
-.order-details-items > div { min-height: 54px; display: grid; grid-template-columns: 1.5fr .45fr .65fr .7fr; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid #efefe9; font-size: 12px; }
+.order-details-items > div { min-height: 54px; display: grid; grid-template-columns: 1.45fr .38fr .55fr .55fr .65fr; gap: 8px; align-items: center; padding: 8px 14px; border-bottom: 1px solid #efefe9; font-size: 12px; }
 .order-details-items > div > span:first-child { display: grid; gap: 3px; }
 .order-details-items small { color: var(--muted); font-size: 10px; }
+.order-item-unit { color: var(--green-800); font-weight: 700; }
 .order-details-items-head { min-height: 38px !important; background: #f7f7f3; color: var(--muted); font-size: 10px !important; }
 .order-details-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 12px; background: #f8f9f6; }
 .order-details-totals > span { display: grid; gap: 4px; padding: 8px; border-radius: 8px; background: #fff; }
@@ -463,9 +464,12 @@ button.orders-row:hover { position: relative; z-index: 1; background: #f7faf8; b
 .order-info-card { display: grid; gap: 9px; padding: 13px; border: 1px solid var(--line); border-radius: 11px; background: #fafbf8; }
 .order-info-card > strong { display: flex; align-items: center; gap: 6px; color: var(--green-800); font-size: 12px; }
 .order-info-card > strong svg { width: 15px; }
-.order-info-card > span { display: flex; align-items: flex-start; gap: 6px; color: #626e68; font-size: 11px; line-height: 1.7; }
+.order-info-card > span { display: flex; align-items: flex-start; gap: 6px; color: #111; font-size: 11px; line-height: 1.7; }
 .order-info-card > span svg { width: 14px; flex: 0 0 14px; margin-top: 2px; color: var(--green-700); }
-.order-note-card p { margin: 0; color: #69736e; font-size: 11px; line-height: 1.8; }
+.customer-info-card > strong { font-size: 13px; }
+.customer-info-card > span { font-size: 13px; line-height: 1.8; }
+.customer-info-card > span svg { width: 16px; flex-basis: 16px; }
+.order-note-card p { margin: 0; color: #111; font-size: 11px; line-height: 1.8; }
 .order-details-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 2px; }
 .order-details-actions button { min-height: 40px; padding: 0 14px; font-size: 12px; }
 .order-details-actions button svg { width: 16px; }
