@@ -2,8 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   Banknote, BarChart3, Bike, Calculator, Check,
   ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
-  Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
-  ReceiptText, Search, ShoppingBag, Trash2, Truck, UserPlus,
+  Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
+  ReceiptText, Save, Search, ShoppingBag, Trash2, Truck, UserPlus,
   Utensils, WalletCards, X
 } from "lucide-react";
 import type {
@@ -885,6 +885,24 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       </div>
       {detailsOrder && <OrderDetailsModal
         order={detailsOrder}
+        onUpdateCustomer={(customer) => {
+          update((current) => ({
+            ...current,
+            customers: current.customers.map((item) => item.id === detailsOrder.customerId ? {
+              ...item,
+              name: customer.name,
+              phone: customer.phone,
+              address: customer.address
+            } : item),
+            orders: current.orders.map((item) => item.customerId === detailsOrder.customerId ? {
+              ...item,
+              customerName: customer.name,
+              customerPhone: customer.phone,
+              address: customer.address
+            } : item)
+          }));
+          notify("تم تحديث بيانات العميل");
+        }}
         onClose={() => setDetailsOrderId(null)}
         onPrint={() => {
           setDetailsOrderId(null);
@@ -902,14 +920,36 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
   );
 }
 
-function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onCollect }: {
+function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onUpdateCustomer, onCollect }: {
   order: Order;
   onClose: () => void;
   onPrint: () => void;
   onEdit: () => void;
   onWhatsApp: () => void;
+  onUpdateCustomer: (customer: { name: string; phone: string; address: string }) => void;
   onCollect?: () => void;
 }) {
+  const [editingCustomer, setEditingCustomer] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: order.customerName,
+    phone: order.customerPhone,
+    address: order.address
+  });
+  const cancelCustomerEdit = () => {
+    setCustomerForm({ name: order.customerName, phone: order.customerPhone, address: order.address });
+    setEditingCustomer(false);
+  };
+  const saveCustomer = () => {
+    const customer = {
+      name: customerForm.name.trim(),
+      phone: customerForm.phone.trim(),
+      address: customerForm.address.trim()
+    };
+    if (!customer.name || !customer.phone || !customer.address) return;
+    onUpdateCustomer(customer);
+    setEditingCustomer(false);
+  };
+
   return (
     <Modal title={`تفاصيل الطلب رقم ${order.number}`} onClose={onClose} size="wide">
       <div className="order-details">
@@ -953,10 +993,23 @@ function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onColl
 
           <aside className="order-details-side">
             <div className="order-info-card customer-info-card">
-              <strong><Info /> بيانات العميل</strong>
-              <span><b>{order.customerName}</b></span>
-              <span><Phone /> {order.customerPhone}</span>
-              <span><MapPin /> {order.address}</span>
+              <div className="order-info-card-head">
+                <strong><Info /> بيانات العميل</strong>
+                {!editingCustomer && <button type="button" onClick={() => setEditingCustomer(true)}><Edit3 /> تعديل</button>}
+              </div>
+              {editingCustomer ? <form className="customer-details-form" onSubmit={(event) => { event.preventDefault(); saveCustomer(); }}>
+                <label>اسم العميل<input autoFocus value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} /></label>
+                <label>رقم الهاتف<input value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} /></label>
+                <label>العنوان بالتفصيل<textarea value={customerForm.address} onChange={(event) => setCustomerForm({ ...customerForm, address: event.target.value })} /></label>
+                <div>
+                  <button type="submit" className="customer-details-save"><Save /> حفظ</button>
+                  <button type="button" className="customer-details-cancel" onClick={cancelCustomerEdit}>إلغاء</button>
+                </div>
+              </form> : <>
+                <span><b>{order.customerName}</b></span>
+                <span><Phone /> {order.customerPhone}</span>
+                <span><MapPin /> {order.address}</span>
+              </>}
             </div>
             <div className="order-info-card">
               <strong><Truck /> التوصيل والدفع</strong>
