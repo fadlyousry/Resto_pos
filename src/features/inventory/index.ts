@@ -1,1 +1,1 @@
-export { InventoryView } from "../_internal/inventoryGrowth";
+export { InventoryView } from "../_internal/inventory";

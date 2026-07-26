@@ -22,6 +22,7 @@ src/
 │  ├─ contracts.ts            # العقود المشتركة بين الشاشات
 │  ├─ format.ts               # تنسيق الأسعار والتواريخ وحالات الطلب
 │  ├─ id.ts                   # إنشاء المعرفات
+│  ├─ state.ts                # ترقية وتنظيف البيانات المحفوظة والنسخ القديمة
 │  └─ ui.tsx                  # Modal وEmpty وStatusBadge وMiniStat
 │
 ├─ features/
@@ -33,10 +34,9 @@ src/
 │  ├─ customers/              # العملاء وسجل العميل
 │  ├─ catalog/                # الأصناف والتصنيفات
 │  ├─ inventory/              # المخزون والوصفات
-│  ├─ growth/                 # الولاء والعروض
 │  ├─ cash/                   # الخزنة
 │  ├─ reports/                # التقارير
-│  └─ settings/               # إعدادات المطعم
+│  └─ settings/               # إعدادات المطعم والنسخ الاحتياطي
 │
 ├─ main.tsx                   # نقطة تشغيل React
 └─ styles.css                 # التصميم العام

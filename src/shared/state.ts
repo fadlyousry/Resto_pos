@@ -1,0 +1,68 @@
+import type { AppState, Customer, Order } from "../domain/types";
+
+const isArray = <T,>(value: T[] | undefined): value is T[] => Array.isArray(value);
+
+function cleanCustomer(customer: Customer): Customer {
+  return {
+    id: customer.id,
+    name: customer.name,
+    phone: customer.phone,
+    address: customer.address,
+    zone: customer.zone,
+    notes: customer.notes,
+    ordersCount: customer.ordersCount,
+    totalSpent: customer.totalSpent,
+    lastOrder: customer.lastOrder
+  };
+}
+
+function cleanOrder(order: Order): Order {
+  return {
+    id: order.id,
+    number: order.number,
+    customerId: order.customerId,
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    address: order.address,
+    items: order.items,
+    subtotal: order.subtotal,
+    deliveryFee: order.deliveryFee,
+    discount: order.discount,
+    total: order.total,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    stage: order.stage,
+    createdAt: order.createdAt,
+    scheduledFor: order.scheduledFor,
+    note: order.note,
+    driverId: order.driverId,
+    driver: order.driver,
+    deliveryCompanyId: order.deliveryCompanyId,
+    deliveryCompany: order.deliveryCompany,
+    settlementId: order.settlementId,
+    inventoryDeducted: order.inventoryDeducted,
+    source: order.source
+  };
+}
+
+export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState): AppState {
+  return {
+    products: isArray(parsed.products) ? parsed.products : fallback.products,
+    categories: isArray(parsed.categories) ? parsed.categories : fallback.categories,
+    customers: isArray(parsed.customers) ? parsed.customers.map(cleanCustomer) : fallback.customers,
+    orders: isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders,
+    drivers: isArray(parsed.drivers) ? parsed.drivers : fallback.drivers,
+    deliveryCompanies: isArray(parsed.deliveryCompanies) ? parsed.deliveryCompanies : fallback.deliveryCompanies,
+    driverSettlements: isArray(parsed.driverSettlements) ? parsed.driverSettlements : fallback.driverSettlements,
+    ingredients: isArray(parsed.ingredients) ? parsed.ingredients : fallback.ingredients,
+    recipes: isArray(parsed.recipes) ? parsed.recipes : fallback.recipes,
+    stockMovements: isArray(parsed.stockMovements) ? parsed.stockMovements : fallback.stockMovements,
+    cashTransactions: isArray(parsed.cashTransactions) ? parsed.cashTransactions : fallback.cashTransactions,
+    shiftOpeningBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance,
+    shiftOpenedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
+    nextOrderNumber: typeof parsed.nextOrderNumber === "number" ? parsed.nextOrderNumber : fallback.nextOrderNumber,
+    settings: parsed.settings && typeof parsed.settings === "object"
+      ? { ...fallback.settings, ...parsed.settings }
+      : fallback.settings
+  };
+}

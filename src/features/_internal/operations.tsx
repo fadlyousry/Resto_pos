@@ -81,7 +81,7 @@ export function PosView({ state, update, notify }: ViewProps) {
     const item: Customer = {
       id: uid(), ...customerForm, name: customerForm.name.trim(), phone: customerForm.phone.trim(),
       address: customerForm.address.trim(), zone: customerForm.zone.trim(),
-      ordersCount: 0, totalSpent: 0, loyaltyPoints: 0
+      ordersCount: 0, totalSpent: 0
     };
     update((current) => ({ ...current, customers: [item, ...current.customers] }));
     setCustomer(item);
@@ -108,7 +108,6 @@ export function PosView({ state, update, notify }: ViewProps) {
     if (!customer) return;
     const createdAt = new Date().toISOString();
     const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
-    const loyaltyEarned = Math.floor(Math.max(0, subtotal - details.discount) / 10);
     const orderId = uid();
     const consumption = new Map<string, number>();
     cart.forEach((item) => state.recipes.filter((recipe) => recipe.productId === item.productId).forEach((recipe) => {
@@ -130,7 +129,7 @@ export function PosView({ state, update, notify }: ViewProps) {
       stage: "confirmed", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
       driverId: details.driverId, driver: details.driver,
       deliveryCompanyId: details.deliveryCompanyId, deliveryCompany: details.deliveryCompany,
-      inventoryDeducted: stockMovements.length > 0, loyaltyEarned, loyaltyRedeemed: details.pointsRedeemed, source: "pos"
+      inventoryDeducted: stockMovements.length > 0, source: "pos"
     };
     const transaction: CashTransaction | null = details.paymentStatus === "paid" ? {
       id: uid(), type: "sale", method: details.paymentMethod, amount: total, direction: "in",
@@ -145,8 +144,7 @@ export function PosView({ state, update, notify }: ViewProps) {
       stockMovements: [...stockMovements, ...current.stockMovements],
       cashTransactions: transaction ? [transaction, ...current.cashTransactions] : current.cashTransactions,
       customers: current.customers.map((item) => item.id === customer.id ? {
-        ...item, ordersCount: item.ordersCount + 1, totalSpent: item.totalSpent + total, lastOrder: createdAt,
-        loyaltyPoints: Math.max(0, (item.loyaltyPoints ?? 0) - details.pointsRedeemed + loyaltyEarned)
+        ...item, ordersCount: item.ordersCount + 1, totalSpent: item.totalSpent + total, lastOrder: createdAt
       } : item),
       nextOrderNumber: current.nextOrderNumber + 1
     }));
@@ -340,7 +338,7 @@ export function PosView({ state, update, notify }: ViewProps) {
         onOrder={setHistoryOrder}
       />}
       {historyOrder && <OrderEditorModal order={historyOrder} state={state} update={update} notify={notify} onClose={() => setHistoryOrder(null)} />}
-      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} offers={state.offers} drivers={state.drivers} companies={state.deliveryCompanies} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
+      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} drivers={state.drivers} companies={state.deliveryCompanies} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
     </div>
   );
 }
@@ -352,7 +350,6 @@ interface CheckoutDetails {
   discount: number;
   scheduledFor: string;
   note: string;
-  pointsRedeemed: number;
   driverId?: string;
   driver?: string;
   deliveryCompanyId?: string;
@@ -360,7 +357,7 @@ interface CheckoutDetails {
 }
 
 function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onClose, onComplete }: {
-  subtotal: number; customer: Customer; offers?: AppState["offers"]; drivers: AppState["drivers"];
+  subtotal: number; customer: Customer; drivers: AppState["drivers"];
   companies: AppState["deliveryCompanies"]; defaultFee: number; onClose: () => void; onComplete: (details: CheckoutDetails) => void;
 }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
@@ -577,7 +574,6 @@ function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onC
                 discount: manualDiscount,
                 scheduledFor,
                 note,
-                pointsRedeemed: 0,
                 driverId: driver?.id,
                 driver: driver?.name,
                 deliveryCompanyId: company?.id,

@@ -32,9 +32,9 @@ export const initialState: AppState = {
   products,
   categories,
   customers: [
-    { id: "c1", name: "منى أحمد", phone: "01012345678", address: "شارع التحرير، الدقي، الدور الثالث", zone: "الدقي", ordersCount: 8, totalSpent: 2460, loyaltyPoints: 64, lastOrder: new Date(Date.now() - 86400000 * 2).toISOString() },
-    { id: "c2", name: "أحمد ياسر", phone: "01123456789", address: "ميدان لبنان، المهندسين", zone: "المهندسين", ordersCount: 4, totalSpent: 1380, loyaltyPoints: 28, lastOrder: new Date(Date.now() - 86400000 * 5).toISOString() },
-    { id: "c3", name: "سارة محمود", phone: "01234567890", address: "شارع فيصل الرئيسي، الطالبية", zone: "فيصل", ordersCount: 11, totalSpent: 4240, loyaltyPoints: 112, lastOrder: new Date(Date.now() - 86400000).toISOString() }
+    { id: "c1", name: "منى أحمد", phone: "01012345678", address: "شارع التحرير، الدقي، الدور الثالث", zone: "الدقي", ordersCount: 8, totalSpent: 2460, lastOrder: new Date(Date.now() - 86400000 * 2).toISOString() },
+    { id: "c2", name: "أحمد ياسر", phone: "01123456789", address: "ميدان لبنان، المهندسين", zone: "المهندسين", ordersCount: 4, totalSpent: 1380, lastOrder: new Date(Date.now() - 86400000 * 5).toISOString() },
+    { id: "c3", name: "سارة محمود", phone: "01234567890", address: "شارع فيصل الرئيسي، الطالبية", zone: "فيصل", ordersCount: 11, totalSpent: 4240, lastOrder: new Date(Date.now() - 86400000).toISOString() }
   ],
   orders: [],
   drivers: [
@@ -77,10 +77,6 @@ export const initialState: AppState = {
     { id: "r16", productId: "p12", ingredientId: "i6", quantity: 0.55 }
   ],
   stockMovements: [],
-  offers: [
-    { id: "o1", name: "خصم البيت", type: "percentage", value: 10, minOrder: 500, active: true },
-    { id: "o2", name: "خصم 50 جنيه", type: "fixed", value: 50, minOrder: 800, active: false }
-  ],
   cashTransactions: [],
   shiftOpeningBalance: 500,
   shiftOpenedAt: new Date().toISOString(),

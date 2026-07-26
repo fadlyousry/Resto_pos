@@ -4,7 +4,6 @@ import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
 import { DeliveryView } from "../features/delivery";
-import { GrowthView } from "../features/growth";
 import { InventoryView } from "../features/inventory";
 import { KitchenView } from "../features/kitchen";
 import { OrdersView } from "../features/orders";
@@ -85,7 +84,6 @@ export default function App() {
           {view === "customers" && <CustomerRecordsView {...viewProps} />}
           {view === "products" && <ProductCatalogView {...viewProps} />}
           {view === "inventory" && <InventoryView {...viewProps} />}
-          {view === "growth" && <GrowthView {...viewProps} />}
           {view === "cash" && <CashView {...viewProps} />}
           {view === "reports" && <ReportsView state={state} />}
           {view === "settings" && <SettingsView {...viewProps} />}

@@ -41,7 +41,6 @@ export interface Customer {
   ordersCount: number;
   totalSpent: number;
   lastOrder?: string;
-  loyaltyPoints?: number;
 }
 
 export interface OrderItem {
@@ -79,8 +78,6 @@ export interface Order {
   deliveryCompany?: string;
   settlementId?: string;
   inventoryDeducted?: boolean;
-  loyaltyEarned?: number;
-  loyaltyRedeemed?: number;
   source?: "pos" | "online";
 }
 
@@ -157,16 +154,6 @@ export interface StockMovement {
   createdAt: string;
 }
 
-export interface Offer {
-  id: string;
-  name: string;
-  type: "percentage" | "fixed";
-  value: number;
-  minOrder: number;
-  active: boolean;
-  expiresAt?: string;
-}
-
 export interface CashTransaction {
   id: string;
   type: "sale" | "collection" | "expense" | "deposit" | "withdrawal";
@@ -189,7 +176,6 @@ export interface AppState {
   ingredients: Ingredient[];
   recipes: RecipeItem[];
   stockMovements: StockMovement[];
-  offers: Offer[];
   cashTransactions: CashTransaction[];
   shiftOpeningBalance: number;
   shiftOpenedAt: string;

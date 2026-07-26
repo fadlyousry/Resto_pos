@@ -1,12 +1,11 @@
-// Internal implementation. Consume it through the public feature index files.
-import { useState, type ChangeEvent } from "react";
+// Internal inventory implementation. Consume it through the public feature index.
+import { useState } from "react";
 import {
-  AlertTriangle, ArchiveRestore, BadgePercent, Boxes, Calculator, ChevronLeft,
-  DatabaseBackup, Download, Gift, History, PackagePlus, Plus,
-  Save, Scale, Sparkles, Upload, Users
+  AlertTriangle, Boxes, Calculator, ChevronLeft, History, PackagePlus, Plus,
+  Save, Scale
 } from "lucide-react";
 import type {
-  AppState, CashTransaction, Ingredient, Offer, Product, RecipeItem, StockMovement
+  CashTransaction, Ingredient, Product, RecipeItem, StockMovement
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { money, shortDate } from "../../shared/format";
@@ -206,120 +205,6 @@ export function InventoryView({ state, update, notify }: ViewProps) {
               <label>حد إعادة الطلب<input type="number" min="0" value={ingredientForm.minStock || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, minStock: Number(event.target.value) })} /></label>
             </div>
             <button className="primary-button" onClick={addIngredient}>حفظ المكون</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-export function GrowthView({ state, update, notify }: ViewProps) {
-  const [addingOffer, setAddingOffer] = useState(false);
-  const [offerForm, setOfferForm] = useState<Omit<Offer, "id" | "active">>({ name: "", type: "percentage", value: 10, minOrder: 0 });
-
-  const toggleOffer = (id: string) => update((current) => ({
-    ...current, offers: current.offers.map((offer) => offer.id === id ? { ...offer, active: !offer.active } : offer)
-  }));
-  const addOffer = () => {
-    if (!offerForm.name || offerForm.value <= 0) return;
-    update((current) => ({ ...current, offers: [...current.offers, { id: uid(), ...offerForm, active: true }] }));
-    setOfferForm({ name: "", type: "percentage", value: 10, minOrder: 0 });
-    setAddingOffer(false);
-    notify("تمت إضافة العرض");
-  };
-  const exportBackup = () => {
-    const blob = new Blob([JSON.stringify({ ...state, exportedAt: new Date().toISOString(), version: 3 }, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `beitna-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    notify("تم إنشاء النسخة الاحتياطية");
-  };
-  const importBackup = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result)) as AppState;
-        if (!Array.isArray(parsed.products) || !Array.isArray(parsed.orders) || !Array.isArray(parsed.customers)) throw new Error("invalid");
-        if (!window.confirm("استرجاع النسخة سيستبدل البيانات الحالية. هل تريد المتابعة؟")) return;
-        update((current) => ({
-          ...current, ...parsed,
-          ingredients: parsed.ingredients ?? current.ingredients,
-          recipes: parsed.recipes ?? current.recipes,
-          offers: parsed.offers ?? current.offers,
-          stockMovements: parsed.stockMovements ?? current.stockMovements
-        }));
-        notify("تم استرجاع النسخة الاحتياطية");
-      } catch {
-        notify("ملف النسخة الاحتياطية غير صالح");
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = "";
-  };
-  const adjustPoints = (customerId: string, amount: number) => {
-    update((current) => ({
-      ...current,
-      customers: current.customers.map((customer) => customer.id === customerId
-        ? { ...customer, loyaltyPoints: Math.max(0, (customer.loyaltyPoints ?? 0) + amount) }
-        : customer)
-    }));
-    notify("تم تحديث نقاط العميل");
-  };
-
-  return (
-    <div className="growth-page">
-      <div className="growth-hero">
-        <div><Sparkles /><span><strong>الولاء والعروض</strong><small>حوّل العملاء المتكررين لمجتمع دائم حوالين بيتنا</small></span></div>
-        <span className="points-total"><small>إجمالي نقاط العملاء</small><strong>{state.customers.reduce((sum, customer) => sum + (customer.loyaltyPoints ?? 0), 0).toLocaleString("en-US")}</strong></span>
-      </div>
-      <div className="growth-grid">
-        <div className="panel">
-          <div className="panel-title"><div><BadgePercent /><span><strong>العروض النشطة</strong><small>تظهر للكاشير في شاشة الدفع</small></span></div><button className="primary-button compact" onClick={() => setAddingOffer(true)}><Plus /> عرض جديد</button></div>
-          <div className="offers-list">
-            {state.offers.map((offer) => (
-              <div className={offer.active ? "" : "inactive"} key={offer.id}>
-                <span className="offer-value">{offer.type === "percentage" ? `${offer.value}%` : money(offer.value)}</span>
-                <span><strong>{offer.name}</strong><small>حد أدنى {money(offer.minOrder)}</small></span>
-                <button className={offer.active ? "toggle active" : "toggle"} onClick={() => toggleOffer(offer.id)}><i /></button>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="panel backup-panel">
-          <div className="panel-title"><div><DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>نسخة كاملة من الطلبات والمخزون والإعدادات</small></span></div></div>
-          <div className="backup-actions">
-            <button onClick={exportBackup}><Download /><span><strong>تنزيل نسخة</strong><small>ملف JSON محفوظ على الجهاز</small></span></button>
-            <label><Upload /><span><strong>استرجاع نسخة</strong><small>استبدال البيانات من ملف سابق</small></span><input type="file" accept=".json,application/json" onChange={importBackup} /></label>
-          </div>
-          <p><ArchiveRestore /> يُفضّل الاحتفاظ بنسخة يومية على فلاشة أو Google Drive.</p>
-        </div>
-      </div>
-      <div className="panel">
-        <div className="panel-title"><div><Users /><span><strong>نقاط العملاء</strong><small>كل 10 جنيهات = نقطة، وكل نقطة = جنيه خصم</small></span></div></div>
-        <div className="loyalty-table">
-          {state.customers.slice().sort((a, b) => (b.loyaltyPoints ?? 0) - (a.loyaltyPoints ?? 0)).map((customer) => (
-            <div key={customer.id}>
-              <span className="loyalty-avatar"><Gift /></span>
-              <span><strong>{customer.name}</strong><small>{customer.phone} · {customer.ordersCount} طلبات</small></span>
-              <span><small>النقاط المتاحة</small><b>{(customer.loyaltyPoints ?? 0).toLocaleString("en-US")}</b></span>
-              <div><button onClick={() => adjustPoints(customer.id, -10)}>-10</button><button onClick={() => adjustPoints(customer.id, 10)}>+10</button></div>
-            </div>
-          ))}
-        </div>
-      </div>
-      {addingOffer && (
-        <Modal title="إضافة عرض" onClose={() => setAddingOffer(false)}>
-          <div className="form-stack">
-            <label>اسم العرض<input autoFocus value={offerForm.name} onChange={(event) => setOfferForm({ ...offerForm, name: event.target.value })} /></label>
-            <label>نوع الخصم<select value={offerForm.type} onChange={(event) => setOfferForm({ ...offerForm, type: event.target.value as Offer["type"] })}><option value="percentage">نسبة مئوية</option><option value="fixed">مبلغ ثابت</option></select></label>
-            <label>قيمة الخصم<input type="number" min="0" value={offerForm.value} onChange={(event) => setOfferForm({ ...offerForm, value: Number(event.target.value) })} /></label>
-            <label>الحد الأدنى للطلب<input type="number" min="0" value={offerForm.minOrder} onChange={(event) => setOfferForm({ ...offerForm, minOrder: Number(event.target.value) })} /></label>
-            <button className="primary-button" onClick={addOffer}>حفظ العرض</button>
           </div>
         </Modal>
       )}

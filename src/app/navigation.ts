@@ -1,5 +1,5 @@
 import {
-  BadgePercent, BarChart3, Bike, Boxes, CookingPot, LayoutGrid, ReceiptText,
+  BarChart3, Bike, Boxes, CookingPot, LayoutGrid, ReceiptText,
   Settings2, Users, WalletCards, Warehouse, type LucideIcon
 } from "lucide-react";
 
@@ -11,7 +11,6 @@ export type AppView =
   | "customers"
   | "products"
   | "inventory"
-  | "growth"
   | "cash"
   | "reports"
   | "settings";
@@ -30,7 +29,6 @@ export const navigationItems: NavigationItem[] = [
   { id: "customers", label: "العملاء", icon: Users },
   { id: "products", label: "الأصناف", icon: Boxes },
   { id: "inventory", label: "المخزون والوصفات", icon: Warehouse },
-  { id: "growth", label: "الولاء والعروض", icon: BadgePercent },
   { id: "cash", label: "الخزنة", icon: WalletCards },
   { id: "reports", label: "التقارير", icon: BarChart3 },
   { id: "settings", label: "الإعدادات", icon: Settings2 }

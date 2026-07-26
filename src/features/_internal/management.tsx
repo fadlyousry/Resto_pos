@@ -1,8 +1,8 @@
 // Internal implementation. Consume it through the public feature index files.
 import { useState } from "react";
 import {
-  Boxes, Building2, ChevronLeft, ClipboardList, Edit3, ImagePlus, PackagePlus,
-  Plus, ReceiptText, Save, Search, Settings, Trash2
+  Boxes, Building2, ChevronLeft, ClipboardList, DatabaseBackup, Edit3, ImagePlus,
+  PackagePlus, Plus, ReceiptText, Save, Search, SlidersHorizontal, Store, Trash2
 } from "lucide-react";
 import type {
   AppState, Customer, Order, OrderItem, Product, ProductCategory, ProductSection
@@ -11,6 +11,7 @@ import type { ViewProps } from "../../shared/contracts";
 import { money, shortDate } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { Modal } from "../../shared/ui";
+import { BackupPanel } from "../settings/BackupPanel";
 
 const emptyProduct = (category?: ProductCategory): Product => ({
   id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? "cooked",
@@ -153,7 +154,7 @@ export function CustomerRecordsView({ state, update, notify }: ViewProps) {
       {customers.map((customer) => <article className="clickable-card" key={customer.id} onClick={() => setSelected({ ...customer })}>
         <div className="customer-card-head"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><strong>{customer.name}</strong><small>{customer.phone}</small></div><ChevronLeft /></div>
         <p>{customer.address}</p>
-        <div className="customer-metrics"><span><small>عدد الطلبات</small><b>{state.orders.filter((order) => order.customerId === customer.id).length}</b></span><span><small>إجمالي المشتريات</small><b>{money(customer.totalSpent)}</b></span><span><small>نقاط الولاء</small><b>{customer.loyaltyPoints ?? 0}</b></span></div>
+        <div className="customer-metrics"><span><small>عدد الطلبات</small><b>{state.orders.filter((order) => order.customerId === customer.id).length}</b></span><span><small>إجمالي المشتريات</small><b>{money(customer.totalSpent)}</b></span></div>
       </article>)}
     </div>
     {adding && <CustomerForm onClose={() => setAdding(false)} onSave={(customer) => {
@@ -178,7 +179,7 @@ export function CustomerForm({ onClose, onSave }: { onClose: () => void; onSave:
   const [form, setForm] = useState({ name: "", phone: "", address: "", zone: "", notes: "" });
   const save = () => {
     if (!form.name.trim() || !form.phone.trim() || !form.address.trim()) return;
-    onSave({ id: uid(), ...form, ordersCount: 0, totalSpent: 0, loyaltyPoints: 0 });
+    onSave({ id: uid(), ...form, ordersCount: 0, totalSpent: 0 });
   };
   return <Modal title="إضافة عميل جديد" onClose={onClose}><div className="form-stack">
     <label>اسم العميل<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
@@ -322,6 +323,7 @@ function recipeUsage(items: OrderItem[], state: AppState) {
 }
 
 export function SettingsView({ state, update, notify }: ViewProps) {
+  const [tab, setTab] = useState<"identity" | "operations" | "delivery" | "backup">("identity");
   const [settings, setSettings] = useState({ ...state.settings });
   const [company, setCompany] = useState({ name: "", phone: "", baseFee: state.settings.defaultDeliveryFee, notes: "" });
   const readLogo = (file?: File) => {
@@ -342,8 +344,23 @@ export function SettingsView({ state, update, notify }: ViewProps) {
     notify("تمت إضافة شركة التوصيل");
   };
   return <div className="settings-page">
-    <div className="panel settings-brand-panel">
-      <div className="panel-title"><div><Settings /><span><strong>هوية المطعم والفاتورة</strong><small>التغييرات تظهر في القائمة الجانبية وكل الفواتير</small></span></div></div>
+    <div className="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
+      <button role="tab" aria-selected={tab === "identity"} className={tab === "identity" ? "active" : ""} onClick={() => setTab("identity")}>
+        <Store /><span><strong>بيانات المطعم</strong><small>الهوية والفاتورة</small></span>
+      </button>
+      <button role="tab" aria-selected={tab === "operations"} className={tab === "operations" ? "active" : ""} onClick={() => setTab("operations")}>
+        <SlidersHorizontal /><span><strong>إعدادات التشغيل</strong><small>المطبخ والتوصيل</small></span>
+      </button>
+      <button role="tab" aria-selected={tab === "delivery"} className={tab === "delivery" ? "active" : ""} onClick={() => setTab("delivery")}>
+        <Building2 /><span><strong>شركات التوصيل</strong><small>{state.deliveryCompanies.length} شركة مسجلة</small></span>
+      </button>
+      <button role="tab" aria-selected={tab === "backup"} className={tab === "backup" ? "active" : ""} onClick={() => setTab("backup")}>
+        <DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>تنزيل واسترجاع البيانات</small></span>
+      </button>
+    </div>
+
+    {tab === "identity" && <div className="panel settings-brand-panel" role="tabpanel">
+      <div className="panel-title"><div><Store /><span><strong>هوية المطعم والفاتورة</strong><small>التغييرات تظهر في القائمة الجانبية وكل الفواتير</small></span></div></div>
       <div className="settings-brand">
         <label className="logo-uploader">
           {settings.logoDataUrl ? <img src={settings.logoDataUrl} alt="شعار المطعم" /> : <ImagePlus />}
@@ -356,14 +373,22 @@ export function SettingsView({ state, update, notify }: ViewProps) {
           <label>رقم المطعم<input value={settings.phone} onChange={(event) => setSettings({ ...settings, phone: event.target.value })} /></label>
           <label>العنوان<input value={settings.address} onChange={(event) => setSettings({ ...settings, address: event.target.value })} /></label>
           <label className="full-field">تذييل الفاتورة<input value={settings.invoiceFooter} onChange={(event) => setSettings({ ...settings, invoiceFooter: event.target.value })} /></label>
-          <label>رسوم التوصيل الافتراضية<input type="number" min="0" value={settings.defaultDeliveryFee} onChange={(event) => setSettings({ ...settings, defaultDeliveryFee: Number(event.target.value) })} /></label>
-          <label>تنبيه المطبخ بعد (دقيقة)<input type="number" min="1" value={settings.kitchenWarningMinutes} onChange={(event) => setSettings({ ...settings, kitchenWarningMinutes: Number(event.target.value) })} /></label>
-          <label>اعتبار الطلب متأخر بعد (دقيقة)<input type="number" min="1" value={settings.kitchenLateMinutes} onChange={(event) => setSettings({ ...settings, kitchenLateMinutes: Number(event.target.value) })} /></label>
-          <button className="primary-button" onClick={save}><Save /> حفظ الإعدادات</button>
+          <button className="primary-button" onClick={save}><Save /> حفظ بيانات المطعم</button>
         </div>
       </div>
-    </div>
-    <div className="panel">
+    </div>}
+
+    {tab === "operations" && <div className="panel" role="tabpanel">
+      <div className="panel-title"><div><SlidersHorizontal /><span><strong>إعدادات التشغيل</strong><small>القيم الافتراضية وتنبيهات تجهيز الطلب</small></span></div></div>
+      <div className="settings-form settings-operations">
+        <label>رسوم التوصيل الافتراضية<input type="number" min="0" value={settings.defaultDeliveryFee} onChange={(event) => setSettings({ ...settings, defaultDeliveryFee: Number(event.target.value) })} /></label>
+        <label>تنبيه المطبخ بعد (دقيقة)<input type="number" min="1" value={settings.kitchenWarningMinutes} onChange={(event) => setSettings({ ...settings, kitchenWarningMinutes: Number(event.target.value) })} /></label>
+        <label>اعتبار الطلب متأخر بعد (دقيقة)<input type="number" min="1" value={settings.kitchenLateMinutes} onChange={(event) => setSettings({ ...settings, kitchenLateMinutes: Number(event.target.value) })} /></label>
+        <button className="primary-button" onClick={save}><Save /> حفظ إعدادات التشغيل</button>
+      </div>
+    </div>}
+
+    {tab === "delivery" && <div className="panel" role="tabpanel">
       <div className="panel-title"><div><Building2 /><span><strong>شركات التوصيل</strong><small>تظهر للكاشير أثناء تسجيل الطلب</small></span></div></div>
       <div className="company-create">
         <input placeholder="اسم الشركة" value={company.name} onChange={(event) => setCompany({ ...company, name: event.target.value })} />
@@ -372,6 +397,8 @@ export function SettingsView({ state, update, notify }: ViewProps) {
         <button className="primary-button compact" onClick={addCompany}><Plus /> إضافة شركة</button>
       </div>
       <div className="company-list">{state.deliveryCompanies.map((item) => <div key={item.id}><Building2 /><span><strong>{item.name}</strong><small>{item.phone || "بدون رقم"} · {money(item.baseFee)}</small></span><button className={item.active ? "toggle active" : "toggle"} onClick={() => update((current) => ({ ...current, deliveryCompanies: current.deliveryCompanies.map((company) => company.id === item.id ? { ...company, active: !company.active } : company) }))}><i /></button></div>)}</div>
-    </div>
+    </div>}
+
+    {tab === "backup" && <div role="tabpanel"><BackupPanel state={state} update={update} notify={notify} /></div>}
   </div>;
 }

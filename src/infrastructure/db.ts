@@ -2,8 +2,9 @@ import Database from "@tauri-apps/plugin-sql";
 import { initialState } from "./seed";
 import type {
   AppState, CashTransaction, Customer, DeliveryCompany, Driver, DriverSettlement, Ingredient,
-  Offer, Order, Product, ProductCategory, RecipeItem, StockMovement
+  Order, Product, ProductCategory, RecipeItem, StockMovement
 } from "../domain/types";
+import { normalizeAppState } from "../shared/state";
 
 const STORAGE_KEY = "beitna-pos-state-v1";
 let database: Database | null = null;
@@ -59,10 +60,6 @@ async function initDatabase() {
     type TEXT NOT NULL, quantity REAL NOT NULL, unit_cost REAL NOT NULL,
     description TEXT NOT NULL, order_id TEXT, created_at TEXT NOT NULL
   )`);
-  await database.execute(`CREATE TABLE IF NOT EXISTS offers (
-    id TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, value REAL NOT NULL,
-    min_order REAL NOT NULL, active INTEGER NOT NULL, expires_at TEXT
-  )`);
   await database.execute(`CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY, name TEXT NOT NULL, section TEXT NOT NULL,
     color TEXT NOT NULL, active INTEGER NOT NULL
@@ -75,12 +72,9 @@ async function initDatabase() {
     "ALTER TABLE orders ADD COLUMN driver_id TEXT",
     "ALTER TABLE orders ADD COLUMN settlement_id TEXT",
     "ALTER TABLE orders ADD COLUMN inventory_deducted INTEGER DEFAULT 0",
-    "ALTER TABLE orders ADD COLUMN loyalty_earned INTEGER DEFAULT 0",
-    "ALTER TABLE orders ADD COLUMN loyalty_redeemed INTEGER DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN source TEXT DEFAULT 'pos'",
     "ALTER TABLE orders ADD COLUMN delivery_company_id TEXT",
-    "ALTER TABLE orders ADD COLUMN delivery_company TEXT",
-    "ALTER TABLE customers ADD COLUMN loyalty_points INTEGER DEFAULT 0"
+    "ALTER TABLE orders ADD COLUMN delivery_company TEXT"
   ]) {
     try { await database.execute(migration); } catch { /* column already exists */ }
   }
@@ -95,20 +89,7 @@ export async function loadState(): Promise<AppState> {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return structuredClone(initialState);
     const parsed = JSON.parse(saved) as Partial<AppState>;
-    return {
-      ...structuredClone(initialState),
-      ...parsed,
-      drivers: parsed.drivers ?? structuredClone(initialState.drivers),
-      driverSettlements: parsed.driverSettlements ?? [],
-      ingredients: parsed.ingredients ?? structuredClone(initialState.ingredients),
-      recipes: parsed.recipes ?? structuredClone(initialState.recipes),
-      stockMovements: parsed.stockMovements ?? [],
-      offers: parsed.offers ?? structuredClone(initialState.offers)
-      ,
-      categories: parsed.categories ?? structuredClone(initialState.categories),
-      deliveryCompanies: parsed.deliveryCompanies ?? structuredClone(initialState.deliveryCompanies),
-      settings: { ...structuredClone(initialState.settings), ...(parsed.settings ?? {}) }
-    };
+    return normalizeAppState(parsed, structuredClone(initialState));
   }
 
   const db = await initDatabase();
@@ -126,7 +107,6 @@ export async function loadState(): Promise<AppState> {
   const ingredientsRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM ingredients ORDER BY name");
   const recipesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM recipes");
   const stockRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM stock_movements ORDER BY created_at DESC");
-  const offersRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM offers ORDER BY name");
   const categoriesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM categories ORDER BY section, name");
   const deliveryCompaniesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM delivery_companies ORDER BY name");
   const settings = await db.select<Array<{ key: string; value: string }>>("SELECT key, value FROM app_settings");
@@ -136,8 +116,7 @@ export async function loadState(): Promise<AppState> {
     id: String(row.id), name: String(row.name), phone: String(row.phone),
     address: String(row.address), zone: String(row.zone), notes: row.notes ? String(row.notes) : undefined,
     ordersCount: Number(row.orders_count), totalSpent: Number(row.total_spent),
-    lastOrder: row.last_order ? String(row.last_order) : undefined,
-    loyaltyPoints: Number(row.loyalty_points ?? 0)
+    lastOrder: row.last_order ? String(row.last_order) : undefined
   }));
   const orders: Order[] = ordersRaw.map((row) => ({
     id: String(row.id), number: Number(row.number), customerId: String(row.customer_id),
@@ -154,8 +133,6 @@ export async function loadState(): Promise<AppState> {
     driver: row.driver ? String(row.driver) : undefined,
     settlementId: row.settlement_id ? String(row.settlement_id) : undefined,
     inventoryDeducted: Boolean(row.inventory_deducted),
-    loyaltyEarned: Number(row.loyalty_earned ?? 0),
-    loyaltyRedeemed: Number(row.loyalty_redeemed ?? 0),
     source: (row.source ? String(row.source) : "pos") as Order["source"]
     ,
     deliveryCompanyId: row.delivery_company_id ? String(row.delivery_company_id) : undefined,
@@ -195,11 +172,6 @@ export async function loadState(): Promise<AppState> {
     description: String(row.description), orderId: row.order_id ? String(row.order_id) : undefined,
     createdAt: String(row.created_at)
   }));
-  const offers: Offer[] = offersRaw.map((row) => ({
-    id: String(row.id), name: String(row.name), type: row.type as Offer["type"],
-    value: Number(row.value), minOrder: Number(row.min_order), active: Boolean(row.active),
-    expiresAt: row.expires_at ? String(row.expires_at) : undefined
-  }));
   const categories: ProductCategory[] = categoriesRaw.map((row) => ({
     id: String(row.id), name: String(row.name),
     section: row.section as ProductCategory["section"],
@@ -220,7 +192,6 @@ export async function loadState(): Promise<AppState> {
     ingredients: ingredients.length ? ingredients : structuredClone(initialState.ingredients),
     recipes: recipes.length ? recipes : structuredClone(initialState.recipes),
     stockMovements,
-    offers: offers.length ? offers : structuredClone(initialState.offers),
     cashTransactions,
     shiftOpeningBalance: Number(setting.shiftOpeningBalance ?? 500),
     shiftOpenedAt: setting.shiftOpenedAt ?? new Date().toISOString(),
@@ -256,18 +227,18 @@ export async function saveState(state: AppState) {
   }
   for (const customer of state.customers) {
     await db.execute(
-      `INSERT INTO customers (id,name,phone,address,zone,notes,orders_count,total_spent,last_order,loyalty_points)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT(id) DO UPDATE SET name=$2,phone=$3,address=$4,zone=$5,notes=$6,orders_count=$7,total_spent=$8,last_order=$9,loyalty_points=$10`,
-      [customer.id, customer.name, customer.phone, customer.address, customer.zone, customer.notes ?? null, customer.ordersCount, customer.totalSpent, customer.lastOrder ?? null, customer.loyaltyPoints ?? 0]
+      `INSERT INTO customers (id,name,phone,address,zone,notes,orders_count,total_spent,last_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT(id) DO UPDATE SET name=$2,phone=$3,address=$4,zone=$5,notes=$6,orders_count=$7,total_spent=$8,last_order=$9`,
+      [customer.id, customer.name, customer.phone, customer.address, customer.zone, customer.notes ?? null, customer.ordersCount, customer.totalSpent, customer.lastOrder ?? null]
     );
   }
   for (const order of state.orders) {
     await db.execute(
-      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,loyalty_earned,loyalty_redeemed,source,delivery_company_id,delivery_company)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
-       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,loyalty_earned=$22,loyalty_redeemed=$23,source=$24,delivery_company_id=$25,delivery_company=$26`,
-      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.loyaltyEarned ?? 0, order.loyaltyRedeemed ?? 0, order.source ?? "pos", order.deliveryCompanyId ?? null, order.deliveryCompany ?? null]
+      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,delivery_company_id,delivery_company)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,delivery_company_id=$23,delivery_company=$24`,
+      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.deliveryCompanyId ?? null, order.deliveryCompany ?? null]
     );
   }
   for (const driver of state.drivers) {
@@ -316,14 +287,6 @@ export async function saveState(state: AppState) {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT(id) DO NOTHING`,
       [movement.id, movement.ingredientId, movement.ingredientName, movement.type, movement.quantity, movement.unitCost, movement.description, movement.orderId ?? null, movement.createdAt]
-    );
-  }
-  for (const offer of state.offers) {
-    await db.execute(
-      `INSERT INTO offers (id,name,type,value,min_order,active,expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT(id) DO UPDATE SET name=$2,type=$3,value=$4,min_order=$5,active=$6,expires_at=$7`,
-      [offer.id, offer.name, offer.type, offer.value, offer.minOrder, offer.active ? 1 : 0, offer.expiresAt ?? null]
     );
   }
   for (const transaction of state.cashTransactions) {
