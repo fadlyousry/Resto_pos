@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  Banknote, BarChart3, Bike, Calculator, Check,
-  ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
+  Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
+  ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
   Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Search, ShoppingBag, Trash2, Truck, UserPlus,
   Utensils, WalletCards, X
@@ -785,14 +785,81 @@ function orderRecipeUsage(items: OrderItem[], state: AppState) {
   return usage;
 }
 
+type OrderDatePreset = "all" | "today" | "yesterday" | "last7" | "month" | "custom";
+
 export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {
   const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered">("all");
   const [search, setSearch] = useState("");
+  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
+  const [dateFrom, setDateFrom] = useState<string>(todayKey);
+  const [dateTo, setDateTo] = useState<string>(todayKey);
+  const [draftDatePreset, setDraftDatePreset] = useState<OrderDatePreset>("today");
+  const [draftDateFrom, setDraftDateFrom] = useState<string>(todayKey);
+  const [draftDateTo, setDraftDateTo] = useState<string>(todayKey);
   const [invoice, setInvoice] = useState<Order | null>(null);
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const normalizedSearch = search.trim().toLocaleLowerCase("ar");
   const searchDigits = normalizedSearch.replace(/\D/g, "");
   const searchOrderNumber = normalizedSearch.replace("#", "").trim();
+  const displayFilterDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+    day: "numeric", month: "short", year: "numeric"
+  }).format(new Date(`${value}T12:00:00`));
+  const dateFilterLabel = datePreset === "all" ? "كل التواريخ"
+    : datePreset === "today" ? "اليوم"
+      : datePreset === "yesterday" ? "أمس"
+        : datePreset === "last7" ? "آخر 7 أيام"
+          : datePreset === "month" ? "هذا الشهر"
+            : dateFrom && dateTo ? `${displayFilterDate(dateFrom)} – ${displayFilterDate(dateTo)}`
+              : dateFrom ? `من ${displayFilterDate(dateFrom)}` : dateTo ? `حتى ${displayFilterDate(dateTo)}` : "فترة مخصصة";
+  const selectDatePreset = (preset: Exclude<OrderDatePreset, "all" | "custom">) => {
+    const today = new Date();
+    let from = "";
+    let to = "";
+    if (preset === "today") from = to = dateKey(today);
+    if (preset === "yesterday") {
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      from = to = dateKey(yesterday);
+    }
+    if (preset === "last7") {
+      const start = new Date(today);
+      start.setDate(today.getDate() - 6);
+      from = dateKey(start);
+      to = dateKey(today);
+    }
+    if (preset === "month") {
+      from = dateKey(new Date(today.getFullYear(), today.getMonth(), 1));
+      to = dateKey(today);
+    }
+    setDraftDatePreset(preset);
+    setDraftDateFrom(from);
+    setDraftDateTo(to);
+  };
+  const toggleDateFilter = () => {
+    if (!dateFilterOpen) {
+      setDraftDatePreset(datePreset);
+      setDraftDateFrom(dateFrom);
+      setDraftDateTo(dateTo);
+    }
+    setDateFilterOpen((open) => !open);
+  };
+  const applyDateFilter = () => {
+    const hasDate = Boolean(draftDateFrom || draftDateTo);
+    setDatePreset(hasDate ? (draftDatePreset === "all" ? "custom" : draftDatePreset) : "all");
+    setDateFrom(draftDateFrom);
+    setDateTo(draftDateTo);
+    setDateFilterOpen(false);
+  };
+  const clearDateFilter = () => {
+    setDatePreset("all");
+    setDateFrom("");
+    setDateTo("");
+    setDraftDatePreset("all");
+    setDraftDateFrom("");
+    setDraftDateTo("");
+    setDateFilterOpen(false);
+  };
   const filtered = state.orders.filter((order) => {
     const matchesFilter =
       filter === "pending" ? order.paymentStatus === "pending" && order.stage !== "cancelled"
@@ -804,7 +871,9 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       || order.customerName.toLocaleLowerCase("ar").includes(normalizedSearch)
       || Boolean(searchDigits && order.customerPhone.replace(/\D/g, "").includes(searchDigits))
       || Boolean(searchOrderNumber && String(order.number).includes(searchOrderNumber));
-    return matchesFilter && matchesSearch;
+    const orderDate = dateKey(order.createdAt);
+    const matchesDate = (!dateFrom || orderDate >= dateFrom) && (!dateTo || orderDate <= dateTo);
+    return matchesFilter && matchesSearch && matchesDate;
   });
   const detailsOrder = detailsOrderId ? state.orders.find((order) => order.id === detailsOrderId) : null;
 
@@ -835,25 +904,68 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
   };
 
   return (
-    <div>
+    <div className="orders-page">
       <div className="stat-strip">
         <MiniStat icon={<ReceiptText />} label="طلبات اليوم" value={String(state.orders.filter((o) => dateKey(o.createdAt) === todayKey()).length)} tone="green" />
         <MiniStat icon={<Clock3 />} label="تحصيلات معلقة" value={String(state.orders.filter((o) => o.paymentStatus === "pending").length)} tone="orange" />
         <MiniStat icon={<Truck />} label="خارج للتوصيل" value={String(state.orders.filter((o) => o.stage === "out_for_delivery").length)} tone="blue" />
         <MiniStat icon={<CircleDollarSign />} label="قيمة المعلق" value={money(state.orders.filter((o) => o.paymentStatus === "pending").reduce((sum, o) => sum + o.total, 0))} tone="red" />
       </div>
-      <div className="panel">
+      <div className="panel orders-panel">
         <div className="panel-head orders-toolbar">
           <label className="search-box orders-search">
             <Search size={18} />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم العميل أو رقم الهاتف أو رقم الطلب..." />
           </label>
-          <div className="filter-tabs">
-            {[["all", "الكل"], ["active", "طلبات نشطة"], ["scheduled", "مجدولة"], ["pending", "تحصيل معلق"], ["delivered", "تم التسليم"]].map(([id, label]) => (
-              <button className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)} key={id}>{label}</button>
-            ))}
+          <div className="orders-filter-controls">
+            <div className="orders-date-filter-wrap">
+              <button className={`orders-date-filter-button ${datePreset !== "all" ? "active" : ""}`} onClick={toggleDateFilter}>
+                <CalendarRange />
+                <span><strong>{dateFilterLabel}</strong></span>
+                <ChevronDown className={dateFilterOpen ? "open" : ""} />
+              </button>
+              {dateFilterOpen && <div className="orders-date-popover">
+                <div className="orders-date-quick">
+                  {([
+                    ["today", "اليوم"],
+                    ["yesterday", "أمس"],
+                    ["last7", "آخر 7 أيام"],
+                    ["month", "هذا الشهر"]
+                  ] as const).map(([id, label]) => (
+                    <button className={draftDatePreset === id ? "active" : ""} key={id} onClick={() => selectDatePreset(id)}>{label}</button>
+                  ))}
+                </div>
+                <div className="orders-date-divider" />
+                <strong className="orders-custom-date-title">تاريخ مخصص:</strong>
+                <div className="orders-custom-date">
+                  <label><span>من:</span><input type="date" value={draftDateFrom} onChange={(event) => {
+                    const value = event.target.value;
+                    setDraftDatePreset("custom");
+                    setDraftDateFrom(value);
+                    if (value && draftDateTo && value > draftDateTo) setDraftDateTo(value);
+                  }} /></label>
+                  <label><span>إلى:</span><input type="date" value={draftDateTo} onChange={(event) => {
+                    const value = event.target.value;
+                    setDraftDatePreset("custom");
+                    setDraftDateTo(value);
+                    if (value && draftDateFrom && value < draftDateFrom) setDraftDateFrom(value);
+                  }} /></label>
+                </div>
+                <div className="orders-date-actions">
+                  <button className="apply" onClick={applyDateFilter}>تطبيق</button>
+                  <button className="clear" onClick={clearDateFilter}>مسح</button>
+                </div>
+              </div>}
+            </div>
+            <div className="filter-tabs">
+              {[["all", "الكل"], ["active", "طلبات نشطة"], ["scheduled", "مجدولة"], ["pending", "تحصيل معلق"], ["delivered", "تم التسليم"]].map(([id, label]) => (
+                <button className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)} key={id}>{label}</button>
+              ))}
+            </div>
           </div>
-          <span className="orders-result-count">{filtered.length} طلب</span>
+          <div className="orders-toolbar-meta">
+            <span className="orders-result-count">{filtered.length} طلب</span>
+          </div>
         </div>
         <div className="orders-table">
           <div className="orders-row orders-head">
@@ -878,8 +990,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
           ))}
           {!filtered.length && <Empty
             icon={<ReceiptText />}
-            title={search ? "لا توجد طلبات مطابقة" : "لا توجد طلبات هنا"}
-            text={search ? "راجع اسم العميل أو رقم الهاتف أو رقم الطلب" : "الطلبات الجديدة هتظهر تلقائيًا"}
+            title={search || datePreset !== "all" ? "لا توجد طلبات مطابقة" : "لا توجد طلبات هنا"}
+            text={datePreset !== "all" ? "غيّر فترة التاريخ أو امسح الفلتر لعرض طلبات أخرى" : search ? "راجع اسم العميل أو رقم الهاتف أو رقم الطلب" : "الطلبات الجديدة هتظهر تلقائيًا"}
           />}
         </div>
       </div>
@@ -1048,8 +1160,10 @@ function InvoiceModal({ order, settings, onClose }: { order: Order; settings: Ap
           {order.scheduledFor && <span>موعد التوصيل <b>{shortDate(order.scheduledFor)}</b></span>}
         </div>
         <div className="receipt-customer">
-          <strong>{order.customerName}</strong>
-          <span>{order.customerPhone}</span>
+          <strong className="receipt-customer-line">
+            {order.customerName}
+            <span dir="ltr">{order.customerPhone}</span>
+          </strong>
           <p>{order.address}</p>
         </div>
         <table>
@@ -1063,9 +1177,7 @@ function InvoiceModal({ order, settings, onClose }: { order: Order; settings: Ap
           <strong>الإجمالي <b>{money(order.total)}</b></strong>
         </div>
         <div className="receipt-footer">
-          <span>{paymentLabels[order.paymentMethod]} · {order.paymentStatus === "paid" ? "تم الدفع" : "التحصيل عند التوصيل"}</span>
           {order.note && <p>ملاحظة: {order.note}</p>}
-          {(order.driver || order.deliveryCompany) && <p>التوصيل: {order.driver || order.deliveryCompany}</p>}
           <small>{settings.invoiceFooter}</small>
         </div>
       </div>

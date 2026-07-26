@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, Clock3, CookingPot } from "lucide-react";
+import { Bell, Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
@@ -20,6 +20,7 @@ export default function App() {
   const [view, setView] = useState<AppView>("pos");
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editReturnView, setEditReturnView] = useState<AppView>("orders");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("beitna-sidebar-collapsed") === "true");
 
   if (!state) {
     return <div className="loading"><CookingPot size={44} /><strong>بنجهّز المطبخ...</strong></div>;
@@ -38,10 +39,20 @@ export default function App() {
     setEditingOrder(null);
     setView(editReturnView);
   };
+  const toggleSidebar = () => {
+    setSidebarCollapsed((collapsed) => {
+      const next = !collapsed;
+      localStorage.setItem("beitna-sidebar-collapsed", String(next));
+      return next;
+    });
+  };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${view === "pos" ? " pos-active" : ""}`}>
       <aside className="sidebar">
+        <button className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed ? "فتح القائمة الجانبية" : "تصغير القائمة الجانبية"}>
+          {sidebarCollapsed ? <PanelRightOpen /> : <PanelRightClose />}
+        </button>
         <div className="brand">
           <div className="brand-mark">
             {state.settings.logoDataUrl
@@ -56,7 +67,7 @@ export default function App() {
 
         <nav>
           {navigationItems.map(({ id, label, icon: Icon }) => (
-            <button className={view === id ? "nav-item active" : "nav-item"} onClick={() => setView(id)} key={id}>
+            <button className={view === id ? "nav-item active" : "nav-item"} title={label} onClick={() => setView(id)} key={id}>
               <Icon size={20} />
               <span>{label}</span>
               {id === "orders" && pendingCount > 0 && <em>{pendingCount}</em>}
