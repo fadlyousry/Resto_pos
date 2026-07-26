@@ -359,82 +359,251 @@ interface CheckoutDetails {
   deliveryCompany?: string;
 }
 
-function CheckoutModal({ subtotal, customer, offers, drivers, companies, defaultFee, onClose, onComplete }: {
-  subtotal: number; customer: Customer; offers: AppState["offers"]; drivers: AppState["drivers"];
+function CheckoutModal({ subtotal, customer, drivers, companies, defaultFee, onClose, onComplete }: {
+  subtotal: number; customer: Customer; offers?: AppState["offers"]; drivers: AppState["drivers"];
   companies: AppState["deliveryCompanies"]; defaultFee: number; onClose: () => void; onComplete: (details: CheckoutDetails) => void;
 }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "pending">("pending");
   const [deliveryFee, setDeliveryFee] = useState(defaultFee);
   const [manualDiscount, setManualDiscount] = useState(0);
-  const [offerId, setOfferId] = useState("");
-  const [pointsRedeemed, setPointsRedeemed] = useState(0);
   const [scheduledFor, setScheduledFor] = useState("");
   const [note, setNote] = useState("");
   const [deliveryType, setDeliveryType] = useState<"later" | "driver" | "company">("later");
   const [deliveryId, setDeliveryId] = useState("");
-  const eligibleOffers = offers.filter((offer) => offer.active && subtotal >= offer.minOrder && (!offer.expiresAt || new Date(offer.expiresAt).getTime() > Date.now()));
-  const selectedOffer = eligibleOffers.find((offer) => offer.id === offerId);
-  const offerDiscount = selectedOffer ? selectedOffer.type === "percentage" ? subtotal * selectedOffer.value / 100 : selectedOffer.value : 0;
-  const maxPoints = Math.min(customer.loyaltyPoints ?? 0, Math.max(0, Math.floor(subtotal + deliveryFee - manualDiscount - offerDiscount)));
-  const safePoints = Math.min(pointsRedeemed, maxPoints);
-  const discount = manualDiscount + offerDiscount + safePoints;
+
+  const discount = manualDiscount;
   const total = Math.max(0, subtotal + deliveryFee - discount);
+
   return (
     <Modal title="تأكيد الطلب والدفع" onClose={onClose} size="wide">
       <div className="checkout-grid">
-        <div>
-          <div className="checkout-customer"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><strong>{customer.name}</strong><small>{customer.address}</small></div></div>
-          <h3>طريقة الدفع</h3>
-          <div className="payment-options">
-            <PaymentOption active={paymentMethod === "cash"} icon={<Banknote />} label="نقدي" onClick={() => setPaymentMethod("cash")} />
-            <PaymentOption active={paymentMethod === "instapay"} icon={<CreditCard />} label="إنستاباي" onClick={() => { setPaymentMethod("instapay"); setPaymentStatus("paid"); }} />
-            <PaymentOption active={paymentMethod === "vodafone"} icon={<Phone />} label="فودافون كاش" onClick={() => { setPaymentMethod("vodafone"); setPaymentStatus("paid"); }} />
+        <div className="checkout-main-fields">
+          {/* Customer info header */}
+          <div className="checkout-customer-banner">
+            <span className="customer-avatar-badge">{customer.name.charAt(0)}</span>
+            <div className="customer-banner-info">
+              <strong>{customer.name}</strong>
+              <div className="customer-banner-meta">
+                <span><MapPin size={13} /> {customer.address || "بدون عنوان مخصص"}</span>
+                {customer.phone && <span><Phone size={13} /> {customer.phone}</span>}
+              </div>
+            </div>
           </div>
-          <h3>حالة التحصيل</h3>
-          <div className="status-options">
-            <button className={paymentStatus === "paid" ? "active paid" : ""} onClick={() => setPaymentStatus("paid")}><Check /> تم التحصيل</button>
-            <button className={paymentStatus === "pending" ? "active pending" : ""} onClick={() => setPaymentStatus("pending")}><Clock3 /> معلق مع الدليفري</button>
+
+          {/* Payment Method */}
+          <div className="checkout-section">
+            <h3 className="section-title"><CreditCard size={16} /> طريقة الدفع</h3>
+            <div className="payment-options">
+              <PaymentOption
+                active={paymentMethod === "cash"}
+                icon={<Banknote size={24} />}
+                label="نقدي"
+                method="cash"
+                onClick={() => setPaymentMethod("cash")}
+              />
+              <PaymentOption
+                active={paymentMethod === "instapay"}
+                icon={<WalletCards size={24} />}
+                label="إنستاباي"
+                method="instapay"
+                onClick={() => { setPaymentMethod("instapay"); setPaymentStatus("paid"); }}
+              />
+              <PaymentOption
+                active={paymentMethod === "vodafone"}
+                icon={<Phone size={24} />}
+                label="فودافون كاش"
+                method="vodafone"
+                onClick={() => { setPaymentMethod("vodafone"); setPaymentStatus("paid"); }}
+              />
+            </div>
           </div>
-          <h3>العروض ونقاط الولاء</h3>
-          <div className="loyalty-checkout">
-            <label>عرض متاح<select value={offerId} onChange={(event) => setOfferId(event.target.value)}><option value="">بدون عرض</option>{eligibleOffers.map((offer) => <option value={offer.id} key={offer.id}>{offer.name} — {offer.type === "percentage" ? `${offer.value}%` : money(offer.value)}</option>)}</select></label>
-            <label>استخدام نقاط ({customer.loyaltyPoints ?? 0} متاحة)<input type="number" min="0" max={maxPoints} value={pointsRedeemed || ""} onChange={(event) => setPointsRedeemed(Math.min(maxPoints, Number(event.target.value)))} /></label>
+
+          {/* Payment Status */}
+          <div className="checkout-section">
+            <h3 className="section-title"><Clock3 size={16} /> حالة التحصيل</h3>
+            <div className="status-options">
+              <button
+                type="button"
+                className={paymentStatus === "paid" ? "active paid" : ""}
+                onClick={() => setPaymentStatus("paid")}
+              >
+                <Check size={18} />
+                <span>تم التحصيل فوراً</span>
+              </button>
+              <button
+                type="button"
+                className={paymentStatus === "pending" ? "active pending" : ""}
+                onClick={() => setPaymentStatus("pending")}
+              >
+                <Clock3 size={18} />
+                <span>معلق مع الدليفري</span>
+              </button>
+            </div>
           </div>
+
+          {/* Delivery Target */}
+          <div className="checkout-section">
+            <h3 className="section-title"><Truck size={16} /> جهة التوصيل</h3>
+            <div className="delivery-choice">
+              <button
+                type="button"
+                className={deliveryType === "later" ? "active" : ""}
+                onClick={() => { setDeliveryType("later"); setDeliveryId(""); }}
+              >
+                <Clock3 size={18} />
+                <span>تحديد لاحقاً</span>
+              </button>
+              <button
+                type="button"
+                className={deliveryType === "driver" ? "active" : ""}
+                onClick={() => { setDeliveryType("driver"); setDeliveryId(drivers.find((item) => item.active)?.id ?? ""); }}
+              >
+                <Bike size={18} />
+                <span>مندوب المطعم</span>
+              </button>
+              <button
+                type="button"
+                className={deliveryType === "company" ? "active" : ""}
+                onClick={() => {
+                  setDeliveryType("company");
+                  const company = companies.find((item) => item.active);
+                  setDeliveryId(company?.id ?? "");
+                  if (company) setDeliveryFee(company.baseFee);
+                }}
+              >
+                <Truck size={18} />
+                <span>شركة توصيل</span>
+              </button>
+            </div>
+
+            {deliveryType === "driver" && (
+              <label className="delivery-select">
+                <span>اختيار المندوب</span>
+                <select value={deliveryId} onChange={(event) => setDeliveryId(event.target.value)}>
+                  <option value="">اختر مندوب التوصيل...</option>
+                  {drivers.filter((item) => item.active).map((item) => (
+                    <option value={item.id} key={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+
+            {deliveryType === "company" && (
+              <label className="delivery-select">
+                <span>اختيار الشركة</span>
+                <select value={deliveryId} onChange={(event) => {
+                  setDeliveryId(event.target.value);
+                  const company = companies.find((item) => item.id === event.target.value);
+                  if (company) setDeliveryFee(company.baseFee);
+                }}>
+                  <option value="">اختر شركة التوصيل...</option>
+                  {companies.filter((item) => item.active).map((item) => (
+                    <option value={item.id} key={item.id}>{item.name} — {money(item.baseFee)}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          {/* Schedule & Notes */}
           <div className="form-row">
-            <label>موعد التوصيل<input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} /></label>
-            <label>ملاحظات الطلب<input value={note} onChange={(event) => setNote(event.target.value)} placeholder="مثال: الاتصال قبل الوصول" /></label>
+            <label>
+              <span>موعد التوصيل</span>
+              <input type="datetime-local" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} />
+            </label>
+            <label>
+              <span>ملاحظات الطلب</span>
+              <input value={note} onChange={(event) => setNote(event.target.value)} placeholder="مثال: الاتصال قبل الوصول بـ 10 دقائق" />
+            </label>
           </div>
-          <h3>جهة التوصيل</h3>
-          <div className="delivery-choice">
-            <button className={deliveryType === "later" ? "active" : ""} onClick={() => { setDeliveryType("later"); setDeliveryId(""); }}>تحديد لاحقًا</button>
-            <button className={deliveryType === "driver" ? "active" : ""} onClick={() => { setDeliveryType("driver"); setDeliveryId(drivers.find((item) => item.active)?.id ?? ""); }}>مندوب المطعم</button>
-            <button className={deliveryType === "company" ? "active" : ""} onClick={() => { setDeliveryType("company"); const company = companies.find((item) => item.active); setDeliveryId(company?.id ?? ""); if (company) setDeliveryFee(company.baseFee); }}>شركة توصيل</button>
-          </div>
-          {deliveryType === "driver" && <label className="delivery-select">اختيار المندوب<select value={deliveryId} onChange={(event) => setDeliveryId(event.target.value)}><option value="">اختر...</option>{drivers.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>}
-          {deliveryType === "company" && <label className="delivery-select">اختيار الشركة<select value={deliveryId} onChange={(event) => { setDeliveryId(event.target.value); const company = companies.find((item) => item.id === event.target.value); if (company) setDeliveryFee(company.baseFee); }}><option value="">اختر...</option>{companies.filter((item) => item.active).map((item) => <option value={item.id} key={item.id}>{item.name} — {money(item.baseFee)}</option>)}</select></label>}
         </div>
+
+        {/* Right/Summary Card */}
         <div className="total-card">
-          <h3>ملخص الحساب</h3>
-          <div><span>قيمة الأصناف</span><b>{money(subtotal)}</b></div>
-          <div><span>التوصيل</span><input type="number" min="0" value={deliveryFee} onChange={(event) => setDeliveryFee(Number(event.target.value))} /></div>
-          <div><span>خصم يدوي</span><input type="number" min="0" value={manualDiscount} onChange={(event) => setManualDiscount(Number(event.target.value))} /></div>
-          {(offerDiscount > 0 || safePoints > 0) && <div className="applied-discount"><span>عروض ونقاط</span><b>- {money(offerDiscount + safePoints)}</b></div>}
-          <hr />
-          <div className="grand-total"><span>الإجمالي</span><strong>{money(total)}</strong></div>
-          <button className="primary-button" onClick={() => {
-            const driver = deliveryType === "driver" ? drivers.find((item) => item.id === deliveryId) : undefined;
-            const company = deliveryType === "company" ? companies.find((item) => item.id === deliveryId) : undefined;
-            onComplete({ paymentMethod, paymentStatus, deliveryFee, discount, scheduledFor, note, pointsRedeemed: safePoints, driverId: driver?.id, driver: driver?.name, deliveryCompanyId: company?.id, deliveryCompany: company?.name });
-          }}><PackageCheck /> تأكيد الطلب</button>
+          <div className="total-card-top">
+            <div className="total-card-header">
+              <ReceiptText size={22} />
+              <h3>ملخص الحساب</h3>
+            </div>
+
+            <div className="summary-line">
+              <span>قيمة الأصناف</span>
+              <b>{money(subtotal)}</b>
+            </div>
+
+            <div className="summary-line input-line">
+              <span>مصاريف التوصيل</span>
+              <div className="currency-input-wrapper">
+                <input
+                  type="number"
+                  min="0"
+                  value={deliveryFee}
+                  onChange={(event) => setDeliveryFee(Math.max(0, Number(event.target.value)))}
+                />
+                <small>ج.م</small>
+              </div>
+            </div>
+
+            <div className="summary-line input-line">
+              <span>خصم يدوي</span>
+              <div className="currency-input-wrapper">
+                <input
+                  type="number"
+                  min="0"
+                  value={manualDiscount}
+                  onChange={(event) => setManualDiscount(Math.max(0, Number(event.target.value)))}
+                />
+                <small>ج.م</small>
+              </div>
+            </div>
+          </div>
+
+          <div className="total-card-bottom">
+            <hr />
+
+            <div className="grand-total">
+              <span>الإجمالي النهائي</span>
+              <strong>{money(total)}</strong>
+            </div>
+
+            <button className="primary-button checkout-submit-btn" onClick={() => {
+              const driver = deliveryType === "driver" ? drivers.find((item) => item.id === deliveryId) : undefined;
+              const company = deliveryType === "company" ? companies.find((item) => item.id === deliveryId) : undefined;
+              onComplete({
+                paymentMethod,
+                paymentStatus,
+                deliveryFee,
+                discount: manualDiscount,
+                scheduledFor,
+                note,
+                pointsRedeemed: 0,
+                driverId: driver?.id,
+                driver: driver?.name,
+                deliveryCompanyId: company?.id,
+                deliveryCompany: company?.name
+              });
+            }}>
+              <PackageCheck size={22} />
+              <span>تأكيد الطلب والدفع</span>
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
   );
 }
 
-function PaymentOption({ active, icon, label, onClick }: { active: boolean; icon: ReactNode; label: string; onClick: () => void }) {
-  return <button className={active ? "active" : ""} onClick={onClick}>{icon}<span>{label}</span>{active && <Check className="option-check" />}</button>;
+function PaymentOption({ active, icon, label, method, onClick }: {
+  active: boolean; icon: ReactNode; label: string; method: string; onClick: () => void;
+}) {
+  return (
+    <button type="button" className={`payment-card ${method} ${active ? "active" : ""}`} onClick={onClick}>
+      <span className="payment-icon">{icon}</span>
+      <span className="payment-label">{label}</span>
+      {active && <span className="option-check-badge"><Check size={12} /></span>}
+    </button>
+  );
 }
 
 export function OrdersView({ state, update, notify }: ViewProps) {
