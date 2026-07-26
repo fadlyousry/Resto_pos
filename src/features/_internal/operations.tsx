@@ -915,16 +915,19 @@ function OrderDetailsModal({ order, onClose, onPrint, onEdit, onWhatsApp, onColl
       <div className="order-details">
         <div className="order-details-hero">
           <span className="order-details-icon"><ReceiptText /></span>
-          <span>
+          <span className="order-details-number">
             <small>رقم الطلب</small>
             <strong>#{order.number}</strong>
-            <em>{shortDate(order.createdAt)}</em>
           </span>
-          <div>
+          <span className="order-details-date">
+            <Clock3 />
+            <small>تاريخ الطلب</small>
+            <strong>{shortDate(order.createdAt)}</strong>
+          </span>
+          <div className="order-details-statuses">
             <StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "out_for_delivery" ? "info" : order.stage === "cancelled" ? "danger" : "neutral"}>{stageLabels[order.stage]}</StatusBadge>
             <StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge>
           </div>
-          <span className="order-details-grand-total"><small>إجمالي الطلب</small><strong>{money(order.total)}</strong></span>
         </div>
 
         <div className="order-details-layout">

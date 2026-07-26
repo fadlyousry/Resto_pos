@@ -421,26 +421,26 @@ button.orders-row:hover { position: relative; z-index: 1; background: #f7faf8; b
 .order-details { display: grid; gap: 15px; }
 .modal:has(.order-details) h2 { font-size: 22px; }
 .order-details-hero {
-  min-height: 92px;
+  min-height: 66px;
   display: grid;
-  grid-template-columns: 48px 1fr auto minmax(135px, auto);
-  gap: 13px;
+  grid-template-columns: 40px auto minmax(0, 1fr) auto;
+  gap: 12px;
   align-items: center;
-  padding: 14px 16px;
+  padding: 10px 14px;
   border-radius: 13px;
   background: linear-gradient(135deg, var(--green-950), #2e5947);
   color: #fff;
 }
-.order-details-icon { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 12px; background: #ffffff14; color: #f0bd87; }
-.order-details-icon svg { width: 23px; }
-.order-details-hero > span:nth-child(2) { display: grid; gap: 3px; }
-.order-details-hero > span:nth-child(2) small { color: #b9cbc2; font-size: 10px; }
-.order-details-hero > span:nth-child(2) strong { color: #fff; font-size: 22px; }
-.order-details-hero > span:nth-child(2) em { color: #c8d5cf; font-size: 11px; font-style: normal; }
-.order-details-hero > div { display: flex; gap: 7px; }
-.order-details-grand-total { display: grid; gap: 5px; padding-right: 17px; border-right: 1px solid #ffffff1f; }
-.order-details-grand-total small { color: #bfd0c8; font-size: 11px; }
-.order-details-grand-total strong { color: #f2bd84; font-size: 24px; }
+.order-details-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 10px; background: #ffffff14; color: #f0bd87; }
+.order-details-icon svg { width: 20px; }
+.order-details-number { display: flex; align-items: center; gap: 7px; padding-left: 14px; border-left: 1px solid #ffffff1f; white-space: nowrap; }
+.order-details-number small { color: #b9cbc2; font-size: 10px; }
+.order-details-number strong { color: #fff; font-size: 19px; }
+.order-details-date { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.order-details-date svg { width: 17px; color: #f0bd87; }
+.order-details-date small { color: #b9cbc2; font-size: 10px; white-space: nowrap; }
+.order-details-date strong { color: #fff; font-size: 12px; white-space: nowrap; }
+.order-details-statuses { display: flex; gap: 7px; white-space: nowrap; }
 .order-details-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(245px, .7fr); gap: 14px; }
 .order-details-main { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
 .order-details-section-title { min-height: 58px; display: flex; align-items: center; gap: 9px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
