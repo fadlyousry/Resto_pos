@@ -33,11 +33,8 @@ export const paymentLabels: Record<PaymentMethod, string> = {
 };
 
 export const stageLabels: Record<OrderStage, string> = {
-  confirmed: "تم التأكيد",
-  preparing: "قيد التحضير",
-  packing: "تغليف وتجميع",
+  preparing: "قيد التجهيز",
+  assembling: "قيد التجميع",
   ready: "جاهز",
-  out_for_delivery: "خرج للتوصيل",
-  delivered: "تم التسليم",
-  cancelled: "ملغي"
+  delivered: "تم التوصيل"
 };

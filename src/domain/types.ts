@@ -2,14 +2,16 @@
 export type ProductSection = "cooked" | "fresh";
 export type PaymentMethod = "cash" | "instapay" | "vodafone";
 export type PaymentStatus = "paid" | "pending";
-export type OrderStage =
-  | "confirmed"
-  | "preparing"
-  | "packing"
-  | "ready"
-  | "out_for_delivery"
-  | "delivered"
-  | "cancelled";
+export type OrderStage = "preparing" | "assembling" | "ready" | "delivered";
+
+export interface ProductOption {
+  id: string;
+  name: string;
+  unit: string;
+  price: number;
+  cost: number;
+  recipeMultiplier: number;
+}
 
 export interface Product {
   id: string;
@@ -21,6 +23,8 @@ export interface Product {
   cost: number;
   available: boolean;
   accent: string;
+  imageDataUrl?: string;
+  options?: ProductOption[];
 }
 
 export interface ProductCategory {
@@ -45,6 +49,9 @@ export interface Customer {
 
 export interface OrderItem {
   productId: string;
+  optionId?: string;
+  optionName?: string;
+  recipeMultiplier?: number;
   name: string;
   unit: string;
   price: number;
@@ -52,6 +59,7 @@ export interface OrderItem {
   quantity: number;
   note?: string;
   section?: ProductSection;
+  packed?: boolean;
 }
 
 export interface Order {
@@ -116,6 +124,7 @@ export interface DriverSettlement {
   driverId: string;
   driverName: string;
   orderIds: string[];
+  paymentMethod: PaymentMethod;
   grossCollected: number;
   deliveryFees: number;
   expenses: number;
@@ -165,6 +174,17 @@ export interface CashTransaction {
   createdAt: string;
 }
 
+export interface CashShift {
+  id: string;
+  openedAt: string;
+  openingBalance: number;
+  closedAt?: string;
+  expectedCash?: number;
+  actualCash?: number;
+  difference?: number;
+  note?: string;
+}
+
 export interface AppState {
   products: Product[];
   categories: ProductCategory[];
@@ -177,6 +197,7 @@ export interface AppState {
   recipes: RecipeItem[];
   stockMovements: StockMovement[];
   cashTransactions: CashTransaction[];
+  cashShifts: CashShift[];
   shiftOpeningBalance: number;
   shiftOpenedAt: string;
   nextOrderNumber: number;

@@ -1,8 +1,9 @@
 // Internal implementation. Consume it through the public feature index files.
 import { useState } from "react";
 import {
-  Boxes, Building2, ChevronLeft, ClipboardList, DatabaseBackup, Edit3, ImagePlus,
-  PackagePlus, Plus, ReceiptText, Save, Search, SlidersHorizontal, Store
+  BadgeDollarSign, Boxes, Building2, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
+  MapPin, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
+  ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users
 } from "lucide-react";
 import type {
   AppState, Customer, Order, Product, ProductCategory, ProductSection
@@ -10,8 +11,10 @@ import type {
 import type { ViewProps } from "../../shared/contracts";
 import { money, shortDate } from "../../shared/format";
 import { uid } from "../../shared/id";
-import { Modal } from "../../shared/ui";
+import { Empty, Modal } from "../../shared/ui";
 import { BackupPanel } from "../settings/BackupPanel";
+import { InvoiceModal } from "../orders/InvoiceModal";
+import { testServerConnection } from "../../infrastructure/dataClient";
 
 const emptyProduct = (category?: ProductCategory): Product => ({
   id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? "cooked",
@@ -21,62 +24,168 @@ const emptyProduct = (category?: ProductCategory): Product => ({
 export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [section, setSection] = useState<"all" | ProductSection>("all");
+  const [section, setSection] = useState<ProductSection>("cooked");
+  const [categoryFilter, setCategoryFilter] = useState("الكل");
   const [search, setSearch] = useState("");
+  const [draftPrices, setDraftPrices] = useState<Record<string, number>>({});
+  const [draftOptionPrices, setDraftOptionPrices] = useState<Record<string, number>>({});
+  const sectionProducts = state.products.filter((product) => product.section === section);
+  const sectionCategories = ["الكل", ...new Set(sectionProducts.map((product) => product.category))];
   const products = state.products.filter((product) =>
-    (section === "all" || product.section === section) && product.name.includes(search.trim())
+    product.section === section
+    && (categoryFilter === "الكل" || product.category === categoryFilter)
+    && product.name.includes(search.trim())
   );
+  const changedPrices = Object.entries(draftPrices).filter(([id, price]) => {
+    const product = state.products.find((item) => item.id === id);
+    return product && !product.options?.length && price >= 0 && price !== product.price;
+  });
+  const changedOptionPrices = Object.entries(draftOptionPrices).filter(([key, price]) => {
+    const [productId, optionId] = key.split(":");
+    const option = state.products.find((item) => item.id === productId)?.options?.find((item) => item.id === optionId);
+    return option && price >= 0 && price !== option.price;
+  });
+  const priceChangesCount = changedPrices.length + changedOptionPrices.length;
+  const savePriceChanges = () => {
+    if (!priceChangesCount) return;
+    const prices = new Map(changedPrices);
+    const optionPrices = new Map(changedOptionPrices);
+    update((current) => ({
+      ...current,
+      products: current.products.map((product) => ({
+        ...product,
+        price: prices.has(product.id) ? Number(prices.get(product.id)) : product.price,
+        options: product.options?.map((option) => {
+          const price = optionPrices.get(`${product.id}:${option.id}`);
+          return price === undefined ? option : { ...option, price: Number(price) };
+        })
+      }))
+    }));
+    setDraftPrices({});
+    setDraftOptionPrices({});
+    notify(`تم حفظ ${priceChangesCount} تحديث في الأسعار`);
+  };
   const saveProduct = () => {
-    if (!editing?.name.trim() || !editing.category || !editing.unit || editing.price < 0 || editing.cost < 0) return;
+    if (!editing?.name.trim() || !editing.category || !editing.unit || editing.price < 0 || editing.cost < 0
+      || editing.options?.some((option) => !option.name.trim() || !option.unit.trim() || option.price < 0 || option.cost < 0 || option.recipeMultiplier <= 0)) return;
+    const productToSave = editing.options?.length
+      ? { ...editing, price: Math.min(...editing.options.map((option) => option.price)) }
+      : editing;
     update((current) => ({
       ...current,
       products: current.products.some((item) => item.id === editing.id)
-        ? current.products.map((item) => item.id === editing.id ? editing : item)
-        : [editing, ...current.products]
+        ? current.products.map((item) => item.id === editing.id ? productToSave : item)
+        : [productToSave, ...current.products]
     }));
+    setDraftPrices((current) => {
+      const next = { ...current };
+      delete next[editing.id];
+      return next;
+    });
+    setDraftOptionPrices((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${editing.id}:`))));
     setEditing(null);
     notify("تم حفظ الصنف");
+  };
+  const selectProductImage = (file?: File) => {
+    if (!file || !editing) return;
+    if (!file.type.startsWith("image/")) {
+      notify("اختار ملف صورة صالح");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      notify("حجم الصورة يجب ألا يتجاوز 2 ميجابايت");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setEditing((current) => current ? { ...current, imageDataUrl: String(reader.result) } : current);
+    reader.readAsDataURL(file);
   };
   const toggle = (id: string) => update((current) => ({
     ...current, products: current.products.map((product) => product.id === id ? { ...product, available: !product.available } : product)
   }));
   const categories = state.categories.filter((item) => item.active && (!editing || item.section === editing.section));
 
-  return <div className="management-page">
-    <div className="panel">
-      <div className="panel-head management-head">
-        <div>
-          <strong>الأصناف والتصنيفات</strong>
-          <small>{state.products.filter((item) => item.available).length} متاح من {state.products.length} صنف</small>
-        </div>
-        <div className="management-actions">
-          <button className="soft-button" onClick={() => setCategoriesOpen(true)}><Boxes /> إدارة التصنيفات</button>
-          <button className="primary-button compact" onClick={() => setEditing(emptyProduct(state.categories.find((item) => item.active)))}><PackagePlus /> صنف جديد</button>
-        </div>
+  const cookedCount = state.products.filter((item) => item.section === "cooked").length;
+  const freshCount = state.products.filter((item) => item.section === "fresh").length;
+  const availableCount = sectionProducts.filter((item) => item.available).length;
+
+  return <div className="management-page products-admin-page">
+    <section className="products-admin-hero">
+      <div>
+        <span><BadgeDollarSign /></span>
+        <div><strong>إدارة المنيو والأسعار</strong><small>حدّث الأسعار والتوفر والمقاسات بسرعة من مكان واحد</small></div>
       </div>
-      <div className="management-filters">
-        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث عن صنف..." /></label>
-        <div className="filter-tabs">
-          <button className={section === "all" ? "active" : ""} onClick={() => setSection("all")}>الكل</button>
-          <button className={section === "cooked" ? "active" : ""} onClick={() => setSection("cooked")}>مطبوخ</button>
-          <button className={section === "fresh" ? "active" : ""} onClick={() => setSection("fresh")}>طازة</button>
+      <div className="management-actions">
+        <button className="soft-button" onClick={() => setCategoriesOpen(true)}><Boxes /> إدارة التصنيفات</button>
+        <button className="primary-button compact" onClick={() => setEditing(emptyProduct(state.categories.find((item) => item.section === section && item.active)))}><PackagePlus /> إضافة صنف</button>
+      </div>
+    </section>
+
+    <div className="products-menu-switch">
+      <button className={section === "cooked" ? "active cooked" : ""} onClick={() => { setSection("cooked"); setCategoryFilter("الكل"); }}>
+        <span><CookingPot /></span><div><strong>منيو الأكل المطبوخ</strong><small>{cookedCount} صنف · جاهز للتقديم</small></div><b>{state.products.filter((item) => item.section === "cooked" && item.available).length} متاح</b>
+      </button>
+      <button className={section === "fresh" ? "active fresh" : ""} onClick={() => { setSection("fresh"); setCategoryFilter("الكل"); }}>
+        <span><ShoppingBasket /></span><div><strong>منيو الأكل الطازج</strong><small>{freshCount} صنف · غير مطبوخ</small></div><b>{state.products.filter((item) => item.section === "fresh" && item.available).length} متاح</b>
+      </button>
+    </div>
+
+    <div className="panel products-admin-panel">
+      <div className="panel-head products-admin-head">
+        <div>
+          <strong>{section === "cooked" ? "أصناف المنيو المطبوخ" : "أصناف المنيو الطازج"}</strong>
+          <small>{availableCount} صنف متاح من إجمالي {sectionProducts.length}</small>
+        </div>
+        <button className="save-price-changes" disabled={!priceChangesCount} onClick={savePriceChanges}><Check /> حفظ تغييرات الأسعار {priceChangesCount > 0 && <b>{priceChangesCount}</b>}</button>
+      </div>
+      <div className="products-admin-toolbar">
+        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`ابحث في منيو ${section === "cooked" ? "المطبوخ" : "الطازج"}...`} /></label>
+        <div className="products-category-filter">
+          {sectionCategories.map((item) => <button key={item} className={categoryFilter === item ? "active" : ""} onClick={() => setCategoryFilter(item)}>{item}</button>)}
         </div>
       </div>
       <div className="product-management">
+        <div className="product-manage-table-head"><span>الصنف</span><span>الوحدة والمقاسات</span><span>التكلفة</span><span>سعر البيع السريع</span><span>تعديل</span><span>متاح</span></div>
         {products.map((product) => <div className={product.available ? "product-manage-row editable" : "product-manage-row editable unavailable"} key={product.id}>
-          <span className="color-dot" style={{ background: product.accent }} />
-          <div><strong>{product.name}</strong><small>{product.section === "cooked" ? "مطبوخ" : "طازة"} · {product.category}</small></div>
-          <span>{product.unit}</span>
-          <span className="product-cost"><small>تكلفة {money(product.cost)}</small><b>{money(product.price)}</b></span>
-          <button className="icon-row-button" title="تعديل الصنف" onClick={() => setEditing({ ...product })}><Edit3 /></button>
-          <button className={product.available ? "toggle active" : "toggle"} title="إتاحة الصنف" onClick={() => toggle(product.id)}><i /></button>
+          <div className="product-admin-name"><span className="product-admin-icon" style={{ background: `${product.accent}24`, color: product.accent }}>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <CookingPot />}</span><span><strong>{product.name}</strong><small>{product.category}</small></span></div>
+          <span className="product-admin-units"><b>{product.unit}</b>{product.options?.length ? <small>{product.options.length} مقاسات</small> : <small>سعر واحد</small>}</span>
+          <span className="product-admin-cost"><small>التكلفة</small><b>{money(product.cost)}</b></span>
+          {product.options?.length ? <div className="option-price-summary">
+            <small>حسب المقاس</small>
+            <b>{money(Math.min(...product.options.map((option) => option.price)))} — {money(Math.max(...product.options.map((option) => option.price)))}</b>
+          </div> : <label className={draftPrices[product.id] !== undefined && draftPrices[product.id] !== product.price ? "quick-price changed" : "quick-price"}>
+            <input type="number" min="0" value={draftPrices[product.id] ?? product.price} onChange={(event) => setDraftPrices({ ...draftPrices, [product.id]: Number(event.target.value) })} onKeyDown={(event) => event.key === "Enter" && savePriceChanges()} />
+            <span>سعر البيع</span>
+          </label>}
+          <button className="product-edit-button" title="فتح كل بيانات الصنف والمقاسات" onClick={() => setEditing({ ...product, options: product.options?.map((option) => ({ ...option })) })}><Edit3 /><span>تعديل</span></button>
+          <button className={product.available ? "product-availability active" : "product-availability"} title={product.available ? "إيقاف الصنف" : "إتاحة الصنف"} onClick={() => toggle(product.id)}><i /><span>{product.available ? "متاح" : "متوقف"}</span></button>
+          {!!product.options?.length && <div className="product-quick-options">
+            <strong>أسعار المقاسات:</strong>
+            {product.options.map((option) => {
+              const key = `${product.id}:${option.id}`;
+              const value = draftOptionPrices[key] ?? option.price;
+              return <label className={value !== option.price ? "changed" : ""} key={option.id}><span>{option.name}</span><input type="number" min="0" value={value} onChange={(event) => setDraftOptionPrices({ ...draftOptionPrices, [key]: Number(event.target.value) })} /><small>{option.unit}</small></label>;
+            })}
+          </div>}
         </div>)}
+        {!products.length && <Empty icon={<Search />} title="لا توجد أصناف مطابقة" text="غيّر البحث أو اختر تصنيفًا آخر" />}
       </div>
     </div>
 
     {editing && <Modal title={state.products.some((item) => item.id === editing.id) ? "تعديل الصنف" : "إضافة صنف"} onClose={() => setEditing(null)} size="wide">
-      <div className="editor-grid">
-        <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label>
+      <div className="product-editor-layout">
+        <aside className="product-image-editor">
+          <label className={editing.imageDataUrl ? "product-image-upload has-image" : "product-image-upload"}>
+            {editing.imageDataUrl ? <img src={editing.imageDataUrl} alt={`صورة ${editing.name || "الصنف"}`} /> : <><span><ImagePlus /></span><strong>صورة المنتج</strong><small>اضغط لاختيار صورة واضحة</small></>}
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => selectProductImage(event.target.files?.[0])} />
+          </label>
+          <div className="product-image-guidance"><strong>{editing.imageDataUrl ? "تم تحميل الصورة" : "الصورة اختيارية"}</strong><small>يفضل صورة مربعة بصيغة JPG أو PNG أو WebP، بحد أقصى 2 ميجابايت.</small></div>
+          {editing.imageDataUrl && <button type="button" className="remove-product-image" onClick={() => setEditing({ ...editing, imageDataUrl: undefined })}><Trash2 /> حذف الصورة</button>}
+        </aside>
+        <section className="product-editor-main">
+          <div className="product-editor-heading"><span><Edit3 /></span><div><strong>البيانات الأساسية</strong><small>اسم الصنف والقسم والتصنيف ووحدة البيع</small></div></div>
+          <div className="editor-grid product-editor-fields">
+        <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} placeholder="مثال: بيتزا بالفراخ" /></label>
         <label>القسم<select value={editing.section} onChange={(event) => {
           const next = event.target.value as ProductSection;
           const first = state.categories.find((item) => item.section === next && item.active);
@@ -86,11 +195,36 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
           <option value="">اختر التصنيف</option>{categories.map((item) => <option key={item.id}>{item.name}</option>)}
         </select></label>
         <label>وحدة البيع<input value={editing.unit} onChange={(event) => setEditing({ ...editing, unit: event.target.value })} placeholder="طبق، كيلو، صينية..." /></label>
-        <label>سعر البيع<input type="number" min="0" value={editing.price || ""} onChange={(event) => setEditing({ ...editing, price: Number(event.target.value) })} /></label>
+        {!editing.options?.length && <label>سعر البيع<input type="number" min="0" value={editing.price || ""} onChange={(event) => setEditing({ ...editing, price: Number(event.target.value) })} /></label>}
+        {!!editing.options?.length && <div className="option-managed-price-note"><BadgeDollarSign /><span><strong>السعر حسب المقاس</strong><small>عدّل سعر كل مقاس من الجدول بالأسفل، ولا يوجد سعر أساسي منفصل لهذا الصنف.</small></span></div>}
         <label>التكلفة<input type="number" min="0" value={editing.cost || ""} onChange={(event) => setEditing({ ...editing, cost: Number(event.target.value) })} /></label>
-        <label>لون الصنف<input type="color" value={editing.accent} onChange={(event) => setEditing({ ...editing, accent: event.target.value })} /></label>
         <label className="check-label"><input type="checkbox" checked={editing.available} onChange={(event) => setEditing({ ...editing, available: event.target.checked })} /> متاح للبيع حاليًا</label>
+          </div>
+        </section>
       </div>
+      <section className="product-options-editor">
+        <header>
+          <div><strong>المقاسات وخيارات البيع</strong><small>مثال: نصف كيلو، كيلو، ميديم أو لارج. اتركها فارغة لو الصنف له سعر واحد.</small></div>
+          <button type="button" className="soft-button" onClick={() => setEditing({
+            ...editing,
+            options: [...(editing.options ?? []), {
+              id: uid(), name: "", unit: editing.unit || "وحدة", price: editing.price, cost: editing.cost, recipeMultiplier: 1
+            }]
+          })}><Plus /> إضافة مقاس</button>
+        </header>
+        {!!editing.options?.length && <div className="product-options-table">
+          <div className="product-options-head"><span>اسم المقاس</span><span>وحدة البيع</span><span>سعر البيع</span><span>التكلفة</span><span>معامل الوصفة</span><span /></div>
+          {editing.options.map((option) => <div className="product-option-row" key={option.id}>
+            <input value={option.name} placeholder="مثال: لارج" onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, name: event.target.value } : item) })} />
+            <input value={option.unit} placeholder="صينية / كيلو" onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, unit: event.target.value } : item) })} />
+            <input type="number" min="0" value={option.price || ""} onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, price: Number(event.target.value) } : item) })} />
+            <input type="number" min="0" value={option.cost || ""} onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, cost: Number(event.target.value) } : item) })} />
+            <input type="number" min="0.01" step="0.01" value={option.recipeMultiplier || ""} title="يضاعف كميات مكونات الوصفة بهذا الرقم" onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, recipeMultiplier: Number(event.target.value) } : item) })} />
+            <button type="button" title="حذف المقاس" onClick={() => setEditing({ ...editing, options: editing.options?.filter((item) => item.id !== option.id) })}><Trash2 /></button>
+          </div>)}
+        </div>}
+        {!editing.options?.length && <div className="product-options-empty">الصنف يستخدم وحدة وسعر البيع الأساسيين حاليًا.</div>}
+      </section>
       <button className="primary-button modal-save" onClick={saveProduct}><Save /> حفظ الصنف</button>
     </Modal>}
     {categoriesOpen && <CategoryManager state={state} update={update} notify={notify} onClose={() => setCategoriesOpen(false)} />}
@@ -100,6 +234,15 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
 function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
   const [form, setForm] = useState<Omit<ProductCategory, "id">>({ name: "", section: "cooked", color: "#6f927d", active: true });
   const [editingId, setEditingId] = useState("");
+  const [sectionFilter, setSectionFilter] = useState<ProductSection>("cooked");
+  const [search, setSearch] = useState("");
+  const visibleCategories = state.categories.filter((category) =>
+    category.section === sectionFilter && category.name.includes(search.trim())
+  );
+  const resetForm = (section = sectionFilter) => {
+    setEditingId("");
+    setForm({ name: "", section, color: section === "cooked" ? "#6f927d" : "#c58d5b", active: true });
+  };
   const add = () => {
     if (!form.name.trim()) return;
     if (state.categories.some((item) => item.id !== editingId && item.name === form.name.trim() && item.section === form.section)) {
@@ -119,23 +262,51 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
         ) : current.products
       };
     });
-    setEditingId(""); setForm({ ...form, name: "" }); notify(editingId ? "تم تعديل التصنيف وتحديث أصنافه" : "تمت إضافة التصنيف");
+    resetForm(form.section);
+    setSectionFilter(form.section);
+    notify(editingId ? "تم تعديل التصنيف وتحديث أصنافه" : "تمت إضافة التصنيف");
   };
   return <Modal title="إدارة التصنيفات" onClose={onClose} size="wide">
-    <div className="category-create">
-      <label>اسم التصنيف<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-      <label>القسم<select value={form.section} onChange={(event) => setForm({ ...form, section: event.target.value as ProductSection })}><option value="cooked">مطبوخ</option><option value="fresh">طازة</option></select></label>
-      <label>اللون<input type="color" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} /></label>
-      <button className="primary-button" onClick={add}>{editingId ? <Save /> : <Plus />} {editingId ? "حفظ" : "إضافة"}</button>
-    </div>
-    <div className="category-manager-list">{state.categories.map((category) => <div key={category.id}>
-      <span className="color-dot" style={{ background: category.color }} />
-      <span><strong>{category.name}</strong><small>{category.section === "cooked" ? "مطبوخ" : "طازة"}</small></span>
-      <button className="icon-row-button" onClick={() => { setEditingId(category.id); setForm({ name: category.name, section: category.section, color: category.color, active: category.active }); }}><Edit3 /></button>
-      <button className={category.active ? "toggle active" : "toggle"} onClick={() => update((current) => ({
+    <div className="category-manager">
+      <div className="category-manager-hero">
+        <span><Boxes /></span>
+        <div><strong>تنظيم أقسام المنيو</strong><small>أنشئ تصنيفات منفصلة للمطبوخ والطازج لتسهيل الوصول للأصناف في نقطة البيع</small></div>
+        <div><b>{state.categories.length}</b><small>إجمالي التصنيفات</small></div>
+      </div>
+      <div className="category-section-switch">
+        <button className={sectionFilter === "cooked" ? "active" : ""} onClick={() => { setSectionFilter("cooked"); resetForm("cooked"); }}><CookingPot /><span><strong>تصنيفات المطبوخ</strong><small>{state.categories.filter((item) => item.section === "cooked").length} تصنيف</small></span></button>
+        <button className={sectionFilter === "fresh" ? "active fresh" : ""} onClick={() => { setSectionFilter("fresh"); resetForm("fresh"); }}><ShoppingBasket /><span><strong>تصنيفات الطازج</strong><small>{state.categories.filter((item) => item.section === "fresh").length} تصنيف</small></span></button>
+      </div>
+      <div className={editingId ? "category-form editing" : "category-form"}>
+        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل التصنيف" : "إضافة تصنيف جديد"}</strong><small>{editingId ? "سيتم تحديث التصنيف في كل الأصناف المرتبطة به" : `سيُضاف إلى منيو ${form.section === "cooked" ? "المطبوخ" : "الطازج"}`}</small></div></div>
+        <label><span>اسم التصنيف</span><div><Boxes /><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} onKeyDown={(event) => event.key === "Enter" && add()} placeholder="مثال: حواوشي، فراخ، مجمدات..." /></div></label>
+        <div className="category-form-actions">
+          {editingId && <button className="soft-button" onClick={() => resetForm()}>إلغاء التعديل</button>}
+          <button className="primary-button" disabled={!form.name.trim()} onClick={add}>{editingId ? <Save /> : <Plus />} {editingId ? "حفظ التعديل" : "إضافة التصنيف"}</button>
+        </div>
+      </div>
+      <div className="category-list-head">
+        <div><strong>{sectionFilter === "cooked" ? "تصنيفات المطبوخ" : "تصنيفات الطازج"}</strong><small>{visibleCategories.length} نتيجة</small></div>
+        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث عن تصنيف..." /></label>
+      </div>
+      <div className="category-manager-list">{visibleCategories.map((category) => {
+        const productsCount = state.products.filter((product) => product.section === category.section && product.category === category.name).length;
+        return <div className={category.active ? "" : "inactive"} key={category.id}>
+      <span className="category-list-icon">{category.section === "cooked" ? <CookingPot /> : <ShoppingBasket />}</span>
+      <span><strong>{category.name}</strong><small>{productsCount ? `${productsCount} صنف مرتبط` : "لا توجد أصناف مرتبطة"}</small></span>
+      <em className={category.active ? "active" : ""}>{category.active ? "نشط" : "متوقف"}</em>
+      <button className="category-edit-action" onClick={() => {
+        setEditingId(category.id);
+        setForm({ name: category.name, section: category.section, color: category.color, active: category.active });
+      }}><Edit3 /> تعديل</button>
+      <button className={category.active ? "product-availability active" : "product-availability"} onClick={() => update((current) => ({
         ...current, categories: current.categories.map((item) => item.id === category.id ? { ...item, active: !item.active } : item)
-      }))}><i /></button>
-    </div>)}</div>
+      }))}><i /><span>{category.active ? "متاح" : "متوقف"}</span></button>
+    </div>;
+      })}
+      {!visibleCategories.length && <Empty icon={<Boxes />} title="لا توجد تصنيفات" text="أضف تصنيفًا جديدًا أو غيّر كلمة البحث" />}
+    </div>
+    </div>
   </Modal>;
 }
 
@@ -143,20 +314,48 @@ export function CustomerRecordsView({ state, update, notify, onEditOrder }: View
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Customer | null>(null);
   const [adding, setAdding] = useState(false);
-  const customers = state.customers.filter((customer) => customer.name.includes(search) || customer.phone.includes(search));
-  return <div className="panel">
-    <div className="panel-head">
-      <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو الموبايل..." /></label>
-      <button className="primary-button compact" onClick={() => setAdding(true)}><Plus /> عميل جديد</button>
+  const normalizedSearch = search.trim().toLocaleLowerCase("ar");
+  const searchDigits = search.replace(/\D/g, "");
+  const customers = state.customers.filter((customer) =>
+    !normalizedSearch
+    || customer.name.toLocaleLowerCase("ar").includes(normalizedSearch)
+    || Boolean(searchDigits && customer.phone.replace(/\D/g, "").includes(searchDigits))
+    || customer.address.toLocaleLowerCase("ar").includes(normalizedSearch)
+  );
+  const customerOrders = (customerId: string) => state.orders
+    .filter((order) => order.customerId === customerId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return <div className="customers-page">
+    <div className="panel customers-panel">
+      <div className="panel-head customers-head">
+        <div className="customers-title"><span><Users /></span><div><strong>سجل العملاء</strong><small>{state.customers.length} عميل مسجل في النظام</small></div></div>
+        <button className="primary-button compact" onClick={() => setAdding(true)}><UserPlus /> إضافة عميل</button>
+      </div>
+      <div className="customers-toolbar">
+        <label className="search-box customers-search"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم العميل أو رقم الهاتف أو العنوان..." /></label>
+        <span>{customers.length} نتيجة</span>
+      </div>
+      <div className="customers-table">
+        <div className="customers-row customers-table-head">
+          <span>العميل</span><span>رقم الهاتف</span><span>العنوان</span><span>الطلبات</span><span>إجمالي المشتريات</span><span />
+        </div>
+        {customers.map((customer) => {
+          const orders = customerOrders(customer.id);
+          const totalSpent = orders.reduce((sum, order) => sum + order.total, 0);
+          return <button className="customers-row" key={customer.id} onClick={() => setSelected({ ...customer })}>
+            <span className="customer-table-name"><i className="customer-avatar">{customer.name.charAt(0)}</i><strong>{customer.name}</strong></span>
+            <span className="customer-table-phone"><Phone /> <b>{customer.phone}</b></span>
+            <span className="customer-table-address"><MapPin /> <b>{customer.address}</b></span>
+            <span className="customer-table-orders"><b>{orders.length}</b></span>
+            <span className="customer-table-spend"><b>{money(totalSpent)}</b></span>
+            <span className="customer-table-arrow"><ChevronLeft /></span>
+          </button>;
+        })}
+        {!customers.length && <Empty icon={<Users />} title="لا توجد نتائج مطابقة" text="راجع اسم العميل أو رقم الهاتف أو العنوان" />}
+      </div>
     </div>
-    <div className="customer-cards">
-      {customers.map((customer) => <article className="clickable-card" key={customer.id} onClick={() => setSelected({ ...customer })}>
-        <div className="customer-card-head"><span className="customer-avatar">{customer.name.charAt(0)}</span><div><strong>{customer.name}</strong><small>{customer.phone}</small></div><ChevronLeft /></div>
-        <p>{customer.address}</p>
-        <div className="customer-metrics"><span><small>عدد الطلبات</small><b>{state.orders.filter((order) => order.customerId === customer.id).length}</b></span><span><small>إجمالي المشتريات</small><b>{money(customer.totalSpent)}</b></span></div>
-      </article>)}
-    </div>
-    {adding && <CustomerForm onClose={() => setAdding(false)} onSave={(customer) => {
+    {adding && <CustomerForm customers={state.customers} onClose={() => setAdding(false)} onSave={(customer) => {
       update((current) => ({ ...current, customers: [customer, ...current.customers] }));
       setAdding(false); notify("تم إضافة العميل");
     }} />}
@@ -173,53 +372,189 @@ export function CustomerRecordsView({ state, update, notify, onEditOrder }: View
   </div>;
 }
 
-export function CustomerForm({ onClose, onSave }: { onClose: () => void; onSave: (customer: Customer) => void }) {
+export function CustomerForm({ customers, onClose, onSave }: { customers: Customer[]; onClose: () => void; onSave: (customer: Customer) => void }) {
   const [form, setForm] = useState({ name: "", phone: "", address: "", zone: "", notes: "" });
+  const [attempted, setAttempted] = useState(false);
+  const phoneDigits = form.phone.replace(/\D/g, "");
+  const duplicatePhone = phoneDigits.length > 0 && customers.some((customer) => customer.phone.replace(/\D/g, "") === phoneDigits);
+  const nameInvalid = form.name.trim().length < 2;
+  const phoneInvalid = phoneDigits.length < 8;
+  const addressInvalid = form.address.trim().length < 5;
   const save = () => {
-    if (!form.name.trim() || !form.phone.trim() || !form.address.trim()) return;
-    onSave({ id: uid(), ...form, ordersCount: 0, totalSpent: 0 });
+    setAttempted(true);
+    if (nameInvalid || phoneInvalid || addressInvalid || duplicatePhone) return;
+    onSave({
+      id: uid(),
+      ...form,
+      name: form.name.trim(),
+      phone: form.phone.trim(),
+      address: form.address.trim(),
+      notes: form.notes.trim(),
+      ordersCount: 0,
+      totalSpent: 0
+    });
   };
-  return <Modal title="إضافة عميل جديد" onClose={onClose}><div className="form-stack">
-    <label>اسم العميل<input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-    <label>رقم الموبايل<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
-    <label>العنوان بالتفصيل<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></label>
-    <label>ملاحظات العميل<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-    <button className="primary-button" onClick={save}><Save /> حفظ واختيار العميل</button>
-  </div></Modal>;
+  return <Modal title="إضافة عميل جديد" onClose={onClose} size="medium">
+    <form className="customer-create-form" onSubmit={(event) => { event.preventDefault(); save(); }}>
+      <div className="customer-create-hero">
+        <span>{form.name.trim() ? form.name.trim().charAt(0) : <UserPlus />}</span>
+        <div><strong>بيانات العميل الأساسية</strong><small>سجّل بيانات التواصل وعنوان التوصيل بالتفصيل</small></div>
+      </div>
+      <div className="customer-create-grid">
+        <label className={attempted && nameInvalid ? "invalid" : ""}>
+          <span>اسم العميل <em>*</em></span>
+          <div><Users /><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="اكتب اسم العميل بالكامل" /></div>
+          {attempted && nameInvalid && <small>اكتب اسمًا مكونًا من حرفين على الأقل</small>}
+        </label>
+        <label className={(attempted && phoneInvalid) || duplicatePhone ? "invalid" : ""}>
+          <span>رقم الهاتف <em>*</em></span>
+          <div><Phone /><input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="01xxxxxxxxx" inputMode="tel" /></div>
+          {duplicatePhone ? <small>رقم الهاتف مسجل لعميل آخر</small> : attempted && phoneInvalid && <small>اكتب رقم هاتف صحيح</small>}
+        </label>
+        <label className={`full-field ${attempted && addressInvalid ? "invalid" : ""}`}>
+          <span>عنوان التوصيل بالتفصيل <em>*</em></span>
+          <div className="textarea-field"><MapPin /><textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="المنطقة، الشارع، رقم العقار، الدور وأقرب علامة مميزة" /></div>
+          {attempted && addressInvalid && <small>اكتب عنوان التوصيل بشكل أوضح</small>}
+        </label>
+        <label className="full-field">
+          <span>ملاحظات العميل <i>اختياري</i></span>
+          <div className="textarea-field"><ClipboardList /><textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="مثال: يفضل الاتصال قبل الوصول أو ملاحظات خاصة بالتوصيل" /></div>
+        </label>
+      </div>
+      <div className="customer-create-note"><MapPin /><span><strong>العنوان سيظهر في الطلب والفاتورة</strong><small>يمكن تعديل بيانات العميل لاحقًا من سجل العملاء أو تفاصيل الطلب.</small></span></div>
+      <footer className="customer-create-actions">
+        <button type="button" className="soft-button" onClick={onClose}>إلغاء</button>
+        <button type="submit" className="primary-button"><Save /> حفظ العميل</button>
+      </footer>
+    </form>
+  </Modal>;
 }
 
 export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
   customer: Customer; state: AppState; onClose: () => void; onEdit: (customer: Customer) => void; onOrder: (order: Order) => void
 }) {
   const [form, setForm] = useState({ ...customer });
-  const orders = state.orders.filter((order) => order.customerId === customer.id);
-  return <Modal title={`ملف العميل: ${customer.name}`} onClose={onClose} size="wide">
+  const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const orders = state.orders
+    .filter((order) => order.customerId === customer.id)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const totalSpent = orders.reduce((sum, order) => sum + order.total, 0);
+  const averageOrder = orders.length ? totalSpent / orders.length : 0;
+  const isDirty = form.name !== customer.name
+    || form.phone !== customer.phone
+    || form.address !== customer.address
+    || (form.notes ?? "") !== (customer.notes ?? "");
+  const canSave = form.name.trim().length >= 2
+    && form.phone.replace(/\D/g, "").length >= 8
+    && form.address.trim().length >= 5;
+  return <><Modal title={`ملف العميل: ${customer.name}`} onClose={onClose} size="wide">
     <div className="customer-file">
+      <section className="customer-file-hero">
+        <div className="customer-file-identity">
+          <span className="customer-file-avatar">{customer.name.charAt(0)}</span>
+          <div><strong>{customer.name}</strong><small><Phone /> {customer.phone}</small><small><MapPin /> {customer.address}</small></div>
+        </div>
+        <div className="customer-file-stats">
+          <span><small>إجمالي الطلبات</small><b>{orders.length}</b></span>
+          <span><small>إجمالي المشتريات</small><b>{money(totalSpent)}</b></span>
+          <span><small>متوسط الطلب</small><b>{money(averageOrder)}</b></span>
+          <span><small>آخر طلب</small><b>{orders[0] ? shortDate(orders[0].createdAt) : "لا يوجد"}</b></span>
+        </div>
+      </section>
       <div className="customer-profile-editor">
-        <div className="customer-file-title"><span className="customer-avatar">{customer.name.charAt(0)}</span><span><strong>{customer.name}</strong><small>{orders.length} طلب مسجل</small></span></div>
-        <label>الاسم<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-        <label>الموبايل<input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
-        <label>العنوان بالتفصيل<textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></label>
-        <label>ملاحظات<textarea value={form.notes ?? ""} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-        <button className="soft-button" onClick={() => onEdit(form)}><Save /> حفظ بيانات العميل</button>
+        <div className="customer-file-section-title"><span><Edit3 /></span><div><strong>بيانات العميل</strong><small>يمكن تعديل بيانات التواصل والتوصيل من هنا</small></div></div>
+        <div className="customer-profile-fields">
+          <label><span>اسم العميل</span><div><Users /><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div></label>
+          <label><span>رقم الهاتف</span><div><Phone /><input value={form.phone} inputMode="tel" onChange={(event) => setForm({ ...form, phone: event.target.value })} /></div></label>
+          <label className="full-field"><span>عنوان التوصيل بالتفصيل</span><div className="textarea-field"><MapPin /><textarea value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} /></div></label>
+          <label className="full-field"><span>ملاحظات العميل</span><div className="textarea-field"><ClipboardList /><textarea value={form.notes ?? ""} placeholder="لا توجد ملاحظات مسجلة" onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div></label>
+        </div>
+        <div className="customer-profile-actions">
+          {isDirty && <small>لديك تعديلات غير محفوظة</small>}
+          <button type="button" className="primary-button" disabled={!isDirty || !canSave} onClick={() => onEdit({ ...form, name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() })}><Save /> حفظ التعديلات</button>
+        </div>
       </div>
       <div className="customer-order-history">
-        <h3><ClipboardList /> سجل الطلبات</h3>
-        {orders.map((order) => <button key={order.id} onClick={() => onOrder(order)}>
+        <div className="customer-file-section-title"><span><ReceiptText /></span><div><strong>سجل الطلبات</strong><small>{orders.length ? `${orders.length} طلب مرتبة من الأحدث` : "لا توجد طلبات مسجلة"}</small></div></div>
+        <div className="customer-history-head"><span>الطلب والتاريخ</span><span>التحصيل والإجمالي</span><span /></div>
+        <div className="customer-history-list">
+        {orders.map((order) => <div className="customer-history-row" key={order.id} role="button" tabIndex={0} onClick={() => setViewingOrder(order)} onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") setViewingOrder(order);
+        }}>
           <span><strong>طلب #{order.number}</strong><small>{shortDate(order.createdAt)} · {order.items.length} أصناف</small></span>
-          <span><b>{money(order.total)}</b><small>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</small></span>
-          <Edit3 />
-        </button>)}
+          <span><b>{money(order.total)}</b><small className={order.paymentStatus === "paid" ? "paid" : "pending"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</small></span>
+          <button type="button" className="customer-history-edit" title="تعديل الطلب داخل نقطة البيع" onClick={(event) => {
+            event.stopPropagation();
+            onOrder(order);
+          }}><Edit3 /><span>تعديل</span></button>
+        </div>)}
         {!orders.length && <div className="simple-empty"><ReceiptText /><span>لا توجد طلبات للعميل حتى الآن</span></div>}
+        </div>
       </div>
     </div>
-  </Modal>;
+  </Modal>
+    {viewingOrder && <CustomerOrderPreview order={viewingOrder} settings={state.settings} onClose={() => setViewingOrder(null)} onEdit={() => {
+      setViewingOrder(null);
+      onOrder(viewingOrder);
+    }} />}
+  </>;
 }
 
-export function SettingsView({ state, update, notify }: ViewProps) {
-  const [tab, setTab] = useState<"identity" | "operations" | "delivery" | "backup">("identity");
+function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Order; settings: AppState["settings"]; onClose: () => void; onEdit: () => void }) {
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const stageLabel = order.stage === "preparing" ? "قيد التجهيز"
+    : order.stage === "ready" ? "جاهز"
+      : order.stage === "delivered" ? "تم التوصيل"
+        : "قيد التجميع";
+  const paymentLabel = order.paymentMethod === "cash" ? "نقدي"
+    : order.paymentMethod === "instapay" ? "إنستاباي"
+      : "فودافون كاش";
+  return <><Modal title={`تفاصيل الطلب رقم ${order.number}`} onClose={onClose} size="medium">
+    <div className="customer-order-preview">
+      <div className="customer-order-preview-hero">
+        <span><ReceiptText /></span>
+        <div><small>رقم الطلب</small><strong>#{order.number}</strong></div>
+        <div><small>تاريخ الطلب</small><b>{shortDate(order.createdAt)}</b></div>
+        <div className="customer-order-preview-badges"><em className={order.stage}>{stageLabel}</em><em className={order.paymentStatus}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</em></div>
+      </div>
+      <div className="customer-order-preview-table">
+        <div className="customer-order-preview-head"><span>الصنف</span><span>الكمية</span><span>الوحدة</span><span>الإجمالي</span></div>
+        <div className="customer-order-preview-items">
+          {order.items.map((item, index) => <div key={`${item.productId}-${item.optionId ?? "base"}-${index}`}>
+            <span><strong>{item.name}</strong>{item.note && <small>{item.note}</small>}</span>
+            <b>{item.quantity}</b><span>{item.unit}</span><strong>{money(item.price * item.quantity)}</strong>
+          </div>)}
+        </div>
+      </div>
+      <div className="customer-order-preview-footer">
+        <div className="customer-order-preview-meta">
+          <span><small>طريقة الدفع</small><b>{paymentLabel}</b></span>
+          <span><small>التوصيل</small><b>{order.driver || order.deliveryCompany || "غير محدد"}</b></span>
+        </div>
+        <div className="customer-order-preview-totals">
+          <span><small>قيمة الأصناف</small><b>{money(order.subtotal)}</b></span>
+          <span><small>التوصيل</small><b>{money(order.deliveryFee)}</b></span>
+          <span><small>الخصم</small><b>{money(order.discount)}</b></span>
+          <span className="final"><small>الإجمالي</small><strong>{money(order.total)}</strong></span>
+        </div>
+      </div>
+      <div className="customer-order-preview-actions">
+        <button type="button" className="soft-button" onClick={onClose}>إغلاق</button>
+        <button type="button" className="soft-button customer-preview-print" onClick={() => setInvoiceOpen(true)}><Printer /> طباعة الفاتورة</button>
+        <button type="button" className="primary-button" onClick={onEdit}><Edit3 /> تعديل</button>
+      </div>
+    </div>
+  </Modal>
+  {invoiceOpen && <InvoiceModal order={order} settings={settings} onClose={() => setInvoiceOpen(false)} />}
+  </>;
+}
+
+export function SettingsView({ state, update, notify, network }: ViewProps) {
+  const [tab, setTab] = useState<"identity" | "operations" | "delivery" | "network" | "backup">("identity");
   const [settings, setSettings] = useState({ ...state.settings });
   const [company, setCompany] = useState({ name: "", phone: "", baseFee: state.settings.defaultDeliveryFee, notes: "" });
+  const [serverAddress, setServerAddress] = useState(network?.serverUrl ?? "http://127.0.0.1:4312");
+  const [networkTest, setNetworkTest] = useState<"idle" | "testing" | "success" | "error">("idle");
   const readLogo = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
@@ -247,6 +582,9 @@ export function SettingsView({ state, update, notify }: ViewProps) {
       </button>
       <button role="tab" aria-selected={tab === "delivery"} className={tab === "delivery" ? "active" : ""} onClick={() => setTab("delivery")}>
         <Building2 /><span><strong>شركات التوصيل</strong><small>{state.deliveryCompanies.length} شركة مسجلة</small></span>
+      </button>
+      <button role="tab" aria-selected={tab === "network"} className={tab === "network" ? "active" : ""} onClick={() => setTab("network")}>
+        <Network /><span><strong>السيرفر والشبكة</strong><small>{network?.status === "online" ? "متصل لحظيًا" : "إعداد أجهزة المطعم"}</small></span>
       </button>
       <button role="tab" aria-selected={tab === "backup"} className={tab === "backup" ? "active" : ""} onClick={() => setTab("backup")}>
         <DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>تنزيل واسترجاع البيانات</small></span>
@@ -291,6 +629,30 @@ export function SettingsView({ state, update, notify }: ViewProps) {
         <button className="primary-button compact" onClick={addCompany}><Plus /> إضافة شركة</button>
       </div>
       <div className="company-list">{state.deliveryCompanies.map((item) => <div key={item.id}><Building2 /><span><strong>{item.name}</strong><small>{item.phone || "بدون رقم"} · {money(item.baseFee)}</small></span><button className={item.active ? "toggle active" : "toggle"} onClick={() => update((current) => ({ ...current, deliveryCompanies: current.deliveryCompanies.map((company) => company.id === item.id ? { ...company, active: !company.active } : company) }))}><i /></button></div>)}</div>
+    </div>}
+
+    {tab === "network" && <div className="panel network-settings-panel" role="tabpanel">
+      <div className="panel-title"><div><Server /><span><strong>السيرفر المركزي والتحديث اللحظي</strong><small>كل أجهزة الكاشير والمطبخ يجب أن تتصل بنفس العنوان</small></span></div></div>
+      <div className="network-settings-content">
+        <div className={`network-status-card ${network?.status ?? "offline"}`}>
+          <span><i /> {network?.status === "online" ? "متصل بالسيرفر" : network?.status === "connecting" ? "جاري الاتصال" : network?.status === "local" ? "وضع المتصفح المحلي" : "غير متصل"}</span>
+          <strong dir="ltr">{network?.serverUrl}</strong>
+        </div>
+        <div className="network-guide">
+          <div><strong>جهاز السيرفر الرئيسي</strong><small>اترك العنوان المحلي كما هو. عنوان توصيل الأجهزة الأخرى:</small><code>{network?.embeddedServer?.networkUrl ?? "سيظهر عنوان الشبكة عند تشغيل نسخة Windows"}</code></div>
+          <div><strong>جهاز الكاشير أو المطبخ الإضافي</strong><small>اكتب عنوان جهاز السيرفر الظاهر هنا، ثم احفظ وأعد الاتصال.</small></div>
+        </div>
+        <div className="network-address-form">
+          <label>عنوان السيرفر<input dir="ltr" value={serverAddress} onChange={(event) => { setServerAddress(event.target.value); setNetworkTest("idle"); }} placeholder="http://192.168.1.10:4312" /></label>
+          <button className="soft-button" disabled={networkTest === "testing"} onClick={() => {
+            setNetworkTest("testing");
+            testServerConnection(serverAddress).then(() => setNetworkTest("success")).catch(() => setNetworkTest("error"));
+          }}><RefreshCw /> {networkTest === "testing" ? "جاري الاختبار..." : "اختبار الاتصال"}</button>
+          <button className="primary-button" onClick={() => network?.changeServerUrl(serverAddress)}><Save /> حفظ وإعادة الاتصال</button>
+        </div>
+        {networkTest === "success" && <p className="network-test-result success">تم الاتصال بالسيرفر بنجاح، ويمكن حفظ العنوان.</p>}
+        {networkTest === "error" && <p className="network-test-result error">تعذر الوصول إلى هذا العنوان. راجع الشبكة وWindows Firewall.</p>}
+      </div>
     </div>}
 
     {tab === "backup" && <div role="tabpanel"><BackupPanel state={state} update={update} notify={notify} /></div>}

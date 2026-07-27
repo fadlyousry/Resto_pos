@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bell, Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Bell, Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen, RefreshCw, Server } from "lucide-react";
+import { AggregationView } from "../features/aggregation";
 import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
@@ -16,20 +17,56 @@ import { navigationItems, type AppView } from "./navigation";
 import { useRestaurantState } from "./useRestaurantState";
 
 export default function App() {
-  const { state, update, toast, notify } = useRestaurantState();
+  const {
+    state, update, toast, notify, connectionStatus, connectionError,
+    serverUrl, embeddedServer, changeServerUrl, retryConnection
+  } = useRestaurantState();
   const [view, setView] = useState<AppView>("pos");
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editReturnView, setEditReturnView] = useState<AppView>("orders");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("beitna-sidebar-collapsed") === "true");
+  const [serverDraft, setServerDraft] = useState(serverUrl);
 
   if (!state) {
-    return <div className="loading"><CookingPot size={44} /><strong>بنجهّز المطبخ...</strong></div>;
+    if (connectionError) {
+      return <div className="server-connection-screen">
+        <div className="server-connection-card">
+          <span className="server-connection-icon"><Server /></span>
+          <h1>تعذر الاتصال بسيرفر بيتنا</h1>
+          <p>{connectionError}</p>
+          <label>
+            عنوان السيرفر
+            <input
+              dir="ltr"
+              value={serverDraft}
+              onChange={(event) => setServerDraft(event.target.value)}
+              placeholder="http://192.168.1.10:4312"
+            />
+          </label>
+          <div>
+            <button className="primary-button" onClick={() => changeServerUrl(serverDraft)}>
+              <Server /> حفظ والاتصال
+            </button>
+            <button className="soft-button" onClick={retryConnection}>
+              <RefreshCw /> إعادة المحاولة
+            </button>
+          </div>
+          <small>على جهاز السيرفر استخدم http://127.0.0.1:4312، وعلى الأجهزة الأخرى اكتب عنوان جهاز السيرفر داخل الشبكة.</small>
+        </div>
+      </div>;
+    }
+    return <div className="loading"><CookingPot size={44} /><strong>بنجهّز المطبخ ونتصل بالسيرفر...</strong></div>;
   }
 
   const pendingCount = state.orders.filter(
-    (order) => order.paymentStatus === "pending" && order.stage !== "cancelled"
+    (order) => order.paymentStatus === "pending"
   ).length;
-  const viewProps = { state, update, notify };
+  const viewProps = {
+    state,
+    update,
+    notify,
+    network: { status: connectionStatus, serverUrl, embeddedServer, changeServerUrl }
+  };
   const editOrderInPos = (order: Order) => {
     setEditingOrder(order);
     setEditReturnView(view);
@@ -75,9 +112,9 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="shift-card">
-          <div><span className="live-dot" /> وردية مفتوحة</div>
-          <strong>{shortDate(state.shiftOpenedAt)}</strong>
+        <div className={`shift-card ${state.cashShifts.some((shift) => !shift.closedAt) ? "" : "closed"}`}>
+          <div><span className="live-dot" /> {state.cashShifts.some((shift) => !shift.closedAt) ? "وردية مفتوحة" : "الوردية مغلقة"}</div>
+          <strong>{state.cashShifts.find((shift) => !shift.closedAt) ? shortDate(state.cashShifts.find((shift) => !shift.closedAt)!.openedAt) : "افتح وردية من الخزنة"}</strong>
           <small>كاشير: المدير</small>
         </div>
       </aside>
@@ -103,6 +140,7 @@ export default function App() {
           {view === "pos" && <PosView {...viewProps} editingOrder={editingOrder} onEditOrder={editOrderInPos} onFinishEditing={finishOrderEditing} />}
           {view === "orders" && <OrdersView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "kitchen" && <KitchenView {...viewProps} />}
+          {view === "aggregation" && <AggregationView {...viewProps} />}
           {view === "delivery" && <DeliveryView {...viewProps} />}
           {view === "customers" && <CustomerRecordsView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "products" && <ProductCatalogView {...viewProps} />}

@@ -53,6 +53,12 @@ npm run dev
 npm run desktop:dev
 ```
 
+## تشغيل أكثر من جهاز
+
+يحتوي تطبيق Windows على سيرفر مركزي مدمج يستخدم SQLite وAPI وWebSocket. خطوات
+تحديد جهاز السيرفر وربط أجهزة الكاشير والمطبخ موجودة في
+[NETWORK_SETUP.md](./NETWORK_SETUP.md).
+
 ## إنشاء ملف تثبيت Windows
 
 ```powershell

@@ -1,4 +1,4 @@
-import type { AppState, Customer, Order } from "../domain/types";
+import type { AppState, Customer, Order, OrderStage } from "../domain/types";
 
 const isArray = <T,>(value: T[] | undefined): value is T[] => Array.isArray(value);
 
@@ -16,6 +16,13 @@ function cleanCustomer(customer: Customer): Customer {
   };
 }
 
+export function normalizeOrderStage(stage: unknown): OrderStage {
+  if (stage === "delivered" || stage === "cancelled") return "delivered";
+  if (stage === "ready" || stage === "out_for_delivery") return "ready";
+  if (stage === "assembling" || stage === "packing") return "assembling";
+  return "preparing";
+}
+
 function cleanOrder(order: Order): Order {
   return {
     id: order.id,
@@ -31,7 +38,7 @@ function cleanOrder(order: Order): Order {
     total: order.total,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
-    stage: order.stage,
+    stage: normalizeOrderStage(order.stage),
     createdAt: order.createdAt,
     scheduledFor: order.scheduledFor,
     note: order.note,
@@ -58,6 +65,13 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     recipes: isArray(parsed.recipes) ? parsed.recipes : fallback.recipes,
     stockMovements: isArray(parsed.stockMovements) ? parsed.stockMovements : fallback.stockMovements,
     cashTransactions: isArray(parsed.cashTransactions) ? parsed.cashTransactions : fallback.cashTransactions,
+    cashShifts: isArray(parsed.cashShifts)
+      ? parsed.cashShifts
+      : [{
+        id: "legacy-shift",
+        openedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
+        openingBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance
+      }],
     shiftOpeningBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance,
     shiftOpenedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
     nextOrderNumber: typeof parsed.nextOrderNumber === "number" ? parsed.nextOrderNumber : fallback.nextOrderNumber,

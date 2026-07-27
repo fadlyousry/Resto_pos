@@ -1,5 +1,5 @@
 import {
-  BarChart3, Bike, Boxes, CookingPot, LayoutGrid, ReceiptText,
+  BarChart3, Bike, Boxes, CookingPot, LayoutGrid, PackageCheck, ReceiptText,
   Settings2, Users, WalletCards, Warehouse, type LucideIcon
 } from "lucide-react";
 
@@ -7,6 +7,7 @@ export type AppView =
   | "pos"
   | "orders"
   | "kitchen"
+  | "aggregation"
   | "delivery"
   | "customers"
   | "products"
@@ -24,7 +25,8 @@ export interface NavigationItem {
 export const navigationItems: NavigationItem[] = [
   { id: "pos", label: "نقطة البيع", icon: LayoutGrid },
   { id: "orders", label: "الطلبات", icon: ReceiptText },
-  { id: "kitchen", label: "المطبخ والتجميع", icon: CookingPot },
+  { id: "kitchen", label: "المطبخ", icon: CookingPot },
+  { id: "aggregation", label: "التجميع", icon: PackageCheck },
   { id: "delivery", label: "التوصيل والمندوبين", icon: Bike },
   { id: "customers", label: "العملاء", icon: Users },
   { id: "products", label: "الأصناف", icon: Boxes },

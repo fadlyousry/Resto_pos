@@ -1,8 +1,8 @@
 // Internal inventory implementation. Consume it through the public feature index.
 import { useState } from "react";
 import {
-  AlertTriangle, Boxes, Calculator, ChevronLeft, History, PackagePlus, Plus,
-  Save, Scale
+  AlertTriangle, Boxes, Calculator, ChevronLeft, CookingPot, Edit3, History, PackagePlus, Plus,
+  Save, Search, ShoppingBasket, Scale
 } from "lucide-react";
 import type {
   CashTransaction, Ingredient, Product, RecipeItem, StockMovement
@@ -16,12 +16,31 @@ export function InventoryView({ state, update, notify }: ViewProps) {
   const [tab, setTab] = useState<"stock" | "recipes" | "movements">("stock");
   const [stockIngredient, setStockIngredient] = useState<Ingredient | null>(null);
   const [addingIngredient, setAddingIngredient] = useState(false);
+  const [editingIngredientId, setEditingIngredientId] = useState("");
+  const [stockSearch, setStockSearch] = useState("");
+  const [stockScope, setStockScope] = useState<"all" | "low">("all");
+  const [recipeSearch, setRecipeSearch] = useState("");
+  const [recipeSection, setRecipeSection] = useState<"all" | "cooked" | "fresh">("all");
+  const [movementSearch, setMovementSearch] = useState("");
+  const [ingredientAttempted, setIngredientAttempted] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id ?? "");
   const [purchase, setPurchase] = useState({ quantity: 0, unitCost: 0, note: "" });
   const [ingredientForm, setIngredientForm] = useState({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
   const [recipeDraft, setRecipeDraft] = useState<Record<string, number>>(() => recipeRecord(state.recipes, selectedProductId));
 
   const lowStock = state.ingredients.filter((item) => item.stockQty <= item.minStock);
+  const visibleIngredients = state.ingredients.filter((item) =>
+    (stockScope === "all" || item.stockQty <= item.minStock)
+    && item.name.includes(stockSearch.trim())
+  );
+  const visibleRecipeProducts = state.products.filter((product) =>
+    (recipeSection === "all" || product.section === recipeSection)
+    && product.name.includes(recipeSearch.trim())
+  );
+  const visibleMovements = state.stockMovements.filter((movement) =>
+    movement.ingredientName.includes(movementSearch.trim())
+    || movement.description.includes(movementSearch.trim())
+  ).slice(0, 50);
   const inventoryValue = state.ingredients.reduce((sum, item) => sum + item.stockQty * item.unitCost, 0);
   const selectedProduct = state.products.find((product) => product.id === selectedProductId);
   const recipeCost = state.ingredients.reduce((sum, ingredient) => sum + (recipeDraft[ingredient.id] ?? 0) * ingredient.unitCost, 0);
@@ -57,22 +76,27 @@ export function InventoryView({ state, update, notify }: ViewProps) {
     notify(`تمت إضافة ${purchase.quantity} ${stockIngredient.unit} للمخزون`);
   };
 
-  const addIngredient = () => {
-    if (!ingredientForm.name || ingredientForm.unitCost < 0) return;
-    const ingredient: Ingredient = { id: uid(), ...ingredientForm, active: true };
-    const movement: StockMovement | null = ingredient.stockQty > 0 ? {
+  const saveIngredient = () => {
+    setIngredientAttempted(true);
+    const duplicate = state.ingredients.some((item) => item.id !== editingIngredientId && item.name.trim() === ingredientForm.name.trim());
+    if (ingredientForm.name.trim().length < 2 || !ingredientForm.unit.trim() || ingredientForm.unitCost < 0 || ingredientForm.stockQty < 0 || ingredientForm.minStock < 0 || duplicate) return;
+    const normalizedForm = { ...ingredientForm, name: ingredientForm.name.trim(), unit: ingredientForm.unit.trim() };
+    const ingredient: Ingredient = { id: editingIngredientId || uid(), ...normalizedForm, active: true };
+    const movement: StockMovement | null = !editingIngredientId && ingredient.stockQty > 0 ? {
       id: uid(), ingredientId: ingredient.id, ingredientName: ingredient.name,
       type: "adjustment", quantity: ingredient.stockQty, unitCost: ingredient.unitCost,
       description: "رصيد افتتاحي", createdAt: new Date().toISOString()
     } : null;
     update((current) => ({
       ...current,
-      ingredients: [...current.ingredients, ingredient],
+      ingredients: editingIngredientId
+        ? current.ingredients.map((item) => item.id === editingIngredientId ? { ...item, ...normalizedForm } : item)
+        : [...current.ingredients, ingredient],
       stockMovements: movement ? [movement, ...current.stockMovements] : current.stockMovements
     }));
-    setAddingIngredient(false);
+    setAddingIngredient(false); setEditingIngredientId(""); setIngredientAttempted(false);
     setIngredientForm({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
-    notify("تمت إضافة المكون");
+    notify(editingIngredientId ? "تم تحديث بيانات المكون" : "تمت إضافة المكون");
   };
 
   const saveRecipe = () => {
@@ -93,6 +117,15 @@ export function InventoryView({ state, update, notify }: ViewProps) {
 
   return (
     <div className="inventory-page">
+      <section className="inventory-hero">
+        <div><span><Boxes /></span><div><strong>المخزون والوصفات</strong><small>تابع أرصدة المكونات، سجل المشتريات واحسب تكلفة كل وصفة</small></div></div>
+        <button className="primary-button compact" onClick={() => {
+          setEditingIngredientId("");
+          setIngredientAttempted(false);
+          setIngredientForm({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
+          setAddingIngredient(true);
+        }}><Plus /> إضافة مكون</button>
+      </section>
       <div className="stat-strip">
         <MiniStat icon={<Boxes />} label="قيمة المخزون" value={money(inventoryValue)} tone="green" />
         <MiniStat icon={<AlertTriangle />} label="تحت حد الطلب" value={String(lowStock.length)} tone="red" />
@@ -101,32 +134,40 @@ export function InventoryView({ state, update, notify }: ViewProps) {
       </div>
 
       <div className="inventory-tabs">
-        <div className="filter-tabs">
-          <button className={tab === "stock" ? "active" : ""} onClick={() => setTab("stock")}>الأرصدة</button>
-          <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}>الوصفات والتكلفة</button>
-          <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}>حركات المخزون</button>
-        </div>
-        <button className="primary-button compact" onClick={() => setAddingIngredient(true)}><Plus /> مكون جديد</button>
+        <button className={tab === "stock" ? "active" : ""} onClick={() => setTab("stock")}><Boxes /><span><strong>أرصدة المخزون</strong><small>الكميات وحد الطلب</small></span></button>
+        <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Calculator /><span><strong>الوصفات والتكلفة</strong><small>مكونات وتكلفة الأصناف</small></span></button>
+        <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}><History /><span><strong>حركات المخزون</strong><small>شراء واستهلاك وتسوية</small></span></button>
       </div>
 
       {tab === "stock" && (
-        <div className="panel">
+        <div className="panel inventory-stock-panel">
+          <div className="inventory-toolbar">
+            <label className="search-box"><Search /><input value={stockSearch} onChange={(event) => setStockSearch(event.target.value)} placeholder="ابحث عن مكون..." /></label>
+            <div className="filter-tabs"><button className={stockScope === "all" ? "active" : ""} onClick={() => setStockScope("all")}>كل المكونات</button><button className={stockScope === "low" ? "active danger" : ""} onClick={() => setStockScope("low")}><AlertTriangle /> تحت حد الطلب <b>{lowStock.length}</b></button></div>
+            <span>{visibleIngredients.length} مكون</span>
+          </div>
           <div className="inventory-table">
-            <div className="inventory-row inventory-head"><span>المكون</span><span>الرصيد</span><span>حد الطلب</span><span>تكلفة الوحدة</span><span>القيمة</span><span>إجراء</span></div>
-            {state.ingredients.map((ingredient) => {
+            <div className="inventory-row inventory-head"><span>المكون</span><span>الرصيد الحالي</span><span>حد الطلب</span><span>تكلفة الوحدة</span><span>قيمة الرصيد</span><span>الإجراءات</span></div>
+            {visibleIngredients.map((ingredient) => {
               const percent = Math.min(100, Math.max(4, (ingredient.stockQty / Math.max(ingredient.minStock * 3, 1)) * 100));
               const isLow = ingredient.stockQty <= ingredient.minStock;
               return (
                 <div className={`inventory-row ${isLow ? "low" : ""}`} key={ingredient.id}>
-                  <span><strong>{ingredient.name}</strong><small>{ingredient.unit}</small></span>
-                  <span><b>{ingredient.stockQty.toLocaleString("en-US")}</b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
+                  <span className="inventory-name-cell"><i><Scale /></i><span><strong>{ingredient.name}</strong><small>{isLow ? "يحتاج إعادة طلب" : "الرصيد مطمئن"}</small></span></span>
+                  <span className="inventory-stock-cell"><b>{ingredient.stockQty.toLocaleString("en-US")} <small>{ingredient.unit}</small></b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
                   <span>{ingredient.minStock.toLocaleString("en-US")} {ingredient.unit}</span>
                   <span>{money(ingredient.unitCost)}</span>
                   <span><strong>{money(ingredient.stockQty * ingredient.unitCost)}</strong></span>
-                  <span><button className="stock-add-button" onClick={() => { setStockIngredient(ingredient); setPurchase({ quantity: 0, unitCost: ingredient.unitCost, note: "" }); }}><PackagePlus /> إضافة رصيد</button></span>
+                  <span className="inventory-row-actions"><button className="stock-add-button" onClick={() => { setStockIngredient(ingredient); setPurchase({ quantity: 0, unitCost: ingredient.unitCost, note: "" }); }}><PackagePlus /> إضافة رصيد</button><button className="stock-edit-button" onClick={() => {
+                    setEditingIngredientId(ingredient.id);
+                    setIngredientAttempted(false);
+                    setIngredientForm({ name: ingredient.name, unit: ingredient.unit, stockQty: ingredient.stockQty, minStock: ingredient.minStock, unitCost: ingredient.unitCost });
+                    setAddingIngredient(true);
+                  }}><Edit3 /></button></span>
                 </div>
               );
             })}
+            {!visibleIngredients.length && <Empty icon={<Boxes />} title="لا توجد مكونات مطابقة" text="غيّر البحث أو اعرض كل المكونات" />}
           </div>
         </div>
       )}
@@ -135,9 +176,14 @@ export function InventoryView({ state, update, notify }: ViewProps) {
         <div className="recipe-layout">
           <div className="panel recipe-products">
             <div className="panel-title"><div><Calculator /><span><strong>الأصناف</strong><small>اختار صنف لتعديل وصفته</small></span></div></div>
-            <div>{state.products.map((product) => (
+            <div className="recipe-product-tools">
+              <label className="search-box"><Search /><input value={recipeSearch} onChange={(event) => setRecipeSearch(event.target.value)} placeholder="ابحث عن صنف..." /></label>
+              <div className="recipe-section-filter"><button className={recipeSection === "all" ? "active" : ""} onClick={() => setRecipeSection("all")}>الكل</button><button className={recipeSection === "cooked" ? "active" : ""} onClick={() => setRecipeSection("cooked")}>مطبوخ</button><button className={recipeSection === "fresh" ? "active" : ""} onClick={() => setRecipeSection("fresh")}>طازج</button></div>
+            </div>
+            <div className="recipe-product-list">{visibleRecipeProducts.map((product) => (
               <button className={selectedProductId === product.id ? "active" : ""} onClick={() => selectProduct(product)} key={product.id}>
-                <span><strong>{product.name}</strong><small>{product.unit}</small></span><ChevronLeft />
+                <i>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : product.section === "cooked" ? <CookingPot /> : <ShoppingBasket />}</i>
+                <span><strong>{product.name}</strong><small>{product.category} · {state.recipes.some((item) => item.productId === product.id) ? "وصفة مسجلة" : "بدون وصفة"}</small></span><ChevronLeft />
               </button>
             ))}</div>
           </div>
@@ -154,8 +200,8 @@ export function InventoryView({ state, update, notify }: ViewProps) {
             </div>
             <div className="recipe-ingredients">
               {state.ingredients.map((ingredient) => (
-                <label key={ingredient.id}>
-                  <span><strong>{ingredient.name}</strong><small>{money(ingredient.unitCost)} / {ingredient.unit}</small></span>
+                <label className={(recipeDraft[ingredient.id] ?? 0) > 0 ? "used" : ""} key={ingredient.id}>
+                  <span><strong>{ingredient.name}</strong><small>{money(ingredient.unitCost)} / {ingredient.unit}{(recipeDraft[ingredient.id] ?? 0) > 0 ? ` · تكلفة ${money((recipeDraft[ingredient.id] ?? 0) * ingredient.unitCost)}` : ""}</small></span>
                   <div><input type="number" min="0" step="0.01" value={recipeDraft[ingredient.id] || ""} onChange={(event) => setRecipeDraft({ ...recipeDraft, [ingredient.id]: Number(event.target.value) })} /><em>{ingredient.unit}</em></div>
                 </label>
               ))}
@@ -166,9 +212,9 @@ export function InventoryView({ state, update, notify }: ViewProps) {
 
       {tab === "movements" && (
         <div className="panel">
-          <div className="panel-title"><div><History /><span><strong>سجل حركات المخزون</strong><small>المشتريات والاستهلاك والتسويات</small></span></div></div>
+          <div className="panel-title inventory-movements-head"><div><History /><span><strong>سجل حركات المخزون</strong><small>المشتريات والاستهلاك والتسويات</small></span></div><label className="search-box"><Search /><input value={movementSearch} onChange={(event) => setMovementSearch(event.target.value)} placeholder="ابحث باسم المكون أو البيان..." /></label></div>
           <div className="stock-movements">
-            {state.stockMovements.slice(0, 50).map((movement) => (
+            {visibleMovements.map((movement) => (
               <div key={movement.id}>
                 <span className={`movement-icon ${movement.type}`}><History /></span>
                 <span><strong>{movement.ingredientName}</strong><small>{movement.description} · {shortDate(movement.createdAt)}</small></span>
@@ -176,14 +222,15 @@ export function InventoryView({ state, update, notify }: ViewProps) {
                 <span>{money(movement.quantity * movement.unitCost)}</span>
               </div>
             ))}
-            {!state.stockMovements.length && <Empty icon={<History />} title="لا توجد حركات بعد" text="أول شراء أو طلب هيظهر هنا" />}
+            {!visibleMovements.length && <Empty icon={<History />} title="لا توجد حركات مطابقة" text="أول شراء أو طلب سيظهر هنا" />}
           </div>
         </div>
       )}
 
       {stockIngredient && (
         <Modal title={`إضافة رصيد — ${stockIngredient.name}`} onClose={() => setStockIngredient(null)}>
-          <div className="form-stack">
+          <div className="form-stack inventory-form-modal">
+            <div className="inventory-modal-hero"><span><PackagePlus /></span><div><strong>تسجيل مشتريات مخزون</strong><small>الرصيد الحالي {stockIngredient.stockQty.toLocaleString("en-US")} {stockIngredient.unit}</small></div></div>
             <label>الكمية ({stockIngredient.unit})<input type="number" min="0" step="0.01" autoFocus value={purchase.quantity || ""} onChange={(event) => setPurchase({ ...purchase, quantity: Number(event.target.value) })} /></label>
             <label>تكلفة {stockIngredient.unit}<input type="number" min="0" step="0.01" value={purchase.unitCost || ""} onChange={(event) => setPurchase({ ...purchase, unitCost: Number(event.target.value) })} /></label>
             <label>ملاحظة<input value={purchase.note} onChange={(event) => setPurchase({ ...purchase, note: event.target.value })} placeholder="اسم المورد أو رقم الفاتورة" /></label>
@@ -193,18 +240,21 @@ export function InventoryView({ state, update, notify }: ViewProps) {
         </Modal>
       )}
       {addingIngredient && (
-        <Modal title="مكون جديد" onClose={() => setAddingIngredient(false)}>
-          <div className="form-stack">
-            <label>اسم المكون<input autoFocus value={ingredientForm.name} onChange={(event) => setIngredientForm({ ...ingredientForm, name: event.target.value })} /></label>
-            <div className="form-row">
-              <label>وحدة القياس<input value={ingredientForm.unit} onChange={(event) => setIngredientForm({ ...ingredientForm, unit: event.target.value })} /></label>
-              <label>تكلفة الوحدة<input type="number" min="0" value={ingredientForm.unitCost || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, unitCost: Number(event.target.value) })} /></label>
+        <Modal title={editingIngredientId ? "تعديل المكون" : "إضافة مكون جديد"} onClose={() => { setAddingIngredient(false); setEditingIngredientId(""); setIngredientAttempted(false); }} size="medium">
+          <div className="ingredient-editor-modal">
+            <div className="inventory-modal-hero"><span>{editingIngredientId ? <Edit3 /> : <Scale />}</span><div><strong>{editingIngredientId ? "تحديث بيانات المكون" : "بيانات المكون الجديد"}</strong><small>حدد وحدة القياس والتكلفة وحد إعادة الطلب بدقة</small></div></div>
+            <div className="ingredient-editor-fields">
+              <label className={`full-field ${ingredientAttempted && ingredientForm.name.trim().length < 2 ? "invalid" : ""}`}><span>اسم المكون <em>*</em></span><div><Boxes /><input autoFocus value={ingredientForm.name} onChange={(event) => setIngredientForm({ ...ingredientForm, name: event.target.value })} placeholder="مثال: أرز مصري، زيت، فراخ..." /></div>{ingredientAttempted && ingredientForm.name.trim().length < 2 && <small>اكتب اسم المكون بوضوح</small>}{ingredientAttempted && state.ingredients.some((item) => item.id !== editingIngredientId && item.name.trim() === ingredientForm.name.trim()) && <small>هذا المكون مسجل بالفعل</small>}</label>
+              <label><span>وحدة القياس <em>*</em></span><div><Scale /><input list="ingredient-unit-options" value={ingredientForm.unit} onChange={(event) => setIngredientForm({ ...ingredientForm, unit: event.target.value })} placeholder="اختر أو اكتب الوحدة" /><datalist id="ingredient-unit-options"><option value="كجم" /><option value="جرام" /><option value="لتر" /><option value="مل" /><option value="قطعة" /><option value="عبوة" /><option value="صينية" /></datalist></div><small>الوحدة التي يتم بها الشراء والخصم</small></label>
+              <label><span>تكلفة الوحدة</span><div><Calculator /><input type="number" min="0" step="0.01" value={ingredientForm.unitCost || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, unitCost: Number(event.target.value) })} placeholder="0" /></div><small>متوسط تكلفة {ingredientForm.unit || "الوحدة"}</small></label>
+              <label><span>{editingIngredientId ? "الرصيد الحالي" : "الرصيد الافتتاحي"}</span><div><Boxes /><input type="number" min="0" step="0.01" disabled={Boolean(editingIngredientId)} value={ingredientForm.stockQty || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, stockQty: Number(event.target.value) })} placeholder="0" /></div><small>{editingIngredientId ? "يُعدّل من زر إضافة رصيد لضمان تسجيل الحركة" : "الكمية الموجودة حاليًا في المخزن"}</small></label>
+              <label><span>حد إعادة الطلب</span><div><AlertTriangle /><input type="number" min="0" step="0.01" value={ingredientForm.minStock || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, minStock: Number(event.target.value) })} placeholder="0" /></div><small>يظهر تنبيه عندما يصل الرصيد لهذا الحد</small></label>
             </div>
-            <div className="form-row">
-              <label>الرصيد الافتتاحي<input type="number" min="0" value={ingredientForm.stockQty || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, stockQty: Number(event.target.value) })} /></label>
-              <label>حد إعادة الطلب<input type="number" min="0" value={ingredientForm.minStock || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, minStock: Number(event.target.value) })} /></label>
+            <div className="ingredient-editor-note"><AlertTriangle /><span><strong>حد الطلب مهم لاستمرارية التشغيل</strong><small>اضبطه على أقل كمية آمنة قبل الحاجة لشراء مكون جديد.</small></span></div>
+            <div className="ingredient-editor-actions">
+              <button className="soft-button" onClick={() => { setAddingIngredient(false); setEditingIngredientId(""); setIngredientAttempted(false); }}>إلغاء</button>
+              <button className="primary-button" onClick={saveIngredient}><Save /> {editingIngredientId ? "حفظ التعديلات" : "إضافة المكون"}</button>
             </div>
-            <button className="primary-button" onClick={addIngredient}>حفظ المكون</button>
           </div>
         </Modal>
       )}

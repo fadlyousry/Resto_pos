@@ -1,5 +1,7 @@
 import type { AppState, Product, ProductCategory } from "../domain/types";
 
+const initialShiftOpenedAt = new Date().toISOString();
+
 export const products: Product[] = [
   { id: "p1", name: "مكرونة بشاميل", category: "صواني", section: "cooked", unit: "صينية وسط", price: 280, cost: 175, available: true, accent: "#e9a15c" },
   { id: "p2", name: "محشي مشكل", category: "محاشي", section: "cooked", unit: "كيلو", price: 190, cost: 112, available: true, accent: "#7e9a63" },
@@ -78,8 +80,9 @@ export const initialState: AppState = {
   ],
   stockMovements: [],
   cashTransactions: [],
+  cashShifts: [{ id: "initial-shift", openedAt: initialShiftOpenedAt, openingBalance: 500 }],
   shiftOpeningBalance: 500,
-  shiftOpenedAt: new Date().toISOString(),
+  shiftOpenedAt: initialShiftOpenedAt,
   nextOrderNumber: 1001,
   settings: {
     restaurantName: "بيتنا",
