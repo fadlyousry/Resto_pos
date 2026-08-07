@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppState } from "../domain/types";
 import { getStateRevision, loadState, saveState } from "./db";
 import { publishStateSync, subscribeStateSync } from "./stateSync";
+import { normalizeAppState } from "../shared/state";
 
 const SERVER_URL_KEY = "beitna-server-url-v1";
 const DEFAULT_SERVER_URL = "http://127.0.0.1:4312";
@@ -104,7 +105,7 @@ export async function saveVersionedState(
   });
   if (response.status === 409) {
     const conflict = await response.json() as VersionedState & { error: string };
-    throw new StateConflictError({ state: conflict.state, revision: conflict.revision });
+    throw new StateConflictError(normalizeVersionedState(conflict));
   }
   if (!response.ok) throw await responseError(response);
   const payload = await response.json() as { revision: string };
@@ -171,7 +172,8 @@ async function requestServerState(): Promise<VersionedState> {
   const response = await fetch(`${getServerUrl()}/api/state`);
   if (response.status === 404) throw new StateNotInitializedError();
   if (!response.ok) throw await responseError(response);
-  return response.json() as Promise<VersionedState>;
+  const payload = await response.json() as VersionedState;
+  return normalizeVersionedState(payload);
 }
 
 async function bootstrapServerState(state: AppState, sourceId: string): Promise<VersionedState> {
@@ -181,7 +183,12 @@ async function bootstrapServerState(state: AppState, sourceId: string): Promise<
     body: JSON.stringify({ state, baseRevision: null, sourceId })
   });
   if (!response.ok) throw await responseError(response);
-  return response.json() as Promise<VersionedState>;
+  const payload = await response.json() as VersionedState;
+  return normalizeVersionedState(payload);
+}
+
+function normalizeVersionedState(payload: VersionedState): VersionedState {
+  return { ...payload, state: normalizeAppState(payload.state, payload.state) };
 }
 
 async function waitForServer() {

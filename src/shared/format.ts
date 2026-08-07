@@ -34,7 +34,6 @@ export const paymentLabels: Record<PaymentMethod, string> = {
 
 export const stageLabels: Record<OrderStage, string> = {
   preparing: "قيد التجهيز",
-  assembling: "قيد التجميع",
   ready: "جاهز",
   delivered: "تم التوصيل"
 };

@@ -2,7 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { initialState } from "./seed";
 import type {
   AppState, CashShift, CashTransaction, Customer, DeliveryCompany, Driver, DriverSettlement, Ingredient,
-  Order, Product, ProductCategory, RecipeItem, StockMovement
+  Order, Product, ProductCategory, PurchaseInvoice, RecipeItem, StockMovement, Supplier
 } from "../domain/types";
 import { normalizeAppState, normalizeOrderStage } from "../shared/state";
 
@@ -73,6 +73,16 @@ async function initDatabase() {
     id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT, base_fee REAL NOT NULL,
     active INTEGER NOT NULL, notes TEXT
   )`);
+  await database.execute(`CREATE TABLE IF NOT EXISTS suppliers (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, phone TEXT NOT NULL,
+    notes TEXT, active INTEGER NOT NULL
+  )`);
+  await database.execute(`CREATE TABLE IF NOT EXISTS purchase_invoices (
+    id TEXT PRIMARY KEY, number INTEGER NOT NULL UNIQUE, supplier_id TEXT NOT NULL,
+    supplier_name TEXT NOT NULL, items_json TEXT NOT NULL, subtotal REAL NOT NULL,
+    discount REAL NOT NULL, total REAL NOT NULL, payment_method TEXT NOT NULL,
+    payment_status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL
+  )`);
   for (const migration of [
     "ALTER TABLE products ADD COLUMN options_json TEXT",
     "ALTER TABLE products ADD COLUMN image_data_url TEXT",
@@ -87,8 +97,7 @@ async function initDatabase() {
     try { await database.execute(migration); } catch { /* column already exists */ }
   }
   await database.execute("UPDATE orders SET stage = 'preparing' WHERE stage = 'confirmed'");
-  await database.execute("UPDATE orders SET stage = 'assembling' WHERE stage = 'packing'");
-  await database.execute("UPDATE orders SET stage = 'ready' WHERE stage = 'out_for_delivery'");
+  await database.execute("UPDATE orders SET stage = 'ready' WHERE stage IN ('assembling', 'packing', 'out_for_delivery')");
   await database.execute("UPDATE orders SET stage = 'delivered' WHERE stage = 'cancelled'");
   await database.execute(`CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY, value TEXT NOT NULL
@@ -130,6 +139,8 @@ export async function loadState(): Promise<AppState> {
   const stockRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM stock_movements ORDER BY created_at DESC");
   const categoriesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM categories ORDER BY section, name");
   const deliveryCompaniesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM delivery_companies ORDER BY name");
+  const suppliersRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM suppliers ORDER BY name");
+  const purchaseInvoicesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM purchase_invoices ORDER BY created_at DESC");
   const settings = await db.select<Array<{ key: string; value: string }>>("SELECT key, value FROM app_settings");
   const setting = Object.fromEntries(settings.map((row) => [row.key, row.value]));
 
@@ -212,13 +223,31 @@ export async function loadState(): Promise<AppState> {
     baseFee: Number(row.base_fee), active: Boolean(row.active),
     notes: row.notes ? String(row.notes) : undefined
   }));
+  const suppliers: Supplier[] = suppliersRaw.map((row) => ({
+    id: String(row.id), name: String(row.name), phone: String(row.phone),
+    notes: row.notes ? String(row.notes) : undefined, active: Boolean(row.active)
+  }));
+  const purchaseInvoices: PurchaseInvoice[] = purchaseInvoicesRaw.map((row) => ({
+    id: String(row.id), number: Number(row.number), supplierId: String(row.supplier_id),
+    supplierName: String(row.supplier_name), items: JSON.parse(String(row.items_json)),
+    subtotal: Number(row.subtotal), discount: Number(row.discount), total: Number(row.total),
+    paymentMethod: row.payment_method as PurchaseInvoice["paymentMethod"],
+    paymentStatus: row.payment_status as PurchaseInvoice["paymentStatus"],
+    note: row.note ? String(row.note) : undefined, createdAt: String(row.created_at)
+  }));
 
   return {
     products,
+    sections: setting.menuSections
+      ? JSON.parse(setting.menuSections)
+      : structuredClone(initialState.sections),
+    meals: setting.menuMeals ? JSON.parse(setting.menuMeals) : [],
     categories: categories.length ? categories : structuredClone(initialState.categories),
     customers, orders, drivers: drivers.length ? drivers : structuredClone(initialState.drivers),
     deliveryCompanies: deliveryCompanies.length ? deliveryCompanies : structuredClone(initialState.deliveryCompanies),
     driverSettlements,
+    suppliers,
+    purchaseInvoices,
     ingredients: ingredients.length ? ingredients : structuredClone(initialState.ingredients),
     recipes: recipes.length ? recipes : structuredClone(initialState.recipes),
     stockMovements,
@@ -231,6 +260,7 @@ export async function loadState(): Promise<AppState> {
     shiftOpeningBalance: Number(setting.shiftOpeningBalance ?? 500),
     shiftOpenedAt: setting.shiftOpenedAt ?? new Date().toISOString(),
     nextOrderNumber: Number(setting.nextOrderNumber ?? 1001),
+    nextPurchaseInvoiceNumber: Number(setting.nextPurchaseInvoiceNumber ?? 1),
     settings: setting.restaurantSettings
       ? { ...structuredClone(initialState.settings), ...JSON.parse(setting.restaurantSettings) }
       : structuredClone(initialState.settings)
@@ -341,6 +371,22 @@ export async function saveState(state: AppState): Promise<string> {
       [transaction.id, transaction.type, transaction.method, transaction.amount, transaction.direction, transaction.description, transaction.orderId ?? null, transaction.createdAt]
     );
   }
+  for (const supplier of state.suppliers) {
+    await db.execute(
+      `INSERT INTO suppliers (id,name,phone,notes,active)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT(id) DO UPDATE SET name=$2,phone=$3,notes=$4,active=$5`,
+      [supplier.id, supplier.name, supplier.phone, supplier.notes ?? null, supplier.active ? 1 : 0]
+    );
+  }
+  for (const invoice of state.purchaseInvoices) {
+    await db.execute(
+      `INSERT INTO purchase_invoices (id,number,supplier_id,supplier_name,items_json,subtotal,discount,total,payment_method,payment_status,note,created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT(id) DO NOTHING`,
+      [invoice.id, invoice.number, invoice.supplierId, invoice.supplierName, JSON.stringify(invoice.items), invoice.subtotal, invoice.discount, invoice.total, invoice.paymentMethod, invoice.paymentStatus, invoice.note ?? null, invoice.createdAt]
+    );
+  }
   for (const shift of state.cashShifts) {
     await db.execute(
       `INSERT INTO cash_shifts (id,opened_at,opening_balance,closed_at,expected_cash,actual_cash,difference,note)
@@ -352,8 +398,10 @@ export async function saveState(state: AppState): Promise<string> {
   for (const [key, value] of Object.entries({
     shiftOpeningBalance: String(state.shiftOpeningBalance),
     shiftOpenedAt: state.shiftOpenedAt,
-    nextOrderNumber: String(state.nextOrderNumber)
-    ,
+    nextOrderNumber: String(state.nextOrderNumber),
+    nextPurchaseInvoiceNumber: String(state.nextPurchaseInvoiceNumber),
+    menuSections: JSON.stringify(state.sections),
+    menuMeals: JSON.stringify(state.meals),
     restaurantSettings: JSON.stringify(state.settings),
     stateRevision: revision
   })) {

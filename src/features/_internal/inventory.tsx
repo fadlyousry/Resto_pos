@@ -1,5 +1,5 @@
 // Internal inventory implementation. Consume it through the public feature index.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertTriangle, Boxes, Calculator, ChevronLeft, CookingPot, Edit3, History, PackagePlus, Plus,
   Save, Search, ShoppingBasket, Scale
@@ -10,7 +10,7 @@ import type {
 import type { ViewProps } from "../../shared/contracts";
 import { money, shortDate } from "../../shared/format";
 import { uid } from "../../shared/id";
-import { Empty, MiniStat, Modal } from "../../shared/ui";
+import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 
 export function InventoryView({ state, update, notify }: ViewProps) {
   const [tab, setTab] = useState<"stock" | "recipes" | "movements">("stock");
@@ -24,9 +24,18 @@ export function InventoryView({ state, update, notify }: ViewProps) {
   const [movementSearch, setMovementSearch] = useState("");
   const [ingredientAttempted, setIngredientAttempted] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id ?? "");
-  const [purchase, setPurchase] = useState({ quantity: 0, unitCost: 0, note: "" });
   const [ingredientForm, setIngredientForm] = useState({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
   const [recipeDraft, setRecipeDraft] = useState<Record<string, number>>(() => recipeRecord(state.recipes, selectedProductId));
+
+  // Purchase Modal State
+  const [purchaseMode, setPurchaseMode] = useState<"unit" | "piece">("unit");
+  const [purchaseQty, setPurchaseQty] = useState<number>(0);
+  const [pieceCount, setPieceCount] = useState<number>(0);
+  const [pieceWeight, setPieceWeight] = useState<number>(1);
+  const [purchaseUnitCost, setPurchaseUnitCost] = useState<number>(0);
+  const [pieceCost, setPieceCost] = useState<number>(0);
+  const [costMode, setCostMode] = useState<"per_unit" | "per_piece">("per_unit");
+  const [purchaseNote, setPurchaseNote] = useState<string>("");
 
   const lowStock = state.ingredients.filter((item) => item.stockQty <= item.minStock);
   const visibleIngredients = state.ingredients.filter((item) =>
@@ -41,7 +50,6 @@ export function InventoryView({ state, update, notify }: ViewProps) {
     movement.ingredientName.includes(movementSearch.trim())
     || movement.description.includes(movementSearch.trim())
   ).slice(0, 50);
-  const inventoryValue = state.ingredients.reduce((sum, item) => sum + item.stockQty * item.unitCost, 0);
   const selectedProduct = state.products.find((product) => product.id === selectedProductId);
   const recipeCost = state.ingredients.reduce((sum, ingredient) => sum + (recipeDraft[ingredient.id] ?? 0) * ingredient.unitCost, 0);
 
@@ -50,30 +58,90 @@ export function InventoryView({ state, update, notify }: ViewProps) {
     setRecipeDraft(recipeRecord(state.recipes, product.id));
   };
 
+  const openAddStockModal = (ingredient: Ingredient) => {
+    setStockIngredient(ingredient);
+    setPurchaseMode("unit");
+    setPurchaseQty(0);
+    setPieceCount(0);
+    setPieceWeight(1);
+    const roundedCost = Math.round(ingredient.unitCost * 100) / 100;
+    setPurchaseUnitCost(roundedCost);
+    setPieceCost(roundedCost);
+    setCostMode("per_unit");
+    setPurchaseNote("");
+  };
+
+  // Calculations for stock addition
+  const calculatedQty = purchaseMode === "unit" ? purchaseQty : (pieceCount * pieceWeight);
+  const calculatedUnitCost = costMode === "per_unit"
+    ? purchaseUnitCost
+    : (pieceWeight > 0 ? pieceCost / pieceWeight : 0);
+  const totalPurchaseCost = costMode === "per_unit"
+    ? calculatedQty * purchaseUnitCost
+    : pieceCount * pieceCost;
+
+  const roundedQty = Math.round(calculatedQty * 1000) / 1000;
+  const roundedTotalCost = Math.round(totalPurchaseCost * 100) / 100;
+  const roundedUnitCost = Math.round(calculatedUnitCost * 100) / 100;
+
+  const currentStock = stockIngredient?.stockQty || 0;
+  const currentCost = stockIngredient?.unitCost || 0;
+  const newStock = currentStock + roundedQty;
+  const newWeightedCost = newStock > 0
+    ? ((currentStock * currentCost) + roundedTotalCost) / newStock
+    : roundedUnitCost;
+  const roundedNewWeightedCost = Math.round(newWeightedCost * 100) / 100;
+
   const addPurchase = () => {
-    if (!stockIngredient || purchase.quantity <= 0 || purchase.unitCost <= 0) return;
+    if (!stockIngredient || roundedQty <= 0 || roundedTotalCost <= 0) return;
     const createdAt = new Date().toISOString();
-    const totalCost = purchase.quantity * purchase.unitCost;
-    const newStock = stockIngredient.stockQty + purchase.quantity;
-    const weightedCost = ((stockIngredient.stockQty * stockIngredient.unitCost) + totalCost) / newStock;
     const movement: StockMovement = {
-      id: uid(), ingredientId: stockIngredient.id, ingredientName: stockIngredient.name,
-      type: "purchase", quantity: purchase.quantity, unitCost: purchase.unitCost,
-      description: purchase.note || "إضافة مشتريات للمخزون", createdAt
+      id: uid(),
+      ingredientId: stockIngredient.id,
+      ingredientName: stockIngredient.name,
+      type: "purchase",
+      quantity: roundedQty,
+      unitCost: roundedUnitCost,
+      description: purchaseNote.trim() || `إضافة مشتريات (${purchaseMode === "piece" ? `${pieceCount} قطعة × ${pieceWeight} ${stockIngredient.unit}` : `${roundedQty} ${stockIngredient.unit}`})`,
+      createdAt
     };
     const expense: CashTransaction = {
-      id: uid(), type: "expense", method: "cash", amount: totalCost, direction: "out",
-      description: `شراء مخزون — ${stockIngredient.name}`, createdAt
+      id: uid(),
+      type: "expense",
+      method: "cash",
+      amount: roundedTotalCost,
+      direction: "out",
+      description: `شراء مخزون — ${stockIngredient.name}`,
+      createdAt
     };
     update((current) => ({
       ...current,
-      ingredients: current.ingredients.map((item) => item.id === stockIngredient.id ? { ...item, stockQty: newStock, unitCost: weightedCost } : item),
+      ingredients: current.ingredients.map((item) =>
+        item.id === stockIngredient.id
+          ? { ...item, stockQty: newStock, unitCost: roundedNewWeightedCost }
+          : item
+      ),
       stockMovements: [movement, ...current.stockMovements],
       cashTransactions: [expense, ...current.cashTransactions]
     }));
     setStockIngredient(null);
-    setPurchase({ quantity: 0, unitCost: 0, note: "" });
-    notify(`تمت إضافة ${purchase.quantity} ${stockIngredient.unit} للمخزون`);
+    notify(`تمت إضافة ${roundedQty} ${stockIngredient.unit} بنجاح للمخزون`);
+  };
+
+  const saveRecipe = () => {
+    if (!selectedProduct) return;
+    const recipes: RecipeItem[] = Object.entries(recipeDraft)
+      .filter(([, quantity]) => quantity > 0)
+      .map(([ingredientId, quantity]) => ({
+        id: state.recipes.find((item) => item.productId === selectedProduct.id && item.ingredientId === ingredientId)?.id ?? uid(),
+        productId: selectedProduct.id, ingredientId, quantity
+      }));
+    update((current) => ({
+      ...current,
+      recipes: [...current.recipes.filter((item) => item.productId !== selectedProduct.id), ...recipes],
+      products: current.products.map((product) => product.id === selectedProduct.id ? { ...product, cost: recipeCost } : product)
+    }));
+    notify(`تم حفظ وصفة ${selectedProduct.name} وتحديث تكلفتها`);
   };
 
   const saveIngredient = () => {
@@ -99,40 +167,22 @@ export function InventoryView({ state, update, notify }: ViewProps) {
     notify(editingIngredientId ? "تم تحديث بيانات المكون" : "تمت إضافة المكون");
   };
 
-  const saveRecipe = () => {
-    if (!selectedProduct) return;
-    const recipes: RecipeItem[] = Object.entries(recipeDraft)
-      .filter(([, quantity]) => quantity > 0)
-      .map(([ingredientId, quantity]) => ({
-        id: state.recipes.find((item) => item.productId === selectedProduct.id && item.ingredientId === ingredientId)?.id ?? uid(),
-        productId: selectedProduct.id, ingredientId, quantity
-      }));
-    update((current) => ({
-      ...current,
-      recipes: [...current.recipes.filter((item) => item.productId !== selectedProduct.id), ...recipes],
-      products: current.products.map((product) => product.id === selectedProduct.id ? { ...product, cost: recipeCost } : product)
-    }));
-    notify(`تم حفظ وصفة ${selectedProduct.name} وتحديث تكلفتها`);
+
+  const openNewIngredient = () => {
+    setEditingIngredientId("");
+    setIngredientAttempted(false);
+    setIngredientForm({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
+    setAddingIngredient(true);
   };
+  const inventorySectionHeader = (title: string, subtitle: string, extraAction?: ReactNode) => (
+    <WorkspaceSectionHeader title={title} subtitle={subtitle} actions={<>
+      {extraAction}
+      <button className="primary-button compact" onClick={openNewIngredient}><Plus /> إضافة مكون</button>
+    </>} />
+  );
 
   return (
     <div className="inventory-page">
-      <section className="inventory-hero">
-        <div><span><Boxes /></span><div><strong>المخزون والوصفات</strong><small>تابع أرصدة المكونات، سجل المشتريات واحسب تكلفة كل وصفة</small></div></div>
-        <button className="primary-button compact" onClick={() => {
-          setEditingIngredientId("");
-          setIngredientAttempted(false);
-          setIngredientForm({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
-          setAddingIngredient(true);
-        }}><Plus /> إضافة مكون</button>
-      </section>
-      <div className="stat-strip">
-        <MiniStat icon={<Boxes />} label="قيمة المخزون" value={money(inventoryValue)} tone="green" />
-        <MiniStat icon={<AlertTriangle />} label="تحت حد الطلب" value={String(lowStock.length)} tone="red" />
-        <MiniStat icon={<Scale />} label="عدد المكونات" value={String(state.ingredients.length)} tone="blue" />
-        <MiniStat icon={<Calculator />} label="وصفات مسجلة" value={String(new Set(state.recipes.map((item) => item.productId)).size)} tone="orange" />
-      </div>
-
       <div className="inventory-tabs">
         <button className={tab === "stock" ? "active" : ""} onClick={() => setTab("stock")}><Boxes /><span><strong>أرصدة المخزون</strong><small>الكميات وحد الطلب</small></span></button>
         <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Calculator /><span><strong>الوصفات والتكلفة</strong><small>مكونات وتكلفة الأصناف</small></span></button>
@@ -141,6 +191,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
 
       {tab === "stock" && (
         <div className="panel inventory-stock-panel">
+          {inventorySectionHeader("أرصدة المخزون", `${visibleIngredients.length} مكون ظاهر من إجمالي ${state.ingredients.length}`)}
           <div className="inventory-toolbar">
             <label className="search-box"><Search /><input value={stockSearch} onChange={(event) => setStockSearch(event.target.value)} placeholder="ابحث عن مكون..." /></label>
             <div className="filter-tabs"><button className={stockScope === "all" ? "active" : ""} onClick={() => setStockScope("all")}>كل المكونات</button><button className={stockScope === "low" ? "active danger" : ""} onClick={() => setStockScope("low")}><AlertTriangle /> تحت حد الطلب <b>{lowStock.length}</b></button></div>
@@ -158,7 +209,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
                   <span>{ingredient.minStock.toLocaleString("en-US")} {ingredient.unit}</span>
                   <span>{money(ingredient.unitCost)}</span>
                   <span><strong>{money(ingredient.stockQty * ingredient.unitCost)}</strong></span>
-                  <span className="inventory-row-actions"><button className="stock-add-button" onClick={() => { setStockIngredient(ingredient); setPurchase({ quantity: 0, unitCost: ingredient.unitCost, note: "" }); }}><PackagePlus /> إضافة رصيد</button><button className="stock-edit-button" onClick={() => {
+                  <span className="inventory-row-actions"><button className="stock-add-button" onClick={() => openAddStockModal(ingredient)}><PackagePlus /> إضافة رصيد</button><button className="stock-edit-button" onClick={() => {
                     setEditingIngredientId(ingredient.id);
                     setIngredientAttempted(false);
                     setIngredientForm({ name: ingredient.name, unit: ingredient.unit, stockQty: ingredient.stockQty, minStock: ingredient.minStock, unitCost: ingredient.unitCost });
@@ -173,7 +224,9 @@ export function InventoryView({ state, update, notify }: ViewProps) {
       )}
 
       {tab === "recipes" && (
-        <div className="recipe-layout">
+        <div className="inventory-tab-content">
+          <div className="panel">{inventorySectionHeader("الوصفات والتكلفة", `${visibleRecipeProducts.length} صنف متاح لتكوين الوصفات`)}</div>
+          <div className="recipe-layout">
           <div className="panel recipe-products">
             <div className="panel-title"><div><Calculator /><span><strong>الأصناف</strong><small>اختار صنف لتعديل وصفته</small></span></div></div>
             <div className="recipe-product-tools">
@@ -208,11 +261,12 @@ export function InventoryView({ state, update, notify }: ViewProps) {
             </div>
           </div>
         </div>
+        </div>
       )}
 
       {tab === "movements" && (
         <div className="panel">
-          <div className="panel-title inventory-movements-head"><div><History /><span><strong>سجل حركات المخزون</strong><small>المشتريات والاستهلاك والتسويات</small></span></div><label className="search-box"><Search /><input value={movementSearch} onChange={(event) => setMovementSearch(event.target.value)} placeholder="ابحث باسم المكون أو البيان..." /></label></div>
+          {inventorySectionHeader("سجل حركات المخزون", `${visibleMovements.length} حركة ظاهرة`, <label className="search-box inventory-header-search"><Search /><input value={movementSearch} onChange={(event) => setMovementSearch(event.target.value)} placeholder="ابحث باسم المكون أو البيان..." /></label>)}
           <div className="stock-movements">
             {visibleMovements.map((movement) => (
               <div key={movement.id}>
@@ -228,14 +282,173 @@ export function InventoryView({ state, update, notify }: ViewProps) {
       )}
 
       {stockIngredient && (
-        <Modal title={`إضافة رصيد — ${stockIngredient.name}`} onClose={() => setStockIngredient(null)}>
-          <div className="form-stack inventory-form-modal">
-            <div className="inventory-modal-hero"><span><PackagePlus /></span><div><strong>تسجيل مشتريات مخزون</strong><small>الرصيد الحالي {stockIngredient.stockQty.toLocaleString("en-US")} {stockIngredient.unit}</small></div></div>
-            <label>الكمية ({stockIngredient.unit})<input type="number" min="0" step="0.01" autoFocus value={purchase.quantity || ""} onChange={(event) => setPurchase({ ...purchase, quantity: Number(event.target.value) })} /></label>
-            <label>تكلفة {stockIngredient.unit}<input type="number" min="0" step="0.01" value={purchase.unitCost || ""} onChange={(event) => setPurchase({ ...purchase, unitCost: Number(event.target.value) })} /></label>
-            <label>ملاحظة<input value={purchase.note} onChange={(event) => setPurchase({ ...purchase, note: event.target.value })} placeholder="اسم المورد أو رقم الفاتورة" /></label>
-            <div className="purchase-total"><span>إجمالي المشتريات</span><strong>{money(purchase.quantity * purchase.unitCost)}</strong></div>
-            <button className="primary-button" onClick={addPurchase}><PackagePlus /> إضافة وتسجيل المصروف</button>
+        <Modal title={`إضافة رصيد — ${stockIngredient.name}`} onClose={() => setStockIngredient(null)} size="medium">
+          <div className="add-stock-modal">
+            <div className="stock-hero-badge">
+              <PackagePlus />
+              <div>
+                <strong>تسجيل مشتريات ({stockIngredient.name})</strong>
+                <small>الرصيد الحالي: {stockIngredient.stockQty.toLocaleString("en-US")} {stockIngredient.unit} · التكلفة الحالية: {money(Math.round(stockIngredient.unitCost * 100) / 100)} ج.م / {stockIngredient.unit}</small>
+              </div>
+            </div>
+
+            {/* Toggle unit mode */}
+            <div className="purchase-unit-toggle">
+              <button
+                type="button"
+                className={purchaseMode === "unit" ? "active" : ""}
+                onClick={() => setPurchaseMode("unit")}
+              >
+                <Scale size={16} /> الشراء بالـ {stockIngredient.unit} المباشر
+              </button>
+              <button
+                type="button"
+                className={purchaseMode === "piece" ? "active" : ""}
+                onClick={() => setPurchaseMode("piece")}
+              >
+                <Boxes size={16} /> الشراء بالعدد / بالواحدة (قطع)
+              </button>
+            </div>
+
+            {/* Fields Grid */}
+            {purchaseMode === "unit" ? (
+              <div className="add-stock-grid">
+                <label>
+                  <span>الكمية بـ ({stockIngredient.unit}) <em>*</em></span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    autoFocus
+                    value={purchaseQty || ""}
+                    onChange={(e) => setPurchaseQty(Number(e.target.value))}
+                    placeholder="0"
+                  />
+                </label>
+                <label>
+                  <span>تكلفة الـ {stockIngredient.unit} (ج.م) <em>*</em></span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={purchaseUnitCost || ""}
+                    onChange={(e) => setPurchaseUnitCost(Number(e.target.value))}
+                    placeholder="0"
+                  />
+                </label>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div className="add-stock-grid">
+                  <label>
+                    <span>عدد القطع / الأفراد (واحدة) <em>*</em></span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      autoFocus
+                      value={pieceCount || ""}
+                      onChange={(e) => setPieceCount(Number(e.target.value))}
+                      placeholder="مثال: 5"
+                    />
+                  </label>
+                  <label>
+                    <span>متوسط كمية القطعة بـ ({stockIngredient.unit}) <em>*</em></span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={pieceWeight || ""}
+                      onChange={(e) => setPieceWeight(Number(e.target.value))}
+                      placeholder="مثال: 1.5"
+                    />
+                    <small>= إجمالي {roundedQty} {stockIngredient.unit}</small>
+                  </label>
+                </div>
+
+                <div className="cost-mode-selector">
+                  <span>حساب السعر:</span>
+                  <label>
+                    <input
+                      type="radio"
+                      name="costMode"
+                      checked={costMode === "per_unit"}
+                      onChange={() => setCostMode("per_unit")}
+                    />
+                    بسعر الـ {stockIngredient.unit}
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="costMode"
+                      checked={costMode === "per_piece"}
+                      onChange={() => setCostMode("per_piece")}
+                    />
+                    بسعر القطعة الواحدة
+                  </label>
+                </div>
+
+                <div className="add-stock-grid">
+                  {costMode === "per_unit" ? (
+                    <label style={{ gridColumn: "1 / -1" }}>
+                      <span>تكلفة الـ {stockIngredient.unit} (ج.م) <em>*</em></span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={purchaseUnitCost || ""}
+                        onChange={(e) => setPurchaseUnitCost(Number(e.target.value))}
+                        placeholder="0"
+                      />
+                    </label>
+                  ) : (
+                    <label style={{ gridColumn: "1 / -1" }}>
+                      <span>تكلفة القطعة الواحدة (ج.م) <em>*</em></span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={pieceCost || ""}
+                        onChange={(e) => setPieceCost(Number(e.target.value))}
+                        placeholder="0"
+                      />
+                      <small>= تعادل {money(roundedUnitCost)} ج.م لكل {stockIngredient.unit}</small>
+                    </label>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Note */}
+            <label style={{ display: "flex", flexDirection: "column", gap: "5px", fontSize: "11px", fontWeight: 600 }}>
+              <span>ملاحظة</span>
+              <input
+                value={purchaseNote}
+                onChange={(e) => setPurchaseNote(e.target.value)}
+                placeholder="اسم المورد، رقم الفاتورة..."
+                style={{ padding: "9px 12px", borderRadius: "8px", border: "1px solid var(--line)", fontSize: "12px" }}
+              />
+            </label>
+
+            {/* Summary Banner */}
+            <div className="purchase-summary-banner">
+              <div>
+                <small>الكمية المضافة</small>
+                <strong>{roundedQty.toLocaleString("en-US")} {stockIngredient.unit}</strong>
+              </div>
+              <div>
+                <small>إجمالي المشتريات</small>
+                <strong>{money(roundedTotalCost)} ج.م</strong>
+              </div>
+              <div>
+                <small>متوسط التكلفة الجديد</small>
+                <strong>{money(roundedNewWeightedCost)} ج.م</strong>
+              </div>
+            </div>
+
+            <button className="primary-button" onClick={addPurchase}>
+              <PackagePlus /> إضافة وتأكيد تسجيل المصروف
+            </button>
           </div>
         </Modal>
       )}

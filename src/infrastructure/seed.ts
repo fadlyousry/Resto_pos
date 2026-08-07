@@ -1,4 +1,4 @@
-import type { AppState, Product, ProductCategory } from "../domain/types";
+import type { AppState, MenuSection, Product, ProductCategory } from "../domain/types";
 
 const initialShiftOpenedAt = new Date().toISOString();
 
@@ -30,8 +30,15 @@ const categories: ProductCategory[] = [...new Map(products.map((product) => [
   } satisfies ProductCategory
 ])).values()];
 
+export const sections: MenuSection[] = [
+  { id: "cooked", name: "مطبوخ" },
+  { id: "fresh", name: "طازة / غير مطبوخ" }
+];
+
 export const initialState: AppState = {
   products,
+  sections,
+  meals: [],
   categories,
   customers: [
     { id: "c1", name: "منى أحمد", phone: "01012345678", address: "شارع التحرير، الدقي، الدور الثالث", zone: "الدقي", ordersCount: 8, totalSpent: 2460, lastOrder: new Date(Date.now() - 86400000 * 2).toISOString() },
@@ -81,9 +88,12 @@ export const initialState: AppState = {
   stockMovements: [],
   cashTransactions: [],
   cashShifts: [{ id: "initial-shift", openedAt: initialShiftOpenedAt, openingBalance: 500 }],
+  suppliers: [],
+  purchaseInvoices: [],
   shiftOpeningBalance: 500,
   shiftOpenedAt: initialShiftOpenedAt,
   nextOrderNumber: 1001,
+  nextPurchaseInvoiceNumber: 1,
   settings: {
     restaurantName: "بيتنا",
     subtitle: "أكل بيتي معمول بحب",

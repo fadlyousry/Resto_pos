@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Bell, Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen, RefreshCw, Server } from "lucide-react";
-import { AggregationView } from "../features/aggregation";
 import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
@@ -9,6 +8,7 @@ import { InventoryView } from "../features/inventory";
 import { KitchenView } from "../features/kitchen";
 import { OrdersView } from "../features/orders";
 import { PosView } from "../features/pos";
+import { PurchasePosView, PurchaseHistoryView } from "../features/purchases";
 import { ReportsView } from "../features/reports";
 import { SettingsView } from "../features/settings";
 import type { Order } from "../domain/types";
@@ -85,7 +85,7 @@ export default function App() {
   };
 
   return (
-    <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${view === "pos" ? " pos-active" : ""}`}>
+    <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${view === "pos" || view === "purchase-pos" ? " pos-active" : ""}`}>
       <aside className="sidebar">
         <button className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed ? "فتح القائمة الجانبية" : "تصغير القائمة الجانبية"}>
           {sidebarCollapsed ? <PanelRightOpen /> : <PanelRightClose />}
@@ -138,9 +138,10 @@ export default function App() {
 
         <section className="page">
           {view === "pos" && <PosView {...viewProps} editingOrder={editingOrder} onEditOrder={editOrderInPos} onFinishEditing={finishOrderEditing} />}
+          {view === "purchase-pos" && <PurchasePosView {...viewProps} />}
+          {view === "purchase-history" && <PurchaseHistoryView {...viewProps} />}
           {view === "orders" && <OrdersView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "kitchen" && <KitchenView {...viewProps} />}
-          {view === "aggregation" && <AggregationView {...viewProps} />}
           {view === "delivery" && <DeliveryView {...viewProps} />}
           {view === "customers" && <CustomerRecordsView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "products" && <ProductCatalogView {...viewProps} />}

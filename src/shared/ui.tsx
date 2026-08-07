@@ -1,6 +1,18 @@
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
+export function WorkspaceSectionHeader({ title, subtitle, actions, className = "" }: {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return <div className={`panel-head workspace-section-header ${className}`.trim()}>
+    <div><strong>{title}</strong>{subtitle && <small>{subtitle}</small>}</div>
+    {actions && <div className="workspace-section-actions">{actions}</div>}
+  </div>;
+}
+
 export function Modal({
   title,
   children,

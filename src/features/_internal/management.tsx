@@ -1,30 +1,58 @@
 // Internal implementation. Consume it through the public feature index files.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   BadgeDollarSign, Boxes, Building2, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
-  MapPin, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
-  ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users
+  MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
+  ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
+  PhoneCall, ExternalLink, Clock, Download
 } from "lucide-react";
 import type {
-  AppState, Customer, Order, Product, ProductCategory, ProductSection
+  AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
-import { money, shortDate } from "../../shared/format";
+import { money, shortDate, stageLabels } from "../../shared/format";
 import { uid } from "../../shared/id";
-import { Empty, Modal } from "../../shared/ui";
+import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 import { BackupPanel } from "../settings/BackupPanel";
 import { InvoiceModal } from "../orders/InvoiceModal";
 import { testServerConnection } from "../../infrastructure/dataClient";
 
-const emptyProduct = (category?: ProductCategory): Product => ({
-  id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? "cooked",
+const emptyProduct = (category?: ProductCategory, section: ProductSection = "cooked"): Product => ({
+  id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? section,
   unit: "طبق", price: 0, cost: 0, available: true, accent: category?.color ?? "#6f927d"
 });
+
+const MEALS_SECTION = "__meals";
+
+interface CatalogTableHeaderProps {
+  title: string;
+  subtitle: string;
+  addLabel: string;
+  addIcon: ReactNode;
+  onAdd: () => void;
+  onManageSections: () => void;
+  onManageCategories: () => void;
+  extraAction?: ReactNode;
+}
+
+function CatalogTableHeader({
+  title, subtitle, addLabel, addIcon, onAdd, onManageSections, onManageCategories, extraAction
+}: CatalogTableHeaderProps) {
+  return <WorkspaceSectionHeader title={title} subtitle={subtitle} className="products-admin-head catalog-table-header" actions={<>
+      {extraAction}
+      <button className="soft-button" onClick={onManageSections}><SlidersHorizontal /> إدارة الأقسام</button>
+      <button className="soft-button" onClick={onManageCategories}><Boxes /> إدارة التصنيفات</button>
+      <button className="primary-button compact" onClick={onAdd}>{addIcon} {addLabel}</button>
+    </>} />;
+}
 
 export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
-  const [section, setSection] = useState<ProductSection>("cooked");
+  const [sectionsOpen, setSectionsOpen] = useState(false);
+  const [mealsOpen, setMealsOpen] = useState(false);
+  const [mealToEdit, setMealToEdit] = useState<Meal | null>(null);
+  const [section, setSection] = useState<ProductSection>(() => state.sections[0]?.id ?? "cooked");
   const [categoryFilter, setCategoryFilter] = useState("الكل");
   const [search, setSearch] = useState("");
   const [draftPrices, setDraftPrices] = useState<Record<string, number>>({});
@@ -105,41 +133,66 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   }));
   const categories = state.categories.filter((item) => item.active && (!editing || item.section === editing.section));
 
-  const cookedCount = state.products.filter((item) => item.section === "cooked").length;
-  const freshCount = state.products.filter((item) => item.section === "fresh").length;
+  const activeSection = state.sections.find((item) => item.id === section) ?? state.sections[0];
   const availableCount = sectionProducts.filter((item) => item.available).length;
+  const visibleMeals = state.meals.filter((meal) => meal.name.includes(search.trim()) || meal.components.some((item) => item.name.includes(search.trim())));
+  const mealStandaloneTotal = (meal: Meal) => meal.components.reduce((sum, component) => sum + (state.products.find((product) => product.id === component.productId)?.price ?? 0) * component.quantity, 0);
 
   return <div className="management-page products-admin-page">
-    <section className="products-admin-hero">
-      <div>
-        <span><BadgeDollarSign /></span>
-        <div><strong>إدارة المنيو والأسعار</strong><small>حدّث الأسعار والتوفر والمقاسات بسرعة من مكان واحد</small></div>
-      </div>
-      <div className="management-actions">
-        <button className="soft-button" onClick={() => setCategoriesOpen(true)}><Boxes /> إدارة التصنيفات</button>
-        <button className="primary-button compact" onClick={() => setEditing(emptyProduct(state.categories.find((item) => item.section === section && item.active)))}><PackagePlus /> إضافة صنف</button>
-      </div>
-    </section>
-
     <div className="products-menu-switch">
-      <button className={section === "cooked" ? "active cooked" : ""} onClick={() => { setSection("cooked"); setCategoryFilter("الكل"); }}>
-        <span><CookingPot /></span><div><strong>منيو الأكل المطبوخ</strong><small>{cookedCount} صنف · جاهز للتقديم</small></div><b>{state.products.filter((item) => item.section === "cooked" && item.available).length} متاح</b>
-      </button>
-      <button className={section === "fresh" ? "active fresh" : ""} onClick={() => { setSection("fresh"); setCategoryFilter("الكل"); }}>
-        <span><ShoppingBasket /></span><div><strong>منيو الأكل الطازج</strong><small>{freshCount} صنف · غير مطبوخ</small></div><b>{state.products.filter((item) => item.section === "fresh" && item.available).length} متاح</b>
+      {state.sections.map((item, index) => {
+        const count = state.products.filter((product) => product.section === item.id).length;
+        const available = state.products.filter((product) => product.section === item.id && product.available).length;
+        return <button className={section === item.id ? `active ${index % 2 ? "fresh" : "cooked"}` : ""} onClick={() => { setSection(item.id); setCategoryFilter("الكل"); }} key={item.id}>
+          <span>{index % 2 ? <ShoppingBasket /> : <CookingPot />}</span><div><strong>{item.name}</strong><small>{count} صنف في القسم</small></div><b>{available} متاح</b>
+        </button>;
+      })}
+      <button className={section === MEALS_SECTION ? "meals-menu-shortcut active" : "meals-menu-shortcut"} onClick={() => { setSection(MEALS_SECTION); setCategoryFilter("الكل"); setSearch(""); }}>
+        <span><ShoppingBasket /></span>
+        <div><strong>الوجبات</strong><small>{state.meals.length} وجبة مكوّنة من الأصناف</small></div>
+        <b>{state.meals.filter((meal) => meal.available).length} متاح</b>
       </button>
     </div>
 
-    <div className="panel products-admin-panel">
-      <div className="panel-head products-admin-head">
-        <div>
-          <strong>{section === "cooked" ? "أصناف المنيو المطبوخ" : "أصناف المنيو الطازج"}</strong>
-          <small>{availableCount} صنف متاح من إجمالي {sectionProducts.length}</small>
-        </div>
-        <button className="save-price-changes" disabled={!priceChangesCount} onClick={savePriceChanges}><Check /> حفظ تغييرات الأسعار {priceChangesCount > 0 && <b>{priceChangesCount}</b>}</button>
+    {section === MEALS_SECTION ? <div className="panel products-admin-panel meals-admin-panel">
+      <CatalogTableHeader
+        title="إدارة الوجبات"
+        subtitle={`${state.meals.filter((meal) => meal.available).length} وجبة متاحة من إجمالي ${state.meals.length}`}
+        addLabel="إضافة وجبة"
+        addIcon={<Plus />}
+        onAdd={() => { setMealToEdit(null); setMealsOpen(true); }}
+        onManageSections={() => setSectionsOpen(true)}
+        onManageCategories={() => setCategoriesOpen(true)}
+      />
+      <div className="products-admin-toolbar meals-admin-toolbar">
+        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم الوجبة أو أحد مكوناتها..." /></label>
+        <span className="meals-business-hint"><ShoppingBasket /><span><strong>سعر مستقل للوجبة</strong><small>المكونات تُخصم تلقائيًا من المخزون عند البيع</small></span></span>
       </div>
+      <div className="meal-management-table">
+        <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span>التعديل</span><span>متاحة</span></div>
+        {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
+          <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong><small>{meal.components.length} صنف داخل الوجبة</small></div></div>
+          <div className="meal-admin-components">{meal.components.map((component) => <span key={component.productId}><b>{component.quantity}×</b> {component.name}</span>)}</div>
+          <span className="meal-standalone-price"><small>منفردة</small><b>{money(mealStandaloneTotal(meal))}</b></span>
+          <span className="meal-selling-price"><small>سعر الوجبة</small><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</span>
+          <button className="product-edit-button" onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })) }); setMealsOpen(true); }}><Edit3 /><span>تعديل</span></button>
+          <button className={meal.available ? "product-availability active" : "product-availability"} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}><i /><span>{meal.available ? "متاحة" : "متوقفة"}</span></button>
+        </div>)}
+        {!visibleMeals.length && <Empty icon={<ShoppingBasket />} title={search ? "لا توجد وجبات مطابقة" : "لا توجد وجبات حتى الآن"} text={search ? "جرّب اسمًا آخر أو ابحث باسم أحد المكونات" : "اضغط إضافة وجبة وابدأ بتكوينها من الأصناف"} />}
+      </div>
+    </div> : <div className="panel products-admin-panel">
+      <CatalogTableHeader
+        title={`أصناف قسم ${activeSection?.name ?? "المنيو"}`}
+        subtitle={`${availableCount} صنف متاح من إجمالي ${sectionProducts.length}`}
+        addLabel="إضافة صنف"
+        addIcon={<PackagePlus />}
+        onAdd={() => setEditing(emptyProduct(state.categories.find((item) => item.section === section && item.active), section))}
+        onManageSections={() => setSectionsOpen(true)}
+        onManageCategories={() => setCategoriesOpen(true)}
+        extraAction={<button className="save-price-changes" disabled={!priceChangesCount} onClick={savePriceChanges}><Check /> حفظ تغييرات الأسعار {priceChangesCount > 0 && <b>{priceChangesCount}</b>}</button>}
+      />
       <div className="products-admin-toolbar">
-        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`ابحث في منيو ${section === "cooked" ? "المطبوخ" : "الطازج"}...`} /></label>
+        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`ابحث في قسم ${activeSection?.name ?? "المنيو"}...`} /></label>
         <div className="products-category-filter">
           {sectionCategories.map((item) => <button key={item} className={categoryFilter === item ? "active" : ""} onClick={() => setCategoryFilter(item)}>{item}</button>)}
         </div>
@@ -170,7 +223,7 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
         </div>)}
         {!products.length && <Empty icon={<Search />} title="لا توجد أصناف مطابقة" text="غيّر البحث أو اختر تصنيفًا آخر" />}
       </div>
-    </div>
+    </div>}
 
     {editing && <Modal title={state.products.some((item) => item.id === editing.id) ? "تعديل الصنف" : "إضافة صنف"} onClose={() => setEditing(null)} size="wide">
       <div className="product-editor-layout">
@@ -190,7 +243,7 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
           const next = event.target.value as ProductSection;
           const first = state.categories.find((item) => item.section === next && item.active);
           setEditing({ ...editing, section: next, category: first?.name ?? "" });
-        }}><option value="cooked">مطبوخ</option><option value="fresh">طازة / غير مطبوخ</option></select></label>
+        }}>{state.sections.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
         <label>التصنيف<select value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>
           <option value="">اختر التصنيف</option>{categories.map((item) => <option key={item.id}>{item.name}</option>)}
         </select></label>
@@ -228,20 +281,23 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
       <button className="primary-button modal-save" onClick={saveProduct}><Save /> حفظ الصنف</button>
     </Modal>}
     {categoriesOpen && <CategoryManager state={state} update={update} notify={notify} onClose={() => setCategoriesOpen(false)} />}
+    {sectionsOpen && <SectionManager state={state} update={update} notify={notify} onClose={() => setSectionsOpen(false)} />}
+    {mealsOpen && <MealManager state={state} update={update} notify={notify} initialMeal={mealToEdit} onClose={() => { setMealsOpen(false); setMealToEdit(null); }} />}
   </div>;
 }
 
 function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
-  const [form, setForm] = useState<Omit<ProductCategory, "id">>({ name: "", section: "cooked", color: "#6f927d", active: true });
+  const firstSection = state.sections[0]?.id ?? "cooked";
+  const [form, setForm] = useState<Omit<ProductCategory, "id">>({ name: "", section: firstSection, color: "#6f927d", active: true });
   const [editingId, setEditingId] = useState("");
-  const [sectionFilter, setSectionFilter] = useState<ProductSection>("cooked");
+  const [sectionFilter, setSectionFilter] = useState<ProductSection>(firstSection);
   const [search, setSearch] = useState("");
   const visibleCategories = state.categories.filter((category) =>
     category.section === sectionFilter && category.name.includes(search.trim())
   );
   const resetForm = (section = sectionFilter) => {
     setEditingId("");
-    setForm({ name: "", section, color: section === "cooked" ? "#6f927d" : "#c58d5b", active: true });
+    setForm({ name: "", section, color: state.sections.findIndex((item) => item.id === section) % 2 ? "#c58d5b" : "#6f927d", active: true });
   };
   const add = () => {
     if (!form.name.trim()) return;
@@ -270,15 +326,14 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
     <div className="category-manager">
       <div className="category-manager-hero">
         <span><Boxes /></span>
-        <div><strong>تنظيم أقسام المنيو</strong><small>أنشئ تصنيفات منفصلة للمطبوخ والطازج لتسهيل الوصول للأصناف في نقطة البيع</small></div>
+        <div><strong>تنظيم تصنيفات المنيو</strong><small>أنشئ تصنيفات منفصلة داخل كل قسم لتسهيل الوصول للأصناف في نقطة البيع</small></div>
         <div><b>{state.categories.length}</b><small>إجمالي التصنيفات</small></div>
       </div>
       <div className="category-section-switch">
-        <button className={sectionFilter === "cooked" ? "active" : ""} onClick={() => { setSectionFilter("cooked"); resetForm("cooked"); }}><CookingPot /><span><strong>تصنيفات المطبوخ</strong><small>{state.categories.filter((item) => item.section === "cooked").length} تصنيف</small></span></button>
-        <button className={sectionFilter === "fresh" ? "active fresh" : ""} onClick={() => { setSectionFilter("fresh"); resetForm("fresh"); }}><ShoppingBasket /><span><strong>تصنيفات الطازج</strong><small>{state.categories.filter((item) => item.section === "fresh").length} تصنيف</small></span></button>
+        {state.sections.map((item, index) => <button className={sectionFilter === item.id ? `active ${index % 2 ? "fresh" : ""}` : ""} onClick={() => { setSectionFilter(item.id); resetForm(item.id); }} key={item.id}>{index % 2 ? <ShoppingBasket /> : <CookingPot />}<span><strong>{item.name}</strong><small>{state.categories.filter((category) => category.section === item.id).length} تصنيف</small></span></button>)}
       </div>
       <div className={editingId ? "category-form editing" : "category-form"}>
-        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل التصنيف" : "إضافة تصنيف جديد"}</strong><small>{editingId ? "سيتم تحديث التصنيف في كل الأصناف المرتبطة به" : `سيُضاف إلى منيو ${form.section === "cooked" ? "المطبوخ" : "الطازج"}`}</small></div></div>
+        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل التصنيف" : "إضافة تصنيف جديد"}</strong><small>{editingId ? "سيتم تحديث التصنيف في كل الأصناف المرتبطة به" : `سيُضاف إلى قسم ${state.sections.find((item) => item.id === form.section)?.name ?? "المنيو"}`}</small></div></div>
         <label><span>اسم التصنيف</span><div><Boxes /><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} onKeyDown={(event) => event.key === "Enter" && add()} placeholder="مثال: حواوشي، فراخ، مجمدات..." /></div></label>
         <div className="category-form-actions">
           {editingId && <button className="soft-button" onClick={() => resetForm()}>إلغاء التعديل</button>}
@@ -286,13 +341,13 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
         </div>
       </div>
       <div className="category-list-head">
-        <div><strong>{sectionFilter === "cooked" ? "تصنيفات المطبوخ" : "تصنيفات الطازج"}</strong><small>{visibleCategories.length} نتيجة</small></div>
+        <div><strong>تصنيفات {state.sections.find((item) => item.id === sectionFilter)?.name ?? "القسم"}</strong><small>{visibleCategories.length} نتيجة</small></div>
         <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث عن تصنيف..." /></label>
       </div>
       <div className="category-manager-list">{visibleCategories.map((category) => {
         const productsCount = state.products.filter((product) => product.section === category.section && product.category === category.name).length;
         return <div className={category.active ? "" : "inactive"} key={category.id}>
-      <span className="category-list-icon">{category.section === "cooked" ? <CookingPot /> : <ShoppingBasket />}</span>
+      <span className="category-list-icon">{state.sections.findIndex((item) => item.id === category.section) % 2 ? <ShoppingBasket /> : <CookingPot />}</span>
       <span><strong>{category.name}</strong><small>{productsCount ? `${productsCount} صنف مرتبط` : "لا توجد أصناف مرتبطة"}</small></span>
       <em className={category.active ? "active" : ""}>{category.active ? "نشط" : "متوقف"}</em>
       <button className="category-edit-action" onClick={() => {
@@ -306,6 +361,137 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
       })}
       {!visibleCategories.length && <Empty icon={<Boxes />} title="لا توجد تصنيفات" text="أضف تصنيفًا جديدًا أو غيّر كلمة البحث" />}
     </div>
+    </div>
+  </Modal>;
+}
+
+function SectionManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [editingId, setEditingId] = useState<ProductSection>("");
+  const reset = () => { setName(""); setEditingId(""); };
+  const save = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (state.sections.some((item) => item.id !== editingId && item.name === trimmed)) {
+      notify("اسم القسم موجود بالفعل");
+      return;
+    }
+    update((current) => ({
+      ...current,
+      sections: editingId
+        ? current.sections.map((item) => item.id === editingId ? { ...item, name: trimmed } : item)
+        : [...current.sections, { id: uid(), name: trimmed } satisfies MenuSection]
+    }));
+    notify(editingId ? "تم تعديل اسم القسم" : "تمت إضافة القسم");
+    reset();
+  };
+  return <Modal title="إدارة الأقسام" onClose={onClose} size="medium">
+    <div className="section-manager">
+      <div className="category-manager-hero section-manager-hero">
+        <span><SlidersHorizontal /></span>
+        <div><strong>أقسام المنيو</strong><small>أضف أقسامًا جديدة أو غيّر أسماء الأقسام الحالية</small></div>
+        <div><b>{state.sections.length}</b><small>قسم</small></div>
+      </div>
+      <div className={editingId ? "category-form editing section-form" : "category-form section-form"}>
+        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل اسم القسم" : "إضافة قسم جديد"}</strong><small>سيظهر الاسم في نقطة البيع والأصناف والمطبخ</small></div></div>
+        <label><span>اسم القسم</span><div><Boxes /><input autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && save()} placeholder="مثال: حلويات، مشروبات..." /></div></label>
+        <div className="category-form-actions">
+          {editingId && <button className="soft-button" onClick={reset}>إلغاء التعديل</button>}
+          <button className="primary-button" disabled={!name.trim()} onClick={save}>{editingId ? <Save /> : <Plus />} {editingId ? "حفظ الاسم" : "إضافة القسم"}</button>
+        </div>
+      </div>
+      <div className="section-manager-list">
+        {state.sections.map((item, index) => {
+          const productsCount = state.products.filter((product) => product.section === item.id).length;
+          const categoriesCount = state.categories.filter((category) => category.section === item.id).length;
+          return <div key={item.id}>
+            <span className="category-list-icon">{index % 2 ? <ShoppingBasket /> : <CookingPot />}</span>
+            <span><strong>{item.name}</strong><small>{productsCount} صنف · {categoriesCount} تصنيف</small></span>
+            <button className="category-edit-action" onClick={() => { setEditingId(item.id); setName(item.name); }}><Edit3 /> تعديل الاسم</button>
+          </div>;
+        })}
+      </div>
+    </div>
+  </Modal>;
+}
+
+function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps & { initialMeal: Meal | null; onClose: () => void }) {
+  const [draft, setDraft] = useState<Meal>(() => initialMeal
+    ? { ...initialMeal, components: initialMeal.components.map((item) => ({ ...item })) }
+    : { id: uid(), name: "", price: 0, available: true, components: [] });
+  const [productSearch, setProductSearch] = useState("");
+  const [sectionFilter, setSectionFilter] = useState("all");
+  const [mealCategoryFilter, setMealCategoryFilter] = useState("all");
+  const selected = (productId: string) => draft.components.find((item) => item.productId === productId);
+  const toggleProduct = (product: Product) => {
+    const exists = selected(product.id);
+    setDraft({
+      ...draft,
+      components: exists
+        ? draft.components.filter((item) => item.productId !== product.id)
+        : [...draft.components, { productId: product.id, name: product.name, quantity: 1 }]
+    });
+  };
+  const changeQuantity = (productId: string, quantity: number) => {
+    setDraft({ ...draft, components: draft.components.map((item) => item.productId === productId ? { ...item, quantity: Math.max(1, quantity) } : item) });
+  };
+  const componentTotal = draft.components.reduce((sum, component) => {
+    const product = state.products.find((item) => item.id === component.productId);
+    return sum + (product?.price ?? 0) * component.quantity;
+  }, 0);
+  const availableProducts = state.products.filter((product) => product.available);
+  const sectionProducts = availableProducts.filter((product) =>
+    sectionFilter === "all"
+    || (sectionFilter === "selected" ? Boolean(selected(product.id)) : product.section === sectionFilter)
+  );
+  const mealCategories = [...new Set(sectionProducts.map((product) => product.category))];
+  const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("ar");
+  const filteredProducts = sectionProducts.filter((product) =>
+    (mealCategoryFilter === "all" || product.category === mealCategoryFilter)
+    && (!normalizedProductSearch || product.name.toLocaleLowerCase("ar").includes(normalizedProductSearch))
+  );
+  const save = () => {
+    if (!draft.name.trim() || draft.price < 0 || !draft.components.length) return;
+    const meal = { ...draft, name: draft.name.trim() };
+    update((current) => ({
+      ...current,
+      meals: current.meals.some((item) => item.id === meal.id)
+        ? current.meals.map((item) => item.id === meal.id ? meal : item)
+        : [meal, ...current.meals]
+    }));
+    notify(initialMeal ? "تم تعديل الوجبة" : "تمت إضافة الوجبة");
+    onClose();
+  };
+
+  return <Modal title={initialMeal ? "تعديل الوجبة" : "إضافة وجبة جديدة"} onClose={onClose} size="wide">
+    <div className="meal-editor-modal">
+      <div className="meal-main-fields">
+        <label>اسم الوجبة<input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="مثال: وجبة فردية" /></label>
+        <label>سعر الوجبة<input type="number" min="0" value={draft.price || ""} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} /></label>
+        <label className="check-label"><input type="checkbox" checked={draft.available} onChange={(event) => setDraft({ ...draft, available: event.target.checked })} /> متاحة للبيع</label>
+      </div>
+      <div className="meal-product-filters">
+        <label className="search-box meal-product-search"><Search /><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="ابحث عن صنف بالاسم..." /></label>
+        <label className="meal-filter-select"><span><SlidersHorizontal /> القسم</span><select value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setMealCategoryFilter("all"); }}>
+          <option value="all">كل الأقسام ({availableProducts.length})</option>
+          {state.sections.map((section) => <option key={section.id} value={section.id}>{section.name} ({availableProducts.filter((product) => product.section === section.id).length})</option>)}
+          {!!draft.components.length && <option value="selected">المختارة فقط ({draft.components.length})</option>}
+        </select></label>
+        <label className="meal-filter-select"><span><Boxes /> التصنيف</span><select value={mealCategoryFilter} onChange={(event) => setMealCategoryFilter(event.target.value)}>
+          <option value="all">كل التصنيفات ({sectionProducts.length})</option>
+          {mealCategories.map((category) => <option key={category} value={category}>{category} ({sectionProducts.filter((product) => product.category === category).length})</option>)}
+        </select></label>
+        <small className="meal-filter-count">عرض <b>{filteredProducts.length}</b> من {availableProducts.length}</small>
+      </div>
+      <div className="meal-product-picker">{filteredProducts.map((product) => {
+        const component = selected(product.id);
+        return <div className={component ? "selected" : ""} key={product.id}>
+          <button className="meal-product-toggle" onClick={() => toggleProduct(product)}><span>{component && <Check />}</span><div><strong>{product.name}</strong><small>{state.sections.find((item) => item.id === product.section)?.name ?? product.section} · {product.category}</small></div><b className="meal-product-price">{money(product.price)}</b></button>
+          {component && <div className="meal-quantity"><button onClick={() => changeQuantity(product.id, component.quantity - 1)}><Minus /></button><b>{component.quantity}</b><button onClick={() => changeQuantity(product.id, component.quantity + 1)}><Plus /></button></div>}
+        </div>;
+      })}{!filteredProducts.length && <div className="meal-picker-empty"><Search /><strong>لا توجد أصناف مطابقة</strong><small>غيّر القسم أو التصنيف أو كلمة البحث</small></div>}</div>
+      <div className="meal-editor-summary"><span><small>مجموع أسعار الأصناف منفردة</small><b>{money(componentTotal)}</b></span><span><small>سعر الوجبة</small><b>{money(draft.price)}</b></span><span className={componentTotal > draft.price ? "saving" : ""}><small>فرق السعر للعميل</small><b>{componentTotal > draft.price ? `توفير ${money(componentTotal - draft.price)}` : money(draft.price - componentTotal)}</b></span></div>
+      <footer className="meal-editor-actions"><button className="soft-button" onClick={onClose}>إلغاء</button><button className="primary-button" disabled={!draft.name.trim() || draft.price < 0 || !draft.components.length} onClick={save}><Save /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}</button></footer>
     </div>
   </Modal>;
 }
@@ -502,10 +688,7 @@ export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
 
 function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Order; settings: AppState["settings"]; onClose: () => void; onEdit: () => void }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const stageLabel = order.stage === "preparing" ? "قيد التجهيز"
-    : order.stage === "ready" ? "جاهز"
-      : order.stage === "delivered" ? "تم التوصيل"
-        : "قيد التجميع";
+  const stageLabel = stageLabels[order.stage];
   const paymentLabel = order.paymentMethod === "cash" ? "نقدي"
     : order.paymentMethod === "instapay" ? "إنستاباي"
       : "فودافون كاش";
@@ -550,7 +733,7 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
 }
 
 export function SettingsView({ state, update, notify, network }: ViewProps) {
-  const [tab, setTab] = useState<"identity" | "operations" | "delivery" | "network" | "backup">("identity");
+  const [tab, setTab] = useState<"identity" | "operations" | "delivery" | "network" | "backup" | "support">("identity");
   const [settings, setSettings] = useState({ ...state.settings });
   const [company, setCompany] = useState({ name: "", phone: "", baseFee: state.settings.defaultDeliveryFee, notes: "" });
   const [serverAddress, setServerAddress] = useState(network?.serverUrl ?? "http://127.0.0.1:4312");
@@ -588,6 +771,9 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
       </button>
       <button role="tab" aria-selected={tab === "backup"} className={tab === "backup" ? "active" : ""} onClick={() => setTab("backup")}>
         <DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>تنزيل واسترجاع البيانات</small></span>
+      </button>
+      <button role="tab" aria-selected={tab === "support"} className={tab === "support" ? "active" : ""} onClick={() => setTab("support")}>
+        <Headphones /><span><strong>الدعم الفني</strong><small>التواصل ومعلومات النظام</small></span>
       </button>
     </div>
 
@@ -656,5 +842,86 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
     </div>}
 
     {tab === "backup" && <div role="tabpanel"><BackupPanel state={state} update={update} notify={notify} /></div>}
+
+    {tab === "support" && <div className="support-compact-container" role="tabpanel">
+      <div className="support-compact-header">
+        <div className="support-brand-info-right">
+          <div className="support-brand-headline">
+            <h2>FYC Solutions</h2>
+            <span className="support-official-badge"><ShieldCheck size={13} /> شركة الدعم الفني والحلول البرمجية</span>
+            <span className="support-status-pill"><i /> متصل الآن (24/7)</span>
+          </div>
+          <p>مركز الدعم التقني والمساندة المباشرة لنظام إدارة المطاعم</p>
+        </div>
+
+        <div className="support-brand-logo-left" title="FYC Solutions">
+          <img src="/fyc_logo.png" alt="FYC Solutions" className="support-brand-logo-img-large" />
+        </div>
+      </div>
+
+      <div className="support-compact-grid">
+        <div className="support-compact-card whatsapp">
+          <div className="compact-card-header">
+            <div className="compact-card-icon whatsapp"><MessageSquare size={18} /></div>
+            <div>
+              <h3>واتساب الدعم السريع</h3>
+              <small>أرسل استفسارك أو صور المشكلة</small>
+            </div>
+          </div>
+          <div className="compact-card-body">
+            <strong dir="ltr">+20 121 067 7917</strong>
+          </div>
+          <a href="https://wa.me/201210677917" target="_blank" rel="noreferrer" className="compact-card-btn whatsapp">
+            <ExternalLink size={13} />
+            <span>راسلنا على الواتساب</span>
+          </a>
+        </div>
+
+        <div className="support-compact-card phone">
+          <div className="compact-card-header">
+            <div className="compact-card-icon phone"><PhoneCall size={18} /></div>
+            <div>
+              <h3>اتصال هاتفي مباشر</h3>
+              <small>للحالات العاجلة والاستفسارات</small>
+            </div>
+          </div>
+          <div className="compact-card-body">
+            <strong dir="ltr">+20 155 460 1660</strong>
+          </div>
+          <a href="tel:+201554601660" className="compact-card-btn phone">
+            <Phone size={13} />
+            <span>اتصل الآن</span>
+          </a>
+        </div>
+
+        <div className="support-compact-card anydesk">
+          <div className="compact-card-header">
+            <div className="compact-card-icon anydesk">AD</div>
+            <div>
+              <h3>الدعم عن بعد (AnyDesk)</h3>
+              <small>فحص وحل المشكلات عن بعد</small>
+            </div>
+          </div>
+          <div className="compact-card-body">
+            <span>AnyDesk Remote Access</span>
+          </div>
+          <a href="https://anydesk.com/en/downloads" target="_blank" rel="noreferrer" className="compact-card-btn anydesk">
+            <Download size={13} />
+            <span>تحميل AnyDesk</span>
+          </a>
+        </div>
+      </div>
+
+      <div className="support-compact-footer">
+        <div>
+          <ShieldCheck size={14} />
+          <span>مرخص ومدعوم رسمياً من شركة <strong>FYC Solutions</strong></span>
+        </div>
+        <div>
+          <Clock size={13} />
+          <span>خدمة الدعم متوفرة طوال أيام الأسبوع 24/7</span>
+        </div>
+      </div>
+    </div>}
   </div>;
 }

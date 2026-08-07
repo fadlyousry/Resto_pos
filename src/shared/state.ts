@@ -1,4 +1,4 @@
-import type { AppState, Customer, Order, OrderStage } from "../domain/types";
+import type { AppState, Customer, MenuSection, Order, OrderStage } from "../domain/types";
 
 const isArray = <T,>(value: T[] | undefined): value is T[] => Array.isArray(value);
 
@@ -18,8 +18,7 @@ function cleanCustomer(customer: Customer): Customer {
 
 export function normalizeOrderStage(stage: unknown): OrderStage {
   if (stage === "delivered" || stage === "cancelled") return "delivered";
-  if (stage === "ready" || stage === "out_for_delivery") return "ready";
-  if (stage === "assembling" || stage === "packing") return "assembling";
+  if (stage === "ready" || stage === "out_for_delivery" || stage === "assembling" || stage === "packing") return "ready";
   return "preparing";
 }
 
@@ -31,7 +30,10 @@ function cleanOrder(order: Order): Order {
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     address: order.address,
-    items: order.items,
+    items: order.items.map((item) => {
+      const { packed: _packed, ...cleanItem } = item as typeof item & { packed?: boolean };
+      return cleanItem;
+    }),
     subtotal: order.subtotal,
     deliveryFee: order.deliveryFee,
     discount: order.discount,
@@ -53,8 +55,20 @@ function cleanOrder(order: Order): Order {
 }
 
 export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState): AppState {
+  const products = isArray(parsed.products) ? parsed.products : fallback.products;
+  const derivedSections: MenuSection[] = [...new Set(products.map((product) => product.section))].map((id) => ({
+    id,
+    name: id === "cooked" ? "مطبوخ" : id === "fresh" ? "طازة / غير مطبوخ" : id
+  }));
+  const sections = isArray(parsed.sections) && parsed.sections.length
+    ? parsed.sections
+    : isArray(fallback.sections) && fallback.sections.length
+      ? fallback.sections
+      : derivedSections;
   return {
-    products: isArray(parsed.products) ? parsed.products : fallback.products,
+    products,
+    sections,
+    meals: isArray(parsed.meals) ? parsed.meals : (isArray(fallback.meals) ? fallback.meals : []),
     categories: isArray(parsed.categories) ? parsed.categories : fallback.categories,
     customers: isArray(parsed.customers) ? parsed.customers.map(cleanCustomer) : fallback.customers,
     orders: isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders,
@@ -72,9 +86,12 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
         openedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
         openingBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance
       }],
+    suppliers: isArray(parsed.suppliers) ? parsed.suppliers : fallback.suppliers,
+    purchaseInvoices: isArray(parsed.purchaseInvoices) ? parsed.purchaseInvoices : fallback.purchaseInvoices,
     shiftOpeningBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance,
     shiftOpenedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
     nextOrderNumber: typeof parsed.nextOrderNumber === "number" ? parsed.nextOrderNumber : fallback.nextOrderNumber,
+    nextPurchaseInvoiceNumber: typeof parsed.nextPurchaseInvoiceNumber === "number" ? parsed.nextPurchaseInvoiceNumber : fallback.nextPurchaseInvoiceNumber,
     settings: parsed.settings && typeof parsed.settings === "object"
       ? { ...fallback.settings, ...parsed.settings }
       : fallback.settings

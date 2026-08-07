@@ -1,8 +1,8 @@
 // Shared domain models. Keep these types independent from React and storage.
-export type ProductSection = "cooked" | "fresh";
+export type ProductSection = string;
 export type PaymentMethod = "cash" | "instapay" | "vodafone";
 export type PaymentStatus = "paid" | "pending";
-export type OrderStage = "preparing" | "assembling" | "ready" | "delivered";
+export type OrderStage = "preparing" | "ready" | "delivered";
 
 export interface ProductOption {
   id: string;
@@ -35,6 +35,25 @@ export interface ProductCategory {
   active: boolean;
 }
 
+export interface MenuSection {
+  id: ProductSection;
+  name: string;
+}
+
+export interface MealComponent {
+  productId: string;
+  name: string;
+  quantity: number;
+}
+
+export interface Meal {
+  id: string;
+  name: string;
+  price: number;
+  available: boolean;
+  components: MealComponent[];
+}
+
 export interface Customer {
   id: string;
   name: string;
@@ -49,6 +68,8 @@ export interface Customer {
 
 export interface OrderItem {
   productId: string;
+  mealId?: string;
+  mealComponents?: MealComponent[];
   optionId?: string;
   optionName?: string;
   recipeMultiplier?: number;
@@ -59,7 +80,6 @@ export interface OrderItem {
   quantity: number;
   note?: string;
   section?: ProductSection;
-  packed?: boolean;
 }
 
 export interface Order {
@@ -185,8 +205,42 @@ export interface CashShift {
   note?: string;
 }
 
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  notes?: string;
+  active: boolean;
+}
+
+export interface PurchaseInvoiceItem {
+  ingredientId: string;
+  ingredientName: string;
+  quantity: number;
+  unitCost: number;
+  unit: string;
+  total: number;
+}
+
+export interface PurchaseInvoice {
+  id: string;
+  number: number;
+  supplierId: string;
+  supplierName: string;
+  items: PurchaseInvoiceItem[];
+  subtotal: number;
+  discount: number;
+  total: number;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  note?: string;
+  createdAt: string;
+}
+
 export interface AppState {
   products: Product[];
+  sections: MenuSection[];
+  meals: Meal[];
   categories: ProductCategory[];
   customers: Customer[];
   orders: Order[];
@@ -198,8 +252,11 @@ export interface AppState {
   stockMovements: StockMovement[];
   cashTransactions: CashTransaction[];
   cashShifts: CashShift[];
+  suppliers: Supplier[];
+  purchaseInvoices: PurchaseInvoice[];
   shiftOpeningBalance: number;
   shiftOpenedAt: string;
   nextOrderNumber: number;
+  nextPurchaseInvoiceNumber: number;
   settings: RestaurantSettings;
 }
