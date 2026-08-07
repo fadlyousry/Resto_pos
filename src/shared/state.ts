@@ -89,6 +89,9 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     shiftOpenedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
     nextOrderNumber: typeof parsed.nextOrderNumber === "number" ? parsed.nextOrderNumber : fallback.nextOrderNumber,
     nextPurchaseInvoiceNumber: typeof parsed.nextPurchaseInvoiceNumber === "number" ? parsed.nextPurchaseInvoiceNumber : fallback.nextPurchaseInvoiceNumber,
+    license: parsed.license && typeof parsed.license === "object"
+      ? { ...fallback.license, ...parsed.license }
+      : fallback.license,
     settings: parsed.settings && typeof parsed.settings === "object"
       ? { ...fallback.settings, ...parsed.settings }
       : fallback.settings

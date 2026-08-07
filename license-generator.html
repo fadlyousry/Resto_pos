@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مولّد تراخيص بيتُنا - FYC Solutions Admin</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --border: #334155;
+      --success: #10b981;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .generator-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      width: 100%;
+      max-width: 560px;
+      padding: 36px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(37, 99, 235, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(96, 165, 250, 0.3);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .header h1 { font-size: 22px; font-weight: 700; margin-bottom: 6px; color: #fff; }
+    .header p { font-size: 13px; color: var(--muted); }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .form-group input[type="text"], .form-group input[type="number"], .form-group select {
+      width: 100%;
+      padding: 12px 16px;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s;
+    }
+    .form-group input[type="text"]:focus, .form-group input[type="number"]:focus, .form-group select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+    }
+
+    .license-type-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 6px;
+    }
+    .type-btn {
+      background: #0f172a;
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 8px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      user-select: none;
+    }
+    .type-btn strong { display: block; font-size: 13px; color: #fff; margin-bottom: 2px; }
+    .type-btn small { font-size: 10px; color: var(--muted); }
+    .type-btn.active {
+      border-color: var(--accent);
+      background: rgba(37, 99, 235, 0.15);
+    }
+    .type-btn.active strong { color: #60a5fa; }
+
+    .generate-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
+      margin-top: 10px;
+    }
+    .generate-btn:hover { opacity: 0.95; transform: translateY(-1px); }
+
+    .result-box {
+      margin-top: 24px;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 18px;
+      display: none;
+    }
+    .result-box.active { display: block; }
+    .result-title { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 8px; text-align: center; }
+    .key-display {
+      font-family: monospace;
+      font-size: 18px;
+      font-weight: 700;
+      color: #10b981;
+      letter-spacing: 1.5px;
+      text-align: center;
+      padding: 12px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px dashed rgba(16, 185, 129, 0.4);
+      border-radius: 10px;
+      margin-bottom: 12px;
+      word-break: break-all;
+    }
+    .copy-btn {
+      width: 100%;
+      padding: 10px;
+      background: #10b981;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .copy-btn.copied { background: #059669; }
+  </style>
+</head>
+<body>
+
+<div class="generator-card">
+  <div class="header">
+    <div class="header-badge">
+      <span>🛡️ FYC Solutions — أداة المالك والبرمجة</span>
+    </div>
+    <h1>توليد ترخيص لمنظومة بيتنا POS</h1>
+    <p>أدخل بصمة جهاز العميل (Machine ID) لاصدار كود تفعيل معتمد</p>
+  </div>
+
+  <div class="form-group">
+    <label>بصمة جهاز العميل (Machine ID)</label>
+    <input type="text" id="machineId" dir="ltr" placeholder="مثال: POS-A4F102-14B2" style="font-family: monospace; text-transform: uppercase;">
+  </div>
+
+  <div class="form-group">
+    <label>نوع الترخيص المطلوبة</label>
+    <div class="license-type-grid">
+      <div class="type-btn active" onclick="setType('subscription', 365, this)">
+        <strong>سنة كاملة</strong>
+        <small>365 يومًا</small>
+      </div>
+      <div class="type-btn" onclick="setType('lifetime', 0, this)">
+        <strong>مدى الحياة 🌟</strong>
+        <small>بدون تاريخ انتهاء</small>
+      </div>
+      <div class="type-btn" onclick="setType('custom', 30, this)">
+        <strong>مدة مخصصة</strong>
+        <small>حدد الأيام يدويًا</small>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-group" id="customDaysGroup" style="display: none;">
+    <label>عدد أيام الترخيص</label>
+    <input type="number" id="customDays" value="30" min="1">
+  </div>
+
+  <button class="generate-btn" onclick="generateKey()">
+    <span>🔑 توليد مفتاح التفعيل المعتمَد</span>
+  </button>
+
+  <div class="result-box" id="resultBox">
+    <div class="result-title">كود التفعيل الصادر (جاهز للإرسال للعميل):</div>
+    <div class="key-display" id="keyDisplay" dir="ltr"></div>
+    <button class="copy-btn" id="copyBtn" onclick="copyKey()">
+      <span>📋 نسخ الكود الحافظة</span>
+    </button>
+  </div>
+</div>
+
+<script>
+  const LICENSE_SECRET = "RESTRANT-PRO-SECRET-KEY-2026";
+  let currentType = "subscription";
+  let currentDays = 365;
+
+  function setType(type, days, element) {
+    currentType = type;
+    currentDays = days;
+    document.querySelectorAll('.type-btn').forEach(btn => btn.classList.remove('active'));
+    element.classList.add('active');
+    
+    document.getElementById('customDaysGroup').style.display = (type === 'custom') ? 'block' : 'none';
+  }
+
+  function calculateSignature(machineId, typeCode, expiryHex) {
+    const payload = `${machineId.trim().toUpperCase()}:${typeCode}:${expiryHex}:${LICENSE_SECRET}`;
+    let hash1 = 5381;
+    let hash2 = 0x811c9dc5;
+    for (let i = 0; i < payload.length; i++) {
+      const char = payload.charCodeAt(i);
+      hash1 = (hash1 * 33) ^ char;
+      hash2 = (hash2 ^ char) * 16777619;
+    }
+    const sig1 = Math.abs(hash1).toString(16).toUpperCase().padStart(4, "0");
+    const sig2 = Math.abs(hash2).toString(16).toUpperCase().padStart(4, "0");
+    return (sig1 + sig2).slice(0, 6);
+  }
+
+  function generateKey() {
+    const machineIdInput = document.getElementById('machineId').value.trim();
+    if (!machineIdInput) {
+      alert("برجاء إدخال بصمة جهاز العميل (Machine ID)");
+      return;
+    }
+
+    let days = currentDays;
+    if (currentType === 'custom') {
+      days = parseInt(document.getElementById('customDays').value) || 30;
+    }
+
+    const typeCode = currentType === "lifetime" ? "LIFE" : currentType === "subscription" ? "SUBS" : "SUBS";
+    
+    let expiryHex = "FFFFFFFF";
+    if (currentType !== "lifetime") {
+      const expiryTimestamp = Math.floor(Date.now() / 1000) + days * 86400;
+      expiryHex = expiryTimestamp.toString(16).toUpperCase().padStart(8, "0");
+    }
+    
+    const signature = calculateSignature(machineIdInput, typeCode, expiryHex);
+    const generatedKey = `REST-${typeCode}-${expiryHex}-${signature}`;
+
+    document.getElementById('keyDisplay').innerText = generatedKey;
+    document.getElementById('resultBox').classList.add('active');
+    
+    const copyBtn = document.getElementById('copyBtn');
+    copyBtn.classList.remove('copied');
+    copyBtn.innerHTML = '<span>📋 نسخ الكود إلى الحافظة</span>';
+  }
+
+  function copyKey() {
+    const keyText = document.getElementById('keyDisplay').innerText;
+    navigator.clipboard.writeText(keyText);
+    const copyBtn = document.getElementById('copyBtn');
+    copyBtn.classList.add('copied');
+    copyBtn.innerHTML = '<span>✅ تم النسخ بنجاح</span>';
+  }
+</script>
+
+</body>
+</html>

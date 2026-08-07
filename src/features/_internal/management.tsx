@@ -4,14 +4,15 @@ import {
   BadgeDollarSign, Boxes, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
   ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
-  PhoneCall, ExternalLink, Clock, Download
+  PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2
 } from "lucide-react";
 import type {
-  AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection
+  AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { money, shortDate, stageLabels } from "../../shared/format";
 import { uid } from "../../shared/id";
+import { evaluateLicense, getMachineId, verifyLicenseKey } from "../../shared/license";
 import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 import { BackupPanel } from "../settings/BackupPanel";
 import { InvoiceModal } from "../orders/InvoiceModal";
@@ -737,17 +738,58 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
   const [settings, setSettings] = useState({ ...state.settings });
   const [serverAddress, setServerAddress] = useState(network?.serverUrl ?? "http://127.0.0.1:4312");
   const [networkTest, setNetworkTest] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [licenseInputKey, setLicenseInputKey] = useState("");
+  const [licenseCopied, setLicenseCopied] = useState(false);
+
+  const machineId = state.license?.machineId || getMachineId();
+  const licenseEval = evaluateLicense(state.license);
+
   const readLogo = (file?: File) => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => setSettings({ ...settings, logoDataUrl: String(reader.result) });
     reader.readAsDataURL(file);
   };
+
   const save = () => {
     if (!settings.restaurantName.trim()) return;
     update((current) => ({ ...current, settings }));
     notify("تم حفظ الإعدادات وتحديث هوية النظام");
   };
+
+  const activateKey = () => {
+    if (!licenseInputKey.trim()) return;
+    const res = verifyLicenseKey(licenseInputKey, machineId);
+    if (!res.valid) {
+      notify(`خطأ في كود التفعيل: ${res.error}`);
+      return;
+    }
+    const newLicense: LicenseInfo = {
+      machineId,
+      licenseKey: licenseInputKey.trim().toUpperCase(),
+      type: res.type || "subscription",
+      status: "active",
+      activatedAt: new Date().toISOString(),
+      expiresAt: res.expiresAt ?? null
+    };
+    update((current) => ({ ...current, license: newLicense }));
+    setLicenseInputKey("");
+    notify(res.type === "lifetime" ? "تم تفعيل ترخيص مدى الحياة بنجاح! 🎉" : "تم تفعيل الترخيص وتحديد فترة الاشتراك بنجاح! 🎉");
+  };
+
+  const revokeLicense = () => {
+    if (!confirm("هل أنت تأكد من رغبتك في حذف وإلغاء ترخيص المنظومة؟ سيتطلب ذلك كود تفعيل جديد لمتابعة العمل.")) return;
+    const expiredLicense: LicenseInfo = {
+      machineId,
+      type: "trial",
+      status: "expired",
+      activatedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() - 1000).toISOString()
+    };
+    update((current) => ({ ...current, license: expiredLicense }));
+    notify("تم إلغاء الترخيص وحذف التفعيل الحالي بنجاح ⚠️");
+  };
+
   return <div className="settings-page">
     <div className="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
       <button role="tab" aria-selected={tab === "identity"} className={tab === "identity" ? "active" : ""} onClick={() => setTab("identity")}>
@@ -763,7 +805,7 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
         <DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>تنزيل واسترجاع البيانات</small></span>
       </button>
       <button role="tab" aria-selected={tab === "support"} className={tab === "support" ? "active" : ""} onClick={() => setTab("support")}>
-        <Headphones /><span><strong>الدعم الفني</strong><small>التواصل ومعلومات النظام</small></span>
+        <Headphones /><span><strong>الدعم الفني والتفعيل</strong><small>{licenseEval.isLifetime ? "مدى الحياة" : `${licenseEval.daysRemaining ?? 0} يوم متبقي`}</small></span>
       </button>
     </div>
 
@@ -795,6 +837,8 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
         <button className="primary-button" onClick={save}><Save /> حفظ إعدادات التشغيل</button>
       </div>
     </div>}
+
+
 
     {tab === "network" && <div className="panel network-settings-panel" role="tabpanel">
       <div className="panel-title"><div><Server /><span><strong>السيرفر المركزي والتحديث اللحظي</strong><small>كل أجهزة الكاشير والمطبخ يجب أن تتصل بنفس العنوان</small></span></div></div>
@@ -888,6 +932,87 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
             <Download size={13} />
             <span>تحميل AnyDesk</span>
           </a>
+        </div>
+      </div>
+
+      {/* License & Activation Section */}
+      <div style={{ marginTop: "24px", paddingTop: "20px", borderTop: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: "16px" }}>
+        <h3 style={{ fontSize: "16px", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+          <KeyRound size={20} style={{ color: "var(--accent)" }} />
+          <span>ترخيص واشتراك المنظومة</span>
+        </h3>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
+          <div style={{
+            background: licenseEval.isLifetime ? "linear-gradient(135deg, #ecfdf5, #d1fae5)" : licenseEval.status === "active" ? "linear-gradient(135deg, #eff6ff, #dbeafe)" : "linear-gradient(135deg, #fef2f2, #fee2e2)",
+            border: `1px solid ${licenseEval.isLifetime ? "#a7f3d0" : licenseEval.status === "active" ? "#bfdbfe" : "#fca5a5"}`,
+            borderRadius: "14px", padding: "16px", display: "flex", alignItems: "center", gap: "12px"
+          }}>
+            <div style={{
+              width: "42px", height: "42px", borderRadius: "10px",
+              background: licenseEval.isLifetime ? "#10b981" : licenseEval.status === "active" ? "#3b82f6" : "#ef4444",
+              color: "#fff", display: "flex", alignItems: "center", justifyContent: "center"
+            }}>
+              <CheckCircle2 size={22} />
+            </div>
+            <div>
+              <small style={{ fontSize: "11px", color: "#64748b", display: "block" }}>حالة الترخيص الحالية</small>
+              <strong style={{ fontSize: "15px", color: "#0f172a" }}>
+                {licenseEval.isLifetime ? "ترخيص دائم (مدى الحياة) 🌟" : licenseEval.status === "active" ? `ساري (${licenseEval.daysRemaining} يوم متبقي)` : "منتهي الصلاحية ⚠️"}
+              </strong>
+            </div>
+          </div>
+
+          <div style={{
+            background: "#fff", border: "1px solid var(--line)", borderRadius: "14px", padding: "16px",
+            display: "flex", alignItems: "center", justifyContent: "space-between"
+          }}>
+            <div>
+              <small style={{ fontSize: "11px", color: "#64748b", display: "block" }}>معرّف هذا الجهاز (Machine ID)</small>
+              <strong style={{ fontSize: "14px", fontFamily: "monospace", color: "#1e293b", letterSpacing: "0.5px" }}>
+                {machineId}
+              </strong>
+            </div>
+            <button
+              type="button"
+              className="soft-button compact"
+              onClick={() => {
+                navigator.clipboard.writeText(machineId);
+                setLicenseCopied(true);
+                setTimeout(() => setLicenseCopied(false), 2000);
+              }}
+            >
+              {licenseCopied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+              <span>{licenseCopied ? "تم النسخ" : "نسخ المعرّف"}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* License Key Form */}
+        <div style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: "14px", padding: "16px" }}>
+          <label style={{ display: "block", fontSize: "12px", fontWeight: "600", marginBottom: "8px" }}>
+            إدخال مفتاح التفعيل الجديد (من الدعم الفني)
+          </label>
+          <div style={{ display: "flex", gap: "10px", maxWidth: "560px" }}>
+            <input
+              dir="ltr"
+              value={licenseInputKey}
+              onChange={(e) => setLicenseInputKey(e.target.value.toUpperCase())}
+              placeholder="REST-XXXX-YYYY-ZZZZ"
+              style={{
+                flex: 1, padding: "10px 14px", borderRadius: "10px", border: "1px solid var(--line)",
+                fontSize: "14px", fontFamily: "monospace", letterSpacing: "1px", textTransform: "uppercase"
+              }}
+            />
+            <button type="button" className="primary-button" onClick={activateKey}>
+              <KeyRound size={15} />
+              <span>تفعيل الكود</span>
+            </button>
+            <button type="button" className="soft-button danger" onClick={revokeLicense} title="حذف وإلغاء الترخيص والتفعيل الحالي">
+              <Trash2 size={15} />
+              <span>إلغاء الترخيص</span>
+            </button>
+          </div>
         </div>
       </div>
 

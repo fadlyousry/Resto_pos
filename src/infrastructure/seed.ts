@@ -90,6 +90,13 @@ export const initialState: AppState = {
   shiftOpenedAt: initialShiftOpenedAt,
   nextOrderNumber: 1001,
   nextPurchaseInvoiceNumber: 1,
+  license: {
+    machineId: "POS-DEFAULT-0001",
+    type: "trial",
+    status: "active",
+    activatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3 * 86400000).toISOString()
+  },
   settings: {
     restaurantName: "بيتنا",
     subtitle: "أكل بيتي معمول بحب",

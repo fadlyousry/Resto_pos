@@ -251,6 +251,9 @@ export async function loadState(): Promise<AppState> {
     shiftOpenedAt: setting.shiftOpenedAt ?? new Date().toISOString(),
     nextOrderNumber: Number(setting.nextOrderNumber ?? 1001),
     nextPurchaseInvoiceNumber: Number(setting.nextPurchaseInvoiceNumber ?? 1),
+    license: setting.appLicense
+      ? { ...structuredClone(initialState.license), ...JSON.parse(setting.appLicense) }
+      : structuredClone(initialState.license),
     settings: setting.restaurantSettings
       ? { ...structuredClone(initialState.settings), ...JSON.parse(setting.restaurantSettings) }
       : structuredClone(initialState.settings)
@@ -384,6 +387,7 @@ export async function saveState(state: AppState): Promise<string> {
     nextPurchaseInvoiceNumber: String(state.nextPurchaseInvoiceNumber),
     menuSections: JSON.stringify(state.sections),
     menuMeals: JSON.stringify(state.meals),
+    appLicense: JSON.stringify(state.license),
     restaurantSettings: JSON.stringify(state.settings),
     stateRevision: revision
   })) {

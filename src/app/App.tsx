@@ -11,8 +11,10 @@ import { PosView } from "../features/pos";
 import { PurchasePosView, PurchaseHistoryView } from "../features/purchases";
 import { ReportsView } from "../features/reports";
 import { SettingsView } from "../features/settings";
+import { LicenseLockModal } from "../features/license/LicenseLockModal";
 import type { Order } from "../domain/types";
 import { currentArabicDate, shortDate } from "../shared/format";
+import { evaluateLicense } from "../shared/license";
 import { navigationItems, type AppView } from "./navigation";
 import { useRestaurantState } from "./useRestaurantState";
 
@@ -84,8 +86,19 @@ export default function App() {
     });
   };
 
+  const licenseEval = evaluateLicense(state.license);
+
   return (
     <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${view === "pos" || view === "purchase-pos" ? " pos-active" : ""}`}>
+      {licenseEval.status === "expired" && (
+        <LicenseLockModal
+          license={state.license}
+          onActivate={(newLicense) => {
+            update((current) => ({ ...current, license: newLicense }));
+            notify("تم تفعيل مفتاح الترخيص بنجاح! مرحبًا بك مجددًا 🎉");
+          }}
+        />
+      )}
       <aside className="sidebar">
         <button className="sidebar-toggle" onClick={toggleSidebar} title={sidebarCollapsed ? "فتح القائمة الجانبية" : "تصغير القائمة الجانبية"}>
           {sidebarCollapsed ? <PanelRightOpen /> : <PanelRightClose />}

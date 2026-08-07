@@ -107,6 +107,19 @@ export interface Order {
   source?: "pos" | "online";
 }
 
+export type LicenseType = "trial" | "subscription" | "lifetime";
+export type LicenseStatus = "active" | "expired" | "unlicensed";
+
+export interface LicenseInfo {
+  machineId: string;
+  licenseKey?: string;
+  type: LicenseType;
+  status: LicenseStatus;
+  activatedAt?: string;
+  expiresAt?: string | null;
+  registeredTo?: string;
+}
+
 export interface RestaurantSettings {
   restaurantName: string;
   subtitle: string;
@@ -246,5 +259,6 @@ export interface AppState {
   shiftOpenedAt: string;
   nextOrderNumber: number;
   nextPurchaseInvoiceNumber: number;
+  license: LicenseInfo;
   settings: RestaurantSettings;
 }
