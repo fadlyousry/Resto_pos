@@ -50,10 +50,6 @@ export const initialState: AppState = {
     { id: "d1", name: "محمود علي", phone: "01098765432", active: true, vehicle: "موتوسيكل", createdAt: new Date().toISOString() },
     { id: "d2", name: "كريم حسن", phone: "01187654321", active: true, vehicle: "موتوسيكل", createdAt: new Date().toISOString() }
   ],
-  deliveryCompanies: [
-    { id: "dc1", name: "مرسول", phone: "", baseFee: 45, active: true, notes: "شركة توصيل خارجية" },
-    { id: "dc2", name: "شركة توصيل محلية", phone: "01000000000", baseFee: 35, active: true }
-  ],
   driverSettlements: [],
   ingredients: [
     { id: "i1", name: "فراخ", unit: "كجم", stockQty: 12, minStock: 4, unitCost: 175, active: true },

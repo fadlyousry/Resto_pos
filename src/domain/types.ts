@@ -102,20 +102,9 @@ export interface Order {
   note?: string;
   driverId?: string;
   driver?: string;
-  deliveryCompanyId?: string;
-  deliveryCompany?: string;
   settlementId?: string;
   inventoryDeducted?: boolean;
   source?: "pos" | "online";
-}
-
-export interface DeliveryCompany {
-  id: string;
-  name: string;
-  phone?: string;
-  baseFee: number;
-  active: boolean;
-  notes?: string;
 }
 
 export interface RestaurantSettings {
@@ -245,7 +234,6 @@ export interface AppState {
   customers: Customer[];
   orders: Order[];
   drivers: Driver[];
-  deliveryCompanies: DeliveryCompany[];
   driverSettlements: DriverSettlement[];
   ingredients: Ingredient[];
   recipes: RecipeItem[];

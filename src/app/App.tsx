@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen, RefreshCw, Server } from "lucide-react";
+import { Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen, RefreshCw, Server } from "lucide-react";
 import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
@@ -131,8 +131,6 @@ export default function App() {
                 <Clock3 size={17} /> {pendingCount} تحصيل معلق
               </button>
             )}
-            <button className="icon-button"><Bell size={20} /></button>
-            <div className="avatar">م</div>
           </div>
         </header>
 

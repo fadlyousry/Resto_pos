@@ -1,7 +1,7 @@
 // Internal implementation. Consume it through the public feature index files.
 import { useState, type ReactNode } from "react";
 import {
-  BadgeDollarSign, Boxes, Building2, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
+  BadgeDollarSign, Boxes, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
   ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
   PhoneCall, ExternalLink, Clock, Download
@@ -712,7 +712,7 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
       <div className="customer-order-preview-footer">
         <div className="customer-order-preview-meta">
           <span><small>طريقة الدفع</small><b>{paymentLabel}</b></span>
-          <span><small>التوصيل</small><b>{order.driver || order.deliveryCompany || "غير محدد"}</b></span>
+          <span><small>التوصيل</small><b>{order.driver || "غير محدد"}</b></span>
         </div>
         <div className="customer-order-preview-totals">
           <span><small>قيمة الأصناف</small><b>{money(order.subtotal)}</b></span>
@@ -733,9 +733,8 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
 }
 
 export function SettingsView({ state, update, notify, network }: ViewProps) {
-  const [tab, setTab] = useState<"identity" | "operations" | "delivery" | "network" | "backup" | "support">("identity");
+  const [tab, setTab] = useState<"identity" | "operations" | "network" | "backup" | "support">("identity");
   const [settings, setSettings] = useState({ ...state.settings });
-  const [company, setCompany] = useState({ name: "", phone: "", baseFee: state.settings.defaultDeliveryFee, notes: "" });
   const [serverAddress, setServerAddress] = useState(network?.serverUrl ?? "http://127.0.0.1:4312");
   const [networkTest, setNetworkTest] = useState<"idle" | "testing" | "success" | "error">("idle");
   const readLogo = (file?: File) => {
@@ -749,12 +748,6 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
     update((current) => ({ ...current, settings }));
     notify("تم حفظ الإعدادات وتحديث هوية النظام");
   };
-  const addCompany = () => {
-    if (!company.name.trim()) return;
-    update((current) => ({ ...current, deliveryCompanies: [...current.deliveryCompanies, { id: uid(), ...company, active: true }] }));
-    setCompany({ name: "", phone: "", baseFee: settings.defaultDeliveryFee, notes: "" });
-    notify("تمت إضافة شركة التوصيل");
-  };
   return <div className="settings-page">
     <div className="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
       <button role="tab" aria-selected={tab === "identity"} className={tab === "identity" ? "active" : ""} onClick={() => setTab("identity")}>
@@ -762,9 +755,6 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
       </button>
       <button role="tab" aria-selected={tab === "operations"} className={tab === "operations" ? "active" : ""} onClick={() => setTab("operations")}>
         <SlidersHorizontal /><span><strong>إعدادات التشغيل</strong><small>المطبخ والتوصيل</small></span>
-      </button>
-      <button role="tab" aria-selected={tab === "delivery"} className={tab === "delivery" ? "active" : ""} onClick={() => setTab("delivery")}>
-        <Building2 /><span><strong>شركات التوصيل</strong><small>{state.deliveryCompanies.length} شركة مسجلة</small></span>
       </button>
       <button role="tab" aria-selected={tab === "network"} className={tab === "network" ? "active" : ""} onClick={() => setTab("network")}>
         <Network /><span><strong>السيرفر والشبكة</strong><small>{network?.status === "online" ? "متصل لحظيًا" : "إعداد أجهزة المطعم"}</small></span>
@@ -804,17 +794,6 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
         <label>اعتبار الطلب متأخر بعد (دقيقة)<input type="number" min="1" value={settings.kitchenLateMinutes} onChange={(event) => setSettings({ ...settings, kitchenLateMinutes: Number(event.target.value) })} /></label>
         <button className="primary-button" onClick={save}><Save /> حفظ إعدادات التشغيل</button>
       </div>
-    </div>}
-
-    {tab === "delivery" && <div className="panel" role="tabpanel">
-      <div className="panel-title"><div><Building2 /><span><strong>شركات التوصيل</strong><small>تظهر للكاشير أثناء تسجيل الطلب</small></span></div></div>
-      <div className="company-create">
-        <input placeholder="اسم الشركة" value={company.name} onChange={(event) => setCompany({ ...company, name: event.target.value })} />
-        <input placeholder="رقم التواصل" value={company.phone} onChange={(event) => setCompany({ ...company, phone: event.target.value })} />
-        <input type="number" min="0" placeholder="التكلفة" value={company.baseFee || ""} onChange={(event) => setCompany({ ...company, baseFee: Number(event.target.value) })} />
-        <button className="primary-button compact" onClick={addCompany}><Plus /> إضافة شركة</button>
-      </div>
-      <div className="company-list">{state.deliveryCompanies.map((item) => <div key={item.id}><Building2 /><span><strong>{item.name}</strong><small>{item.phone || "بدون رقم"} · {money(item.baseFee)}</small></span><button className={item.active ? "toggle active" : "toggle"} onClick={() => update((current) => ({ ...current, deliveryCompanies: current.deliveryCompanies.map((company) => company.id === item.id ? { ...company, active: !company.active } : company) }))}><i /></button></div>)}</div>
     </div>}
 
     {tab === "network" && <div className="panel network-settings-panel" role="tabpanel">

@@ -221,8 +221,6 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       note: details.note || undefined,
       driverId: details.driverId,
       driver: details.driver,
-      deliveryCompanyId: details.deliveryCompanyId,
-      deliveryCompany: details.deliveryCompany,
       inventoryDeducted: newUsage.size > 0
     };
 
@@ -315,7 +313,6 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       paymentMethod: details.paymentMethod, paymentStatus: details.paymentStatus,
       stage: "preparing", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
       driverId: details.driverId, driver: details.driver,
-      deliveryCompanyId: details.deliveryCompanyId, deliveryCompany: details.deliveryCompany,
       inventoryDeducted: stockMovements.length > 0, source: "pos"
     };
     const transaction: CashTransaction | null = details.paymentStatus === "paid" ? {
@@ -561,7 +558,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           onEditOrder(order);
         }}
       />}
-      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} editingOrder={editingOrder} drivers={state.drivers} companies={state.deliveryCompanies} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
+      {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} editingOrder={editingOrder} drivers={state.drivers} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
     </div>
   );
 }
@@ -575,13 +572,11 @@ interface CheckoutDetails {
   note: string;
   driverId?: string;
   driver?: string;
-  deliveryCompanyId?: string;
-  deliveryCompany?: string;
 }
 
-function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, defaultFee, onClose, onComplete }: {
+function CheckoutModal({ subtotal, customer, editingOrder, drivers, defaultFee, onClose, onComplete }: {
   subtotal: number; customer: Customer; drivers: AppState["drivers"];
-  editingOrder?: Order | null; companies: AppState["deliveryCompanies"]; defaultFee: number;
+  editingOrder?: Order | null; defaultFee: number;
   onClose: () => void; onComplete: (details: CheckoutDetails) => void;
 }) {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(editingOrder?.paymentMethod ?? "cash");
@@ -590,10 +585,10 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, d
   const [manualDiscount, setManualDiscount] = useState(editingOrder?.discount ?? 0);
   const [scheduledFor, setScheduledFor] = useState(editingOrder?.scheduledFor?.slice(0, 16) ?? "");
   const [note, setNote] = useState(editingOrder?.note ?? "");
-  const [deliveryType, setDeliveryType] = useState<"later" | "driver" | "company">(
-    editingOrder?.driverId ? "driver" : editingOrder?.deliveryCompanyId ? "company" : "later"
+  const [deliveryType, setDeliveryType] = useState<"later" | "driver">(
+    editingOrder?.driverId ? "driver" : "later"
   );
-  const [deliveryId, setDeliveryId] = useState(editingOrder?.driverId ?? editingOrder?.deliveryCompanyId ?? "");
+  const [deliveryId, setDeliveryId] = useState(editingOrder?.driverId ?? "");
 
   const discount = manualDiscount;
   const total = Math.max(0, subtotal + deliveryFee - discount);
@@ -685,19 +680,6 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, d
                 <Bike size={18} />
                 <span>مندوب المطعم</span>
               </button>
-              <button
-                type="button"
-                className={deliveryType === "company" ? "active" : ""}
-                onClick={() => {
-                  setDeliveryType("company");
-                  const company = companies.find((item) => item.active);
-                  setDeliveryId(company?.id ?? "");
-                  if (company) setDeliveryFee(company.baseFee);
-                }}
-              >
-                <Truck size={18} />
-                <span>شركة توصيل</span>
-              </button>
             </div>
 
             {deliveryType === "driver" && (
@@ -707,22 +689,6 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, d
                   <option value="">اختر مندوب التوصيل...</option>
                   {drivers.filter((item) => item.active).map((item) => (
                     <option value={item.id} key={item.id}>{item.name}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            {deliveryType === "company" && (
-              <label className="delivery-select">
-                <span>اختيار الشركة</span>
-                <select value={deliveryId} onChange={(event) => {
-                  setDeliveryId(event.target.value);
-                  const company = companies.find((item) => item.id === event.target.value);
-                  if (company) setDeliveryFee(company.baseFee);
-                }}>
-                  <option value="">اختر شركة التوصيل...</option>
-                  {companies.filter((item) => item.active).map((item) => (
-                    <option value={item.id} key={item.id}>{item.name} — {money(item.baseFee)}</option>
                   ))}
                 </select>
               </label>
@@ -790,7 +756,6 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, d
 
             <button className="primary-button checkout-submit-btn" onClick={() => {
               const driver = deliveryType === "driver" ? drivers.find((item) => item.id === deliveryId) : undefined;
-              const company = deliveryType === "company" ? companies.find((item) => item.id === deliveryId) : undefined;
               onComplete({
                 paymentMethod,
                 paymentStatus,
@@ -799,9 +764,7 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, companies, d
                 scheduledFor,
                 note,
                 driverId: driver?.id,
-                driver: driver?.name,
-                deliveryCompanyId: company?.id,
-                deliveryCompany: company?.name
+                driver: driver?.name
               });
             }}>
               <PackageCheck size={22} />
@@ -1132,7 +1095,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
               </span>
               <span className="order-total-cell"><strong>{money(order.total)}</strong><small>شامل التوصيل</small></span>
               <span className="order-payment-cell"><StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge><small>{paymentLabels[order.paymentMethod]}</small></span>
-              <span className="order-status-cell"><StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "ready" ? "info" : "warning"}>{stageLabels[order.stage]}</StatusBadge><small>{order.driver || order.deliveryCompany || "جهة التوصيل غير محددة"}</small></span>
+              <span className="order-status-cell"><StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "ready" ? "info" : "warning"}>{stageLabels[order.stage]}</StatusBadge><small>{order.driver || "جهة التوصيل غير محددة"}</small></span>
               <span className="order-row-arrow"><ChevronLeft /></span>
             </button>
           ))}
@@ -1156,8 +1119,6 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
               ...order,
               driverId: driver.id,
               driver: driver.name,
-              deliveryCompanyId: undefined,
-              deliveryCompany: undefined,
               stage: "delivered"
             } : order)
           }));
@@ -1176,9 +1137,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
               stage,
               ...(undoingDelivery ? {
                 driverId: undefined,
-                driver: undefined,
-                deliveryCompanyId: undefined,
-                deliveryCompany: undefined
+                driver: undefined
               } : {})
             } : order)
           }));
@@ -1351,7 +1310,7 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
             </div>
             <div className="order-info-card">
               <strong><Truck /> التوصيل والدفع</strong>
-              <span><b>{order.driver || order.deliveryCompany || "لم يتم تحديد جهة التوصيل"}</b></span>
+              <span><b>{order.driver || "لم يتم تحديد جهة التوصيل"}</b></span>
               <span><CreditCard /> {paymentLabels[order.paymentMethod]}</span>
               {order.scheduledFor && <span><Clock3 /> موعد التوصيل: {shortDate(order.scheduledFor)}</span>}
             </div>

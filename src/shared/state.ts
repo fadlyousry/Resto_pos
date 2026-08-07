@@ -46,8 +46,6 @@ function cleanOrder(order: Order): Order {
     note: order.note,
     driverId: order.driverId,
     driver: order.driver,
-    deliveryCompanyId: order.deliveryCompanyId,
-    deliveryCompany: order.deliveryCompany,
     settlementId: order.settlementId,
     inventoryDeducted: order.inventoryDeducted,
     source: order.source
@@ -73,7 +71,6 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     customers: isArray(parsed.customers) ? parsed.customers.map(cleanCustomer) : fallback.customers,
     orders: isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders,
     drivers: isArray(parsed.drivers) ? parsed.drivers : fallback.drivers,
-    deliveryCompanies: isArray(parsed.deliveryCompanies) ? parsed.deliveryCompanies : fallback.deliveryCompanies,
     driverSettlements: isArray(parsed.driverSettlements) ? parsed.driverSettlements : fallback.driverSettlements,
     ingredients: isArray(parsed.ingredients) ? parsed.ingredients : fallback.ingredients,
     recipes: isArray(parsed.recipes) ? parsed.recipes : fallback.recipes,

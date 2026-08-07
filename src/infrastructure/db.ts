@@ -1,7 +1,7 @@
 import Database from "@tauri-apps/plugin-sql";
 import { initialState } from "./seed";
 import type {
-  AppState, CashShift, CashTransaction, Customer, DeliveryCompany, Driver, DriverSettlement, Ingredient,
+  AppState, CashShift, CashTransaction, Customer, Driver, DriverSettlement, Ingredient,
   Order, Product, ProductCategory, PurchaseInvoice, RecipeItem, StockMovement, Supplier
 } from "../domain/types";
 import { normalizeAppState, normalizeOrderStage } from "../shared/state";
@@ -138,7 +138,6 @@ export async function loadState(): Promise<AppState> {
   const recipesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM recipes");
   const stockRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM stock_movements ORDER BY created_at DESC");
   const categoriesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM categories ORDER BY section, name");
-  const deliveryCompaniesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM delivery_companies ORDER BY name");
   const suppliersRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM suppliers ORDER BY name");
   const purchaseInvoicesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM purchase_invoices ORDER BY created_at DESC");
   const settings = await db.select<Array<{ key: string; value: string }>>("SELECT key, value FROM app_settings");
@@ -166,9 +165,6 @@ export async function loadState(): Promise<AppState> {
     settlementId: row.settlement_id ? String(row.settlement_id) : undefined,
     inventoryDeducted: Boolean(row.inventory_deducted),
     source: (row.source ? String(row.source) : "pos") as Order["source"]
-    ,
-    deliveryCompanyId: row.delivery_company_id ? String(row.delivery_company_id) : undefined,
-    deliveryCompany: row.delivery_company ? String(row.delivery_company) : undefined
   }));
   const cashTransactions: CashTransaction[] = cashRaw.map((row) => ({
     id: String(row.id), type: row.type as CashTransaction["type"],
@@ -218,11 +214,6 @@ export async function loadState(): Promise<AppState> {
     section: row.section as ProductCategory["section"],
     color: String(row.color), active: Boolean(row.active)
   }));
-  const deliveryCompanies: DeliveryCompany[] = deliveryCompaniesRaw.map((row) => ({
-    id: String(row.id), name: String(row.name), phone: row.phone ? String(row.phone) : undefined,
-    baseFee: Number(row.base_fee), active: Boolean(row.active),
-    notes: row.notes ? String(row.notes) : undefined
-  }));
   const suppliers: Supplier[] = suppliersRaw.map((row) => ({
     id: String(row.id), name: String(row.name), phone: String(row.phone),
     notes: row.notes ? String(row.notes) : undefined, active: Boolean(row.active)
@@ -244,7 +235,6 @@ export async function loadState(): Promise<AppState> {
     meals: setting.menuMeals ? JSON.parse(setting.menuMeals) : [],
     categories: categories.length ? categories : structuredClone(initialState.categories),
     customers, orders, drivers: drivers.length ? drivers : structuredClone(initialState.drivers),
-    deliveryCompanies: deliveryCompanies.length ? deliveryCompanies : structuredClone(initialState.deliveryCompanies),
     driverSettlements,
     suppliers,
     purchaseInvoices,
@@ -309,10 +299,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const order of state.orders) {
     await db.execute(
-      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,delivery_company_id,delivery_company)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,delivery_company_id=$23,delivery_company=$24`,
-      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.deliveryCompanyId ?? null, order.deliveryCompany ?? null]
+      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22`,
+      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos"]
     );
   }
   for (const driver of state.drivers) {
@@ -321,14 +311,6 @@ export async function saveState(state: AppState): Promise<string> {
        VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT(id) DO UPDATE SET name=$2,phone=$3,active=$4,vehicle=$5`,
       [driver.id, driver.name, driver.phone, driver.active ? 1 : 0, driver.vehicle ?? null, driver.createdAt]
-    );
-  }
-  for (const company of state.deliveryCompanies) {
-    await db.execute(
-      `INSERT INTO delivery_companies (id,name,phone,base_fee,active,notes)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT(id) DO UPDATE SET name=$2,phone=$3,base_fee=$4,active=$5,notes=$6`,
-      [company.id, company.name, company.phone ?? null, company.baseFee, company.active ? 1 : 0, company.notes ?? null]
     );
   }
   for (const settlement of state.driverSettlements) {
