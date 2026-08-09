@@ -1,7 +1,7 @@
 import { useState } from "react";
 import {
   AlertTriangle, Boxes, Eye, FileText, History,
-  Search, ShoppingBasket, Truck
+  Search, ShoppingBasket, Trash2, Truck
 } from "lucide-react";
 import type { PurchaseInvoice } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
@@ -17,7 +17,7 @@ function monthStartKey() {
   return dateKey(d);
 }
 
-export function PurchaseHistoryView({ state }: ViewProps) {
+export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
   const [search, setSearch] = useState("");
   const [dateScope, setDateScope] = useState<"today" | "week" | "month" | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending">("all");
@@ -26,6 +26,18 @@ export function PurchaseHistoryView({ state }: ViewProps) {
   const today = todayKey();
   const weekAgo = weekAgoKey();
   const monthStart = monthStartKey();
+
+  const handleDeleteInvoice = (invoice: PurchaseInvoice) => {
+    if (!window.confirm(`هل أنت تأكد من حذف فاتورة المشتريات #${invoice.number}؟`)) return;
+    update((current) => ({
+      ...current,
+      purchaseInvoices: current.purchaseInvoices.filter((inv) => inv.id !== invoice.id)
+    }));
+    if (viewingInvoice?.id === invoice.id) {
+      setViewingInvoice(null);
+    }
+    notify(`تم حذف فاتورة المشتريات #${invoice.number} بنجاح`);
+  };
 
   const invoices = state.purchaseInvoices.filter((inv) => {
     const dk = dateKey(inv.createdAt);
@@ -140,7 +152,7 @@ export function PurchaseHistoryView({ state }: ViewProps) {
           <span>طريقة الدفع</span>
           <span>الإجمالي</span>
           <span>حالة الدفع</span>
-          <span style={{ textAlign: "center" }}>التفاصيل</span>
+          <span style={{ textAlign: "center" }}>التفاصيل والإجراءات</span>
         </div>
         {invoices.map((inv) => (
           <div className="purchase-invoice-row" key={inv.id}>
@@ -160,9 +172,17 @@ export function PurchaseHistoryView({ state }: ViewProps) {
                 {inv.paymentStatus === "paid" ? "مدفوعة" : "معلقة"}
               </em>
             </span>
-            <span style={{ display: "flex", justifyContent: "center" }}>
+            <span style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
               <button className="soft-button compact" onClick={() => setViewingInvoice(inv)}>
                 <Eye size={14} /> عرض
+              </button>
+              <button
+                type="button"
+                title="حذف الفاتورة"
+                style={{ border: 0, background: "#fff1ee", color: "#b66052", padding: "6px 8px", borderRadius: "7px", cursor: "pointer", display: "grid", placeItems: "center" }}
+                onClick={() => handleDeleteInvoice(inv)}
+              >
+                <Trash2 size={14} />
               </button>
             </span>
           </div>
@@ -218,8 +238,8 @@ export function PurchaseHistoryView({ state }: ViewProps) {
                 <span>سعر الوحدة</span>
                 <span>الإجمالي</span>
               </div>
-              {viewingInvoice.items.map((item, i) => (
-                <div className="purchase-item-row" key={i} style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr" }}>
+              {viewingInvoice.items.map((item, idx) => (
+                <div className="purchase-item-row" key={idx} style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr" }}>
                   <span>
                     <strong>{item.ingredientName}</strong>
                   </span>
@@ -256,6 +276,17 @@ export function PurchaseHistoryView({ state }: ViewProps) {
                 <small>ملاحظات:</small> {viewingInvoice.note}
               </div>
             )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
+              <button
+                type="button"
+                className="soft-button danger"
+                style={{ color: "#b66052", border: "1px solid #fecaca", background: "#fff1ee", display: "flex", alignItems: "center", gap: "5px" }}
+                onClick={() => handleDeleteInvoice(viewingInvoice)}
+              >
+                <Trash2 size={15} /> حذف هذه الفاتورة
+              </button>
+            </div>
           </div>
         </Modal>
       )}

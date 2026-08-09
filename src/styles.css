@@ -1653,9 +1653,9 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .products-category-filter button.active { border-color: var(--green-800); background: var(--green-800); color: #fff; }
 .products-admin-panel .product-management { padding: 0; overflow-x: auto; }
 .product-manage-table-head,
-.products-admin-panel .product-manage-row.editable { min-width: 920px; display: grid; grid-template-columns: minmax(210px, 1.5fr) minmax(120px, .8fr) minmax(90px, .6fr) minmax(145px, .9fr) 82px 78px; align-items: center; gap: 12px; padding: 0 17px; }
+.products-admin-panel .product-manage-row.editable { min-width: 920px; display: grid; grid-template-columns: minmax(160px, 1.2fr) minmax(100px, .7fr) minmax(70px, .5fr) minmax(210px, 1.4fr) 68px 65px 36px; align-items: center; gap: 12px; padding: 0 17px; }
 .product-manage-table-head { min-height: 42px; border-bottom: 1px solid var(--line); background: #f3f5f2; color: #68736d; font-size: 10px; font-weight: 800; }
-.products-admin-panel .product-manage-row.editable { min-height: 72px; border-bottom: 1px solid #e9ece8; background: #fff; color: #17231e; font-size: 11px; transition: .16s ease; }
+.products-admin-panel .product-manage-row.editable { min-height: 62px; border-bottom: 1px solid #e9ece8; background: #fff; color: #17231e; font-size: 11px; transition: .16s ease; }
 .products-admin-panel .product-manage-row.editable:hover { background: #fbfdfb; box-shadow: inset -3px 0 var(--green-700); }
 .products-admin-panel .product-manage-row.unavailable { opacity: .62; background: #f8f8f6; }
 .product-admin-name { min-width: 0; display: flex !important; align-items: center; gap: 10px; }

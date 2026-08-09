@@ -202,28 +202,35 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
         </div>
       </div>
       <div className="product-management">
-        <div className="product-manage-table-head"><span>الصنف</span><span>الوحدة والمقاسات</span><span>التكلفة</span><span>سعر البيع السريع</span><span>تعديل</span><span>متاح</span></div>
-        {products.map((product) => <div className={product.available ? "product-manage-row editable" : "product-manage-row editable unavailable"} key={product.id}>
+        <div className="product-manage-table-head" style={{ gridTemplateColumns: "minmax(160px, 1.2fr) minmax(100px, 0.7fr) minmax(70px, 0.5fr) minmax(210px, 1.4fr) 68px 65px 36px" }}><span>الصنف</span><span>الوحدة والمقاسات</span><span>التكلفة</span><span>سعر البيع السريع</span><span style={{ textAlign: "center" }}>تعديل</span><span style={{ textAlign: "center" }}>متاح</span><span style={{ textAlign: "center" }}>حذف</span></div>
+        {products.map((product) => <div className={product.available ? "product-manage-row editable" : "product-manage-row editable unavailable"} key={product.id} style={{ gridTemplateColumns: "minmax(160px, 1.2fr) minmax(100px, 0.7fr) minmax(70px, 0.5fr) minmax(210px, 1.4fr) 68px 65px 36px", minHeight: "62px" }}>
           <div className="product-admin-name"><span className="product-admin-icon" style={{ background: `${product.accent}24`, color: product.accent }}>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <CookingPot />}</span><span><strong>{product.name}</strong><small>{product.category}</small></span></div>
           <span className="product-admin-units"><b>{product.unit}</b>{product.options?.length ? <small>{product.options.length} مقاسات</small> : <small>سعر واحد</small>}</span>
           <span className="product-admin-cost"><small>التكلفة</small><b>{money(product.cost)}</b></span>
-          {product.options?.length ? <div className="option-price-summary">
-            <small>حسب المقاس</small>
-            <b>{money(Math.min(...product.options.map((option) => option.price)))} — {money(Math.max(...product.options.map((option) => option.price)))}</b>
+          {product.options?.length ? <div style={{ display: "flex", gap: "6px", alignItems: "center", overflowX: "auto" }}>
+            {product.options.map((option) => {
+              const key = `${product.id}:${option.id}`;
+              const value = draftOptionPrices[key] ?? option.price;
+              const isChanged = value !== option.price;
+              return <label key={option.id} className={isChanged ? "quick-price changed" : "quick-price"} style={{ display: "flex", flexDirection: "row", alignItems: "center", minHeight: "34px", height: "34px", margin: 0, borderRadius: "7px", overflow: "hidden" }}>
+                <input type="number" min="0" value={value} onChange={(event) => setDraftOptionPrices({ ...draftOptionPrices, [key]: Number(event.target.value) })} onKeyDown={(event) => event.key === "Enter" && savePriceChanges()} style={{ width: "46px", height: "34px", textAlign: "center", padding: "0 4px", fontSize: "12px", fontWeight: 700, border: 0, outline: 0 }} />
+                <span style={{ height: "34px", display: "grid", placeItems: "center", padding: "0 6px", fontSize: "9px", fontWeight: 700, background: "#f1f4f1", color: "#47534c", whiteSpace: "nowrap" }}>{option.name}</span>
+              </label>;
+            })}
           </div> : <label className={draftPrices[product.id] !== undefined && draftPrices[product.id] !== product.price ? "quick-price changed" : "quick-price"}>
             <input type="number" min="0" value={draftPrices[product.id] ?? product.price} onChange={(event) => setDraftPrices({ ...draftPrices, [product.id]: Number(event.target.value) })} onKeyDown={(event) => event.key === "Enter" && savePriceChanges()} />
             <span>سعر البيع</span>
           </label>}
           <button className="product-edit-button" title="فتح كل بيانات الصنف والمقاسات" onClick={() => setEditing({ ...product, options: product.options?.map((option) => ({ ...option })) })}><Edit3 /><span>تعديل</span></button>
           <button className={product.available ? "product-availability active" : "product-availability"} title={product.available ? "إيقاف الصنف" : "إتاحة الصنف"} onClick={() => toggle(product.id)}><i /><span>{product.available ? "متاح" : "متوقف"}</span></button>
-          {!!product.options?.length && <div className="product-quick-options">
-            <strong>أسعار المقاسات:</strong>
-            {product.options.map((option) => {
-              const key = `${product.id}:${option.id}`;
-              const value = draftOptionPrices[key] ?? option.price;
-              return <label className={value !== option.price ? "changed" : ""} key={option.id}><span>{option.name}</span><input type="number" min="0" value={value} onChange={(event) => setDraftOptionPrices({ ...draftOptionPrices, [key]: Number(event.target.value) })} /><small>{option.unit}</small></label>;
-            })}
-          </div>}
+          <button type="button" style={{ border: 0, background: "#fff1ee", color: "#b66052", width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center", cursor: "pointer" }} title="حذف الصنف" onClick={() => {
+            if (!window.confirm(`هل أنت تأكد من حذف الصنف "${product.name}"؟`)) return;
+            update((current) => ({
+              ...current,
+              products: current.products.filter((item) => item.id !== product.id)
+            }));
+            notify(`تم حذف الصنف ${product.name}`);
+          }}><Trash2 size={15} /></button>
         </div>)}
         {!products.length && <Empty icon={<Search />} title="لا توجد أصناف مطابقة" text="غيّر البحث أو اختر تصنيفًا آخر" />}
       </div>
@@ -240,7 +247,21 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
           {editing.imageDataUrl && <button type="button" className="remove-product-image" onClick={() => setEditing({ ...editing, imageDataUrl: undefined })}><Trash2 /> حذف الصورة</button>}
         </aside>
         <section className="product-editor-main">
-          <div className="product-editor-heading"><span><Edit3 /></span><div><strong>البيانات الأساسية</strong><small>اسم الصنف والقسم والتصنيف ووحدة البيع</small></div></div>
+          <div className="product-editor-heading">
+            <span><Edit3 /></span>
+            <div><strong>البيانات الأساسية</strong><small>اسم الصنف والقسم والتصنيف ووحدة البيع</small></div>
+            {state.products.some((item) => item.id === editing.id) && (
+              <button type="button" className="soft-button danger" style={{ color: "#b66052", border: "1px solid #fecaca", background: "#fff1ee", marginRight: "auto", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => {
+                if (!window.confirm(`هل أنت تأكد من حذف الصنف "${editing.name}"؟`)) return;
+                update((current) => ({
+                  ...current,
+                  products: current.products.filter((item) => item.id !== editing.id)
+                }));
+                setEditing(null);
+                notify(`تم حذف الصنف ${editing.name}`);
+              }}><Trash2 size={15} /> حذف الصنف</button>
+            )}
+          </div>
           <div className="editor-grid product-editor-fields">
         <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} placeholder="مثال: بيتزا بالفراخ" /></label>
         <label>القسم<select value={editing.section} onChange={(event) => {
@@ -361,6 +382,14 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
       <button className={category.active ? "product-availability active" : "product-availability"} onClick={() => update((current) => ({
         ...current, categories: current.categories.map((item) => item.id === category.id ? { ...item, active: !item.active } : item)
       }))}><i /><span>{category.active ? "متاح" : "متوقف"}</span></button>
+      <button type="button" style={{ border: 0, background: "#fff1ee", color: "#b66052", width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center", cursor: "pointer" }} title="حذف التصنيف" onClick={() => {
+        if (!window.confirm(`هل أنت تأكد من حذف التصنيف "${category.name}"؟`)) return;
+        update((current) => ({
+          ...current,
+          categories: current.categories.filter((item) => item.id !== category.id)
+        }));
+        notify(`تم حذف التصنيف ${category.name}`);
+      }}><Trash2 size={15} /></button>
     </div>;
       })}
       {!visibleCategories.length && <Empty icon={<Boxes />} title="لا توجد تصنيفات" text="أضف تصنيفًا جديدًا أو غيّر كلمة البحث" />}
@@ -558,6 +587,14 @@ export function CustomerRecordsView({ state, update, notify, onEditOrder }: View
         } : order)
       }));
       setSelected(customer); notify("تم تحديث بيانات العميل");
+    }} onDelete={(customerId) => {
+      if (!window.confirm("هل أنت تأكد من حذف هذا العميل؟")) return;
+      update((current) => ({
+        ...current,
+        customers: current.customers.filter((item) => item.id !== customerId)
+      }));
+      setSelected(null);
+      notify("تم حذف العميل بنجاح");
     }} onOrder={(order) => { setSelected(null); onEditOrder(order); }} />}
   </div>;
 }
@@ -620,8 +657,8 @@ export function CustomerForm({ customers, onClose, onSave }: { customers: Custom
   </Modal>;
 }
 
-export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
-  customer: Customer; state: AppState; onClose: () => void; onEdit: (customer: Customer) => void; onOrder: (order: Order) => void
+export function CustomerFile({ customer, state, onClose, onEdit, onDelete, onOrder }: {
+  customer: Customer; state: AppState; onClose: () => void; onEdit: (customer: Customer) => void; onDelete?: (customerId: string) => void; onOrder: (order: Order) => void
 }) {
   const [form, setForm] = useState({ ...customer });
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
@@ -660,6 +697,11 @@ export function CustomerFile({ customer, state, onClose, onEdit, onOrder }: {
           <label className="full-field"><span>ملاحظات العميل</span><div className="textarea-field"><ClipboardList /><textarea value={form.notes ?? ""} placeholder="لا توجد ملاحظات مسجلة" onChange={(event) => setForm({ ...form, notes: event.target.value })} /></div></label>
         </div>
         <div className="customer-profile-actions">
+          {onDelete && (
+            <button type="button" className="soft-button danger" style={{ color: "#b66052", border: "1px solid #fecaca", background: "#fff1ee", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => onDelete(customer.id)}>
+              <Trash2 size={15} /> حذف العميل
+            </button>
+          )}
           {isDirty && <small>لديك تعديلات غير محفوظة</small>}
           <button type="button" className="primary-button" disabled={!isDirty || !canSave} onClick={() => onEdit({ ...form, name: form.name.trim(), phone: form.phone.trim(), address: form.address.trim() })}><Save /> حفظ التعديلات</button>
         </div>

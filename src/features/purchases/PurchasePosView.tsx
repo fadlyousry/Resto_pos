@@ -1,8 +1,8 @@
 import { useState } from "react";
 import {
-  AlertTriangle, Boxes,
-  FileText, Minus, Plus, Save, Scale, Search,
-  Trash2, Truck, UserPlus, X
+  AlertTriangle, Boxes, ChevronRight, MapPin,
+  Minus, Phone, Plus, Save, Scale, Search,
+  Trash2, Truck, User, UserPlus, X
 } from "lucide-react";
 import type {
   CashTransaction, Ingredient, PaymentMethod, PaymentStatus,
@@ -54,7 +54,6 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
   });
 
   const subtotal = cart.reduce((sum, item) => sum + item.unitCost * item.quantity, 0);
-  const totalUnits = cart.reduce((sum, item) => sum + item.quantity, 0);
   const grandTotal = Math.max(0, subtotal - discount);
 
   // Add ingredient to purchase cart
@@ -303,27 +302,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
 
       {/* ═══════════ RIGHT: PURCHASE CART PANEL ═══════════ */}
       <aside className="cart-panel">
-        {/* Title & Cart Info */}
-        <div className="cart-title">
-          <div className="cart-heading">
-            <span className="cart-heading-icon" style={{ background: "#0284c7", color: "#fff" }}>
-              <FileText />
-            </span>
-            <span>
-              <b>فاتورة مشتريات</b>
-              <small>{cart.length ? `${cart.length} صنف · ${totalUnits} وحدة` : "أضف الخامات للفاتورة"}</small>
-            </span>
-            <strong>#{state.nextPurchaseInvoiceNumber}</strong>
-          </div>
-          <button
-            className="clear-cart-button"
-            title="تفريغ الفاتورة"
-            onClick={() => setCart([])}
-            disabled={!cart.length}
-          >
-            <Trash2 size={18} />
-          </button>
-        </div>
+
 
         {/* Supplier Selector */}
         <div className="customer-picker">
@@ -386,10 +365,10 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
         {/* Cart Items */}
         <div className="cart-items">
           {cart.length > 0 && (
-            <div className="cart-table-head" style={{ gridTemplateColumns: "1fr 108px 65px 60px 28px", gap: "4px", padding: "0 6px" }}>
+            <div className="cart-table-head" style={{ gridTemplateColumns: "1fr 100px 65px 60px 28px", gap: "4px", padding: "0 6px" }}>
               <span>المكون</span>
               <span style={{ textAlign: "center" }}>الكمية</span>
-              <span style={{ textAlign: "center" }}>السعر/وحدة</span>
+              <span style={{ textAlign: "center" }}>السعر</span>
               <span style={{ textAlign: "center" }}>الإجمالي</span>
               <span />
             </div>
@@ -398,7 +377,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
             <div
               className="cart-item"
               key={item.ingredientId}
-              style={{ gridTemplateColumns: "1fr 108px 65px 60px 28px", gap: "4px", padding: "8px 6px" }}
+              style={{ gridTemplateColumns: "1fr 100px 65px 60px 28px", gap: "4px", padding: "8px 6px" }}
             >
               <div className="cart-product-cell">
                 <strong>{item.name}</strong>
@@ -429,16 +408,18 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                   onChange={(e) => updateItemCost(item.ingredientId, Number(e.target.value))}
                   style={{
                     width: "55px",
-                    padding: "4px 2px",
+                    padding: "3px 4px",
                     borderRadius: "6px",
                     border: "1px solid var(--line)",
-                    fontSize: "11px",
-                    textAlign: "center"
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    textAlign: "center",
+                    background: "#fff"
                   }}
-                  title="سعر الشراء للوحدة"
+                  title="تعديل سعر شراء الوحدة"
                 />
               </div>
-              <b className="cart-line-total" style={{ fontSize: "12px", textAlign: "center" }}>
+              <b className="cart-line-total" style={{ fontSize: "12px", textAlign: "center", color: "#0284c7" }}>
                 {money(item.unitCost * item.quantity)}
               </b>
               <button
@@ -529,11 +510,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
             إتمام وتأكيد فاتورة الشراء <span>{money(grandTotal)} ج.م</span>
           </button>
 
-          {!supplier && cart.length > 0 && (
-            <small className="hint" style={{ color: "var(--muted)" }}>
-              سيتم تسجيل الفاتورة باسم "مورد يومي" لعدم تحديد مورد
-            </small>
-          )}
+
         </div>
       </aside>
 
@@ -548,38 +525,76 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
           size="medium"
         >
           {isAddingNewSupplier ? (
-            <div className="form-stack">
-              <label>
-                اسم المورد <em>*</em>
-                <input
-                  autoFocus
-                  value={supplierForm.name}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
-                  placeholder="مثال: شركة الخير للحوم"
-                />
-              </label>
-              <label>
-                رقم الهاتف
-                <input
-                  value={supplierForm.phone}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
-                  placeholder="01xxxxxxxxx"
-                  dir="ltr"
-                />
-              </label>
-              <label>
-                ملاحظات / عنوان
-                <input
-                  value={supplierForm.notes}
-                  onChange={(e) => setSupplierForm({ ...supplierForm, notes: e.target.value })}
-                  placeholder="مثال: مورد فراخ مجمدة"
-                />
-              </label>
-              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "10px" }}>
-                <button className="soft-button" onClick={() => setIsAddingNewSupplier(false)}>
-                  رجوع للقائمة
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "4px 2px" }}>
+              <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", padding: "12px 16px", borderRadius: "12px", display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{ width: "40px", height: "40px", borderRadius: "10px", background: "#0284c7", color: "#fff", display: "grid", placeItems: "center", flexShrink: 0 }}>
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <strong style={{ fontSize: "14px", color: "#0369a1", display: "block" }}>تسجيل بيانات مورد جديد</strong>
+                  <small style={{ color: "#0284c7", fontSize: "11px" }}>أدخل بيانات المورد لحفظها واستخدامها في فواتير المشتريات والتقارير</small>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", fontWeight: 700, color: "var(--text)" }}>
+                  <span>اسم المورد <span style={{ color: "#dc2626" }}>*</span></span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--line)", borderRadius: "10px", padding: "0 12px", background: "#fff", height: "42px" }}>
+                    <User size={18} style={{ color: "var(--muted)" }} />
+                    <input
+                      autoFocus
+                      value={supplierForm.name}
+                      onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })}
+                      placeholder="مثال: شركة الخير للحوم والفرخ"
+                      style={{ border: 0, outline: 0, width: "100%", height: "100%", fontSize: "13px", fontFamily: "inherit" }}
+                    />
+                  </div>
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", fontWeight: 700, color: "var(--text)" }}>
+                  <span>رقم الهاتف</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--line)", borderRadius: "10px", padding: "0 12px", background: "#fff", height: "42px" }}>
+                    <Phone size={18} style={{ color: "var(--muted)" }} />
+                    <input
+                      value={supplierForm.phone}
+                      onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })}
+                      placeholder="01xxxxxxxxx"
+                      dir="ltr"
+                      style={{ border: 0, outline: 0, width: "100%", height: "100%", fontSize: "13px", fontFamily: "inherit", textAlign: "left" }}
+                    />
+                  </div>
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12px", fontWeight: 700, color: "var(--text)" }}>
+                  <span>ملاحظات / العنوان</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--line)", borderRadius: "10px", padding: "0 12px", background: "#fff", height: "42px" }}>
+                    <MapPin size={18} style={{ color: "var(--muted)" }} />
+                    <input
+                      value={supplierForm.notes}
+                      onChange={(e) => setSupplierForm({ ...supplierForm, notes: e.target.value })}
+                      placeholder="مثال: مورد فراخ مجمدة - فرع القاهرة"
+                      style={{ border: 0, outline: 0, width: "100%", height: "100%", fontSize: "13px", fontFamily: "inherit" }}
+                    />
+                  </div>
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "10px", paddingTop: "12px", borderTop: "1px solid var(--line)" }}>
+                <button
+                  type="button"
+                  className="soft-button"
+                  onClick={() => setIsAddingNewSupplier(false)}
+                  style={{ display: "flex", alignItems: "center", gap: "6px", padding: "9px 16px", borderRadius: "10px" }}
+                >
+                  <ChevronRight size={16} /> رجوع للقائمة
                 </button>
-                <button className="primary-button" onClick={registerNewSupplier}>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={registerNewSupplier}
+                  disabled={!supplierForm.name.trim()}
+                  style={{ background: "#0284c7", display: "flex", alignItems: "center", gap: "6px", padding: "9px 18px", borderRadius: "10px" }}
+                >
                   <Save size={16} /> حفظ واختيار المورد
                 </button>
               </div>
@@ -596,7 +611,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                     placeholder="ابحث باسم المورد أو رقم الهاتف..."
                   />
                 </label>
-                <button className="primary-button compact" onClick={() => setIsAddingNewSupplier(true)}>
+                <button className="primary-button compact" style={{ background: "#0284c7" }} onClick={() => setIsAddingNewSupplier(true)}>
                   <Plus size={16} /> مورد جديد
                 </button>
               </div>
@@ -610,21 +625,23 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                     transition: "0.15s",
                     borderStyle: "dashed",
                     borderColor: !supplier ? "#0284c7" : "var(--line)",
-                    background: !supplier ? "#f0f9ff" : "transparent"
+                    background: !supplier ? "#f0f9ff" : "transparent",
+                    padding: "12px 14px",
+                    borderRadius: "12px"
                   }}
                   onClick={() => {
                     setSupplier(null);
                     setShowSupplierModal(false);
                   }}
                 >
-                  <div>
-                    <Truck style={{ color: "#0284c7" }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                    <Truck style={{ color: "#0284c7" }} size={20} />
                     <div>
-                      <strong>مورد يومي (بدون تخصيص)</strong>
+                      <strong style={{ display: "block" }}>مورد يومي (بدون تخصيص)</strong>
                       <small style={{ color: "var(--muted)" }}>تسجيل المشتريات كمشتريات يومية مباشرة</small>
                     </div>
                   </div>
-                  <button className="soft-button compact">
+                  <button className="soft-button compact" style={{ background: !supplier ? "#e0f2fe" : undefined, color: !supplier ? "#0369a1" : undefined }}>
                     {!supplier ? "المحدد حالياً" : "اختيار"}
                   </button>
                 </div>
@@ -633,14 +650,14 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                   <div
                     key={sup.id}
                     className="supplier-card"
-                    style={{ cursor: "pointer", transition: "0.15s" }}
+                    style={{ cursor: "pointer", transition: "0.15s", padding: "12px 14px", borderRadius: "12px" }}
                     onClick={() => selectSupplierHandler(sup)}
                   >
-                    <div>
-                      <Truck />
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <Truck size={20} />
                       <div>
-                        <strong>{sup.name}</strong>
-                        {sup.phone && <small>{sup.phone}</small>}
+                        <strong style={{ display: "block" }}>{sup.name}</strong>
+                        {sup.phone && <small style={{ display: "block" }}>{sup.phone}</small>}
                         {sup.notes && <small style={{ color: "var(--muted)" }}>{sup.notes}</small>}
                       </div>
                     </div>

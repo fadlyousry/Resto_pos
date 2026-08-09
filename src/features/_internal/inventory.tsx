@@ -2,7 +2,7 @@
 import { useState, type ReactNode } from "react";
 import {
   AlertTriangle, Boxes, Calculator, ChevronLeft, CookingPot, Edit3, History, PackagePlus, Plus,
-  Save, Search, ShoppingBasket, Scale
+  Save, Search, ShoppingBasket, Scale, Trash2
 } from "lucide-react";
 import type {
   CashTransaction, Ingredient, Product, RecipeItem, StockMovement
@@ -214,7 +214,14 @@ export function InventoryView({ state, update, notify }: ViewProps) {
                     setIngredientAttempted(false);
                     setIngredientForm({ name: ingredient.name, unit: ingredient.unit, stockQty: ingredient.stockQty, minStock: ingredient.minStock, unitCost: ingredient.unitCost });
                     setAddingIngredient(true);
-                  }}><Edit3 /></button></span>
+                  }}><Edit3 /></button><button type="button" style={{ border: 0, background: "#fff1ee", color: "#b66052", width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center", cursor: "pointer" }} title="حذف المكون" onClick={() => {
+                    if (!window.confirm(`هل أنت تأكد من حذف المكون "${ingredient.name}"؟`)) return;
+                    update((current) => ({
+                      ...current,
+                      ingredients: current.ingredients.filter((item) => item.id !== ingredient.id)
+                    }));
+                    notify(`تم حذف المكون ${ingredient.name}`);
+                  }}><Trash2 size={15} /></button></span>
                 </div>
               );
             })}
