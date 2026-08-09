@@ -1,3 +1,4 @@
+mod printing;
 mod server;
 
 use serde::{Deserialize, Serialize};
@@ -29,20 +30,36 @@ fn get_server_info() -> server::ServerInfo {
 
 #[tauri::command]
 fn get_network_config(app: tauri::AppHandle) -> Result<NetworkConfig, String> {
-    let directory = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     Ok(read_network_config(&directory))
 }
 
 #[tauri::command]
-fn save_network_config(
-    app: tauri::AppHandle,
-    config: NetworkConfig,
-) -> Result<(), String> {
-    let directory = app.path().app_data_dir().map_err(|error| error.to_string())?;
+fn save_network_config(app: tauri::AppHandle, config: NetworkConfig) -> Result<(), String> {
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     let serialized = serde_json::to_string_pretty(&config).map_err(|error| error.to_string())?;
-    fs::write(directory.join(NETWORK_CONFIG_FILE), serialized)
-        .map_err(|error| error.to_string())
+    fs::write(directory.join(NETWORK_CONFIG_FILE), serialized).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn list_printers() -> Result<Vec<printing::PrinterInfo>, String> {
+    tauri::async_runtime::spawn_blocking(printing::list_printers)
+        .await
+        .map_err(|error| format!("تعذر تشغيل خدمة الطابعات: {error}"))?
+}
+
+#[tauri::command]
+async fn print_receipt(payload: printing::ReceiptPrintPayload) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || printing::print_receipt(payload))
+        .await
+        .map_err(|error| format!("تعذر تشغيل مهمة الطباعة: {error}"))?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -52,7 +69,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_server_info,
             get_network_config,
-            save_network_config
+            save_network_config,
+            list_printers,
+            print_receipt
         ])
         .setup(|app| {
             let app_data_directory = app.path().app_data_dir()?;

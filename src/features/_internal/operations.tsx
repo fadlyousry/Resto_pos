@@ -18,6 +18,7 @@ import {
 } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { Empty, MiniStat, Modal, StatusBadge, WorkspaceSectionHeader } from "../../shared/ui";
+import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 
 const MEALS_SECTION = "__meals";
 
@@ -39,6 +40,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [optionProduct, setOptionProduct] = useState<Product | null>(null);
   const [checkout, setCheckout] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const hasOpenShift = state.cashShifts.some((shift) => !shift.closedAt);
 
   useEffect(() => {
@@ -248,7 +250,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         orders: current.orders.map((order) => order.id === editingOrder.id ? updatedOrder : order),
         ingredients: current.ingredients.map((ingredient) => {
           const delta = (newUsage.get(ingredient.id) ?? 0) - (oldUsage.get(ingredient.id) ?? 0);
-          return { ...ingredient, stockQty: Math.max(0, ingredient.stockQty - delta) };
+          return { ...ingredient, stockQty: Math.max(0, Math.round((ingredient.stockQty - delta) * 1000) / 1000) };
         }),
         stockMovements: [...stockAdjustments, ...current.stockMovements],
         customers: current.customers.map((item) => {
@@ -323,7 +325,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       ...current,
       orders: [order, ...current.orders],
       ingredients: current.ingredients.map((ingredient) => ({
-        ...ingredient, stockQty: Math.max(0, ingredient.stockQty - (consumption.get(ingredient.id) ?? 0))
+        ...ingredient, stockQty: Math.max(0, Math.round((ingredient.stockQty - (consumption.get(ingredient.id) ?? 0)) * 1000) / 1000)
       })),
       stockMovements: [...stockMovements, ...current.stockMovements],
       cashTransactions: transaction ? [transaction, ...current.cashTransactions] : current.cashTransactions,
@@ -336,6 +338,15 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     setCustomer(null);
     setCheckout(false);
     notify(`تم تسجيل الطلب #${order.number}`);
+    if (state.settings.printCustomerReceipt !== false || state.settings.printKitchenReceipt !== false) {
+      if (isDesktopRuntime()) {
+        void printOrderReceipts(order, state.settings).catch((error) => {
+          notify(`تم تسجيل الطلب #${order.number} لكن تعذرت الطباعة: ${errorMessage(error)}`);
+        });
+      } else {
+        setReceiptOrder(order);
+      }
+    }
   };
 
   return (
@@ -559,6 +570,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         }}
       />}
       {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} editingOrder={editingOrder} drivers={state.drivers} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
+      {receiptOrder && <InvoiceModal order={receiptOrder} settings={state.settings} autoPrint onClose={() => setReceiptOrder(null)} />}
     </div>
   );
 }
@@ -969,7 +981,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
         orders: current.orders.filter((order) => order.id !== deleteOrder.id),
         ingredients: current.ingredients.map((ingredient) => ({
           ...ingredient,
-          stockQty: ingredient.stockQty + (usage.get(ingredient.id) ?? 0)
+          stockQty: Math.round((ingredient.stockQty + (usage.get(ingredient.id) ?? 0)) * 1000) / 1000
         })),
         stockMovements: [...stockReversals, ...current.stockMovements],
         cashTransactions: cashReversal ? [cashReversal, ...current.cashTransactions] : current.cashTransactions,

@@ -1,5 +1,5 @@
 // Internal implementation. Consume it through the public feature index files.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   BadgeDollarSign, Boxes, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
@@ -17,6 +17,9 @@ import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 import { BackupPanel } from "../settings/BackupPanel";
 import { InvoiceModal } from "../orders/InvoiceModal";
 import { testServerConnection } from "../../infrastructure/dataClient";
+import {
+  errorMessage, isDesktopRuntime, listDesktopPrinters, printTestReceipt, type PrinterInfo
+} from "../../infrastructure/desktopPrinting";
 
 const emptyProduct = (category?: ProductCategory, section: ProductSection = "cooked"): Product => ({
   id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? section,
@@ -740,9 +743,45 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
   const [networkTest, setNetworkTest] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [licenseInputKey, setLicenseInputKey] = useState("");
   const [licenseCopied, setLicenseCopied] = useState(false);
+  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
+  const [printersLoading, setPrintersLoading] = useState(false);
+  const [printerStatus, setPrinterStatus] = useState("");
+  const [testingPrinter, setTestingPrinter] = useState<"customer" | "kitchen" | null>(null);
+  const desktopRuntime = isDesktopRuntime();
 
   const machineId = state.license?.machineId || getMachineId();
   const licenseEval = evaluateLicense(state.license);
+
+  const refreshPrinters = async () => {
+    if (!desktopRuntime) return;
+    setPrintersLoading(true);
+    setPrinterStatus("");
+    try {
+      setPrinters(await listDesktopPrinters());
+    } catch (error) {
+      setPrinterStatus(`تعذر قراءة طابعات Windows: ${errorMessage(error)}`);
+    } finally {
+      setPrintersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshPrinters();
+  }, []);
+
+  const testPrinter = async (kind: "customer" | "kitchen") => {
+    setTestingPrinter(kind);
+    setPrinterStatus("");
+    try {
+      const printerName = kind === "customer" ? settings.customerReceiptPrinter : settings.kitchenReceiptPrinter;
+      await printTestReceipt(kind, printerName, settings);
+      setPrinterStatus("تم إرسال ريسيت الاختبار للطابعة بنجاح");
+    } catch (error) {
+      setPrinterStatus(`تعذرت طباعة الاختبار: ${errorMessage(error)}`);
+    } finally {
+      setTestingPrinter(null);
+    }
+  };
 
   const readLogo = (file?: File) => {
     if (!file) return;
@@ -823,7 +862,49 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
           <label>رقم المطعم<input value={settings.phone} onChange={(event) => setSettings({ ...settings, phone: event.target.value })} /></label>
           <label>العنوان<input value={settings.address} onChange={(event) => setSettings({ ...settings, address: event.target.value })} /></label>
           <label className="full-field">تذييل الفاتورة<input value={settings.invoiceFooter} onChange={(event) => setSettings({ ...settings, invoiceFooter: event.target.value })} /></label>
-          <button className="primary-button" onClick={save}><Save /> حفظ بيانات المطعم</button>
+          <div className="receipt-print-settings full-field">
+            <div className="receipt-print-settings-title">
+              <Printer />
+              <span><strong>الطباعة الفورية عند تسجيل الطلب</strong><small>{desktopRuntime ? `${printers.length} طابعة متاحة على Windows` : "اختيار الطابعة والطباعة الصامتة يعملان في نسخة الديسكتوب"}</small></span>
+              {desktopRuntime && <button type="button" className="soft-button receipt-printers-refresh" disabled={printersLoading} onClick={() => void refreshPrinters()}><RefreshCw /> {printersLoading ? "جاري التحديث..." : "تحديث الطابعات"}</button>}
+            </div>
+            <div className="receipt-print-options">
+              <div className={settings.printCustomerReceipt ? "receipt-print-option active" : "receipt-print-option"}>
+                <label className="receipt-print-option-main">
+                  <input type="checkbox" checked={settings.printCustomerReceipt} onChange={(event) => setSettings({ ...settings, printCustomerReceipt: event.target.checked })} />
+                  <span className="receipt-print-option-icon"><ReceiptText /></span>
+                  <span><strong>فاتورة العميل</strong><small>تخرج فورًا بعد حفظ الطلب وبها الأسعار والدفع</small></span>
+                  <i><b /></i>
+                </label>
+                <div className="receipt-printer-field">
+                  <label><span>طابعة فاتورة العميل</span><select value={settings.customerReceiptPrinter ?? ""} disabled={!desktopRuntime} onChange={(event) => setSettings({ ...settings, customerReceiptPrinter: event.target.value })}>
+                    <option value="">الطابعة الافتراضية في Windows</option>
+                    {settings.customerReceiptPrinter && !printers.some((printer) => printer.name === settings.customerReceiptPrinter) && <option value={settings.customerReceiptPrinter}>{settings.customerReceiptPrinter} — غير متصلة</option>}
+                    {printers.map((printer) => <option value={printer.name} key={printer.name}>{printer.name}{printer.isDefault ? " — الافتراضية" : ""}</option>)}
+                  </select></label>
+                  {desktopRuntime && <button type="button" className="soft-button" disabled={testingPrinter !== null} onClick={() => void testPrinter("customer")}><Printer /> {testingPrinter === "customer" ? "جاري الاختبار..." : "طباعة اختبار"}</button>}
+                </div>
+              </div>
+              <div className={settings.printKitchenReceipt ? "receipt-print-option active" : "receipt-print-option"}>
+                <label className="receipt-print-option-main">
+                  <input type="checkbox" checked={settings.printKitchenReceipt} onChange={(event) => setSettings({ ...settings, printKitchenReceipt: event.target.checked })} />
+                  <span className="receipt-print-option-icon kitchen"><CookingPot /></span>
+                  <span><strong>ريسيت المطبخ</strong><small>يخرج فورًا بالأصناف والكميات والملاحظات بدون أسعار</small></span>
+                  <i><b /></i>
+                </label>
+                <div className="receipt-printer-field">
+                  <label><span>طابعة ريسيت المطبخ</span><select value={settings.kitchenReceiptPrinter ?? ""} disabled={!desktopRuntime} onChange={(event) => setSettings({ ...settings, kitchenReceiptPrinter: event.target.value })}>
+                    <option value="">الطابعة الافتراضية في Windows</option>
+                    {settings.kitchenReceiptPrinter && !printers.some((printer) => printer.name === settings.kitchenReceiptPrinter) && <option value={settings.kitchenReceiptPrinter}>{settings.kitchenReceiptPrinter} — غير متصلة</option>}
+                    {printers.map((printer) => <option value={printer.name} key={printer.name}>{printer.name}{printer.isDefault ? " — الافتراضية" : ""}</option>)}
+                  </select></label>
+                  {desktopRuntime && <button type="button" className="soft-button" disabled={testingPrinter !== null} onClick={() => void testPrinter("kitchen")}><Printer /> {testingPrinter === "kitchen" ? "جاري الاختبار..." : "طباعة اختبار"}</button>}
+                </div>
+              </div>
+            </div>
+            {printerStatus && <p className={printerStatus.includes("بنجاح") ? "receipt-printer-status success" : "receipt-printer-status error"}>{printerStatus}</p>}
+          </div>
+          <button className="primary-button" onClick={save}><Save /> حفظ بيانات المطعم والطباعة</button>
         </div>
       </div>
     </div>}

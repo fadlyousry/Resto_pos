@@ -127,6 +127,10 @@ export interface RestaurantSettings {
   address: string;
   invoiceFooter: string;
   logoDataUrl?: string;
+  printCustomerReceipt: boolean;
+  printKitchenReceipt: boolean;
+  customerReceiptPrinter: string;
+  kitchenReceiptPrinter: string;
   defaultDeliveryFee: number;
   kitchenWarningMinutes: number;
   kitchenLateMinutes: number;

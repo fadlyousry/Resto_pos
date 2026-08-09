@@ -77,13 +77,26 @@ export async function loadVersionedState(sourceId: string): Promise<VersionedSta
   }
 
   await hydrateServerUrl();
-  await waitForServer();
   try {
+    await waitForServer();
     return await requestServerState();
   } catch (error) {
-    if (!(error instanceof StateNotInitializedError)) throw error;
-    const legacyState = await loadState();
-    return bootstrapServerState(legacyState, sourceId);
+    if (error instanceof StateNotInitializedError) {
+      try {
+        const legacyState = await loadState();
+        return await bootstrapServerState(legacyState, sourceId);
+      } catch (bootErr) {
+        console.error("Failed to bootstrap server state", bootErr);
+      }
+    }
+    // Fallback to direct local database if server is temporarily unreachable
+    try {
+      const localState = await loadState();
+      return { state: localState, revision: crypto.randomUUID() };
+    } catch (localErr) {
+      console.error("Failed to load local DB state as fallback", localErr);
+      throw error;
+    }
   }
 }
 
@@ -193,7 +206,7 @@ function normalizeVersionedState(payload: VersionedState): VersionedState {
 
 async function waitForServer() {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
     try {
       await testServerConnection();
       return;

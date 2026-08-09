@@ -3,6 +3,11 @@ import type { OrderStage, PaymentMethod } from "../domain/types";
 export const money = (value: number) =>
   value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
+export const qty = (value: number) => {
+  const rounded = Math.round((value + Number.EPSILON) * 1000) / 1000;
+  return rounded.toLocaleString("en-US", { maximumFractionDigits: 3 });
+};
+
 export const shortDate = (value: string) =>
   new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
     day: "numeric",

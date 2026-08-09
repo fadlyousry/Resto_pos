@@ -103,6 +103,10 @@ export const initialState: AppState = {
     phone: "",
     address: "",
     invoiceFooter: "شكرًا لاختياركم بيتنا",
+    printCustomerReceipt: true,
+    printKitchenReceipt: true,
+    customerReceiptPrinter: "",
+    kitchenReceiptPrinter: "",
     defaultDeliveryFee: 30,
     kitchenWarningMinutes: 30,
     kitchenLateMinutes: 45

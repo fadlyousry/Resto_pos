@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  AlertTriangle, Boxes, ChevronLeft,
+  AlertTriangle, Boxes,
   FileText, Minus, Plus, Save, Scale, Search,
   Trash2, Truck, UserPlus, X
 } from "lucide-react";
@@ -9,7 +9,7 @@ import type {
   PurchaseInvoice, PurchaseInvoiceItem, StockMovement, Supplier
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
-import { money } from "../../shared/format";
+import { money, qty } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { Empty, Modal } from "../../shared/ui";
 
@@ -133,10 +133,13 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
 
   // Submit invoice
   const handleSavePurchaseInvoice = () => {
-    if (!cart.length || !supplier) return;
+    if (!cart.length) return;
 
     const createdAt = new Date().toISOString();
     const invoiceNumber = state.nextPurchaseInvoiceNumber;
+
+    const invoiceSupplierId = supplier ? supplier.id : "daily";
+    const invoiceSupplierName = supplier ? supplier.name : "مورد يومي";
 
     const invoiceItems: PurchaseInvoiceItem[] = cart.map((item) => ({
       ingredientId: item.ingredientId,
@@ -150,8 +153,8 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
     const invoice: PurchaseInvoice = {
       id: uid(),
       number: invoiceNumber,
-      supplierId: supplier.id,
-      supplierName: supplier.name,
+      supplierId: invoiceSupplierId,
+      supplierName: invoiceSupplierName,
       items: invoiceItems,
       subtotal,
       discount,
@@ -170,7 +173,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
       type: "purchase",
       quantity: item.quantity,
       unitCost: item.unitCost,
-      description: `فاتورة مشتريات #${invoiceNumber} — ${supplier.name}`,
+      description: `فاتورة مشتريات #${invoiceNumber} — ${invoiceSupplierName}`,
       createdAt
     }));
 
@@ -181,7 +184,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
       method: paymentMethod === "cash" ? "cash" : paymentMethod,
       amount: grandTotal,
       direction: "out",
-      description: `فاتورة مشتريات #${invoiceNumber} — ${supplier.name}`,
+      description: `فاتورة مشتريات #${invoiceNumber} — ${invoiceSupplierName}`,
       createdAt
     } : null;
 
@@ -190,9 +193,9 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
       const updatedIngredients = current.ingredients.map((ing) => {
         const itemInCart = cart.find((c) => c.ingredientId === ing.id);
         if (!itemInCart) return ing;
-        const newStock = ing.stockQty + itemInCart.quantity;
+        const newStock = Math.round((ing.stockQty + itemInCart.quantity) * 1000) / 1000;
         const weightedCost = newStock > 0
-          ? ((ing.stockQty * ing.unitCost) + (itemInCart.quantity * itemInCart.unitCost)) / newStock
+          ? Math.round((((ing.stockQty * ing.unitCost) + (itemInCart.quantity * itemInCart.unitCost)) / newStock) * 100) / 100
           : itemInCart.unitCost;
         return { ...ing, stockQty: newStock, unitCost: weightedCost };
       });
@@ -279,7 +282,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                 </span>
                 <span className="product-info">
                   <strong>{ingredient.name}</strong>
-                  <small>رصيد: {ingredient.stockQty} {ingredient.unit}</small>
+                  <small>رصيد: {qty(ingredient.stockQty)} {ingredient.unit}</small>
                   <b>{money(ingredient.unitCost)} ج.م / {ingredient.unit}</b>
                 </span>
                 <span className="quick-add">
@@ -338,38 +341,72 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                 <button title="تغيير المورد" onClick={() => setShowSupplierModal(true)}>
                   <Truck size={16} />
                 </button>
-                <button title="إلغاء المورد" onClick={() => setSupplier(null)}>
+                <button title="إلغاء المورد (تحويل إلى مورد يومي)" onClick={() => setSupplier(null)}>
                   <X size={17} />
                 </button>
               </span>
             </div>
           ) : (
-            <button className="select-customer" onClick={() => setShowSupplierModal(true)}>
-              <UserPlus size={19} /> اختيار المورد أو إضافة مورد جديد <ChevronLeft size={18} />
-            </button>
+            <div className="selected-customer" style={{ borderRightColor: "#0284c7", background: "#f0f9ff" }}>
+              <span className="customer-avatar" style={{ background: "#e0f2fe", color: "#0369a1" }}>
+                <Truck size={18} />
+              </span>
+              <div>
+                <strong style={{ color: "#0369a1" }}>مورد يومي (افتراضي)</strong>
+                <small style={{ color: "#0284c7" }}>مشتريات يومية بدون تحديد مورد</small>
+              </div>
+              <div style={{ marginRight: "auto" }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSupplierModal(true)}
+                  style={{
+                    height: "32px",
+                    padding: "0 12px",
+                    borderRadius: "8px",
+                    background: "#0284c7",
+                    color: "#fff",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    border: 0,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap"
+                  }}
+                  title="تخصيص مورد مسجل"
+                >
+                  <UserPlus size={14} /> اختيار مورد
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
         {/* Cart Items */}
         <div className="cart-items">
           {cart.length > 0 && (
-            <div className="cart-table-head">
+            <div className="cart-table-head" style={{ gridTemplateColumns: "1fr 108px 65px 60px 28px", gap: "4px", padding: "0 6px" }}>
               <span>المكون</span>
-              <span>الكمية</span>
-              <span>السعر / الوحدة</span>
-              <span>الإجمالي</span>
+              <span style={{ textAlign: "center" }}>الكمية</span>
+              <span style={{ textAlign: "center" }}>السعر/وحدة</span>
+              <span style={{ textAlign: "center" }}>الإجمالي</span>
               <span />
             </div>
           )}
           {cart.map((item) => (
-            <div className="cart-item" key={item.ingredientId} style={{ gridTemplateColumns: "1.2fr 90px 85px 70px 30px" }}>
+            <div
+              className="cart-item"
+              key={item.ingredientId}
+              style={{ gridTemplateColumns: "1fr 108px 65px 60px 28px", gap: "4px", padding: "8px 6px" }}
+            >
               <div className="cart-product-cell">
                 <strong>{item.name}</strong>
                 <small>{item.unit}</small>
               </div>
-              <div className="quantity">
-                <button onClick={() => updateQuantity(item.ingredientId, -1)}>
-                  <Minus size={13} />
+              <div className="quantity" style={{ gap: "2px", padding: "2px", width: "100%", justifyContent: "center" }}>
+                <button onClick={() => updateQuantity(item.ingredientId, -1)} style={{ width: "26px", height: "26px", flexShrink: 0 }}>
+                  <Minus size={12} />
                 </button>
                 <input
                   type="number"
@@ -377,13 +414,13 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                   step="0.1"
                   value={item.quantity || ""}
                   onChange={(e) => setItemQuantityDirect(item.ingredientId, Number(e.target.value))}
-                  style={{ width: "36px", border: 0, textAlign: "center", font: "inherit", fontWeight: 700 }}
+                  style={{ width: "34px", border: 0, textAlign: "center", font: "inherit", fontWeight: 700, fontSize: "12px", background: "transparent" }}
                 />
-                <button onClick={() => updateQuantity(item.ingredientId, 1)}>
-                  <Plus size={13} />
+                <button onClick={() => updateQuantity(item.ingredientId, 1)} style={{ width: "26px", height: "26px", flexShrink: 0 }}>
+                  <Plus size={12} />
                 </button>
               </div>
-              <div>
+              <div style={{ display: "flex", justifyContent: "center" }}>
                 <input
                   type="number"
                   min="0"
@@ -391,8 +428,8 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                   value={item.unitCost || ""}
                   onChange={(e) => updateItemCost(item.ingredientId, Number(e.target.value))}
                   style={{
-                    width: "68px",
-                    padding: "4px 6px",
+                    width: "55px",
+                    padding: "4px 2px",
                     borderRadius: "6px",
                     border: "1px solid var(--line)",
                     fontSize: "11px",
@@ -401,13 +438,16 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                   title="سعر الشراء للوحدة"
                 />
               </div>
-              <b className="cart-line-total">{money(item.unitCost * item.quantity)}</b>
+              <b className="cart-line-total" style={{ fontSize: "12px", textAlign: "center" }}>
+                {money(item.unitCost * item.quantity)}
+              </b>
               <button
                 className="remove-cart-item"
                 title="حذف المكون"
                 onClick={() => removeCartItem(item.ingredientId)}
+                style={{ width: "28px", height: "28px" }}
               >
-                <Trash2 />
+                <Trash2 size={14} />
               </button>
             </div>
           ))}
@@ -483,14 +523,16 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
           <button
             className="primary-button checkout-button"
             style={{ background: "#0284c7" }}
-            disabled={!cart.length || !supplier}
+            disabled={!cart.length}
             onClick={handleSavePurchaseInvoice}
           >
             إتمام وتأكيد فاتورة الشراء <span>{money(grandTotal)} ج.م</span>
           </button>
 
           {!supplier && cart.length > 0 && (
-            <small className="hint">اختر المورد أولاً لتسجيل فاتورة الشراء</small>
+            <small className="hint" style={{ color: "var(--muted)" }}>
+              سيتم تسجيل الفاتورة باسم "مورد يومي" لعدم تحديد مورد
+            </small>
           )}
         </div>
       </aside>
@@ -560,6 +602,33 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "320px", overflowY: "auto" }}>
+                {/* Default option: مورد يومي */}
+                <div
+                  className="supplier-card"
+                  style={{
+                    cursor: "pointer",
+                    transition: "0.15s",
+                    borderStyle: "dashed",
+                    borderColor: !supplier ? "#0284c7" : "var(--line)",
+                    background: !supplier ? "#f0f9ff" : "transparent"
+                  }}
+                  onClick={() => {
+                    setSupplier(null);
+                    setShowSupplierModal(false);
+                  }}
+                >
+                  <div>
+                    <Truck style={{ color: "#0284c7" }} />
+                    <div>
+                      <strong>مورد يومي (بدون تخصيص)</strong>
+                      <small style={{ color: "var(--muted)" }}>تسجيل المشتريات كمشتريات يومية مباشرة</small>
+                    </div>
+                  </div>
+                  <button className="soft-button compact">
+                    {!supplier ? "المحدد حالياً" : "اختيار"}
+                  </button>
+                </div>
+
                 {filteredSuppliers.map((sup) => (
                   <div
                     key={sup.id}
@@ -579,7 +648,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                   </div>
                 ))}
 
-                {!filteredSuppliers.length && (
+                {!filteredSuppliers.length && state.suppliers.length > 0 && (
                   <Empty
                     icon={<Truck />}
                     title="لا يوجد موردين مطبقين"

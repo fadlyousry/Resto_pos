@@ -997,6 +997,29 @@ button.orders-row.stage-delivered { background: #fff; }
 .receipt-footer { padding-top: 10px; display: grid; place-items: center; gap: 7px; text-align: center; font-size: 8px; }
 .receipt-footer small { font-weight: 700; }
 .print-receipt-button { width: 100%; max-width: 360px; margin: 12px auto 0; }
+.receipt-print-stack { display: grid; gap: 16px; }
+.receipt-preview { display: grid; gap: 7px; }
+.receipt-preview-label { width: min(100%, 360px); margin: 0 auto; display: flex; align-items: center; gap: 6px; color: var(--green-800); font-size: 10px; font-weight: 800; }
+.receipt-preview-label.kitchen { color: #a45d2b; }
+.receipt-preview-label svg { width: 16px; }
+.receipt-kind { padding: 4px 9px; border-radius: 6px; background: #f7e9d8; color: #8f5429; font-size: 10px; }
+.receipt-paper td > strong { display: block; }
+.receipt-item-note { display: block; margin-top: 3px; color: #6c746f; font-size: 7px; font-weight: 500; line-height: 1.5; }
+.kitchen-receipt { border-color: #d9bd9e; }
+.kitchen-receipt-meta span:first-child b { font-size: 14px; }
+.kitchen-receipt-table th:first-child, .kitchen-receipt-table td:first-child { width: 54px; text-align: center; }
+.kitchen-receipt-table th:last-child, .kitchen-receipt-table td:last-child { text-align: right; }
+.kitchen-receipt-table td:first-child b { font-size: 13px; }
+.kitchen-receipt-table td:last-child strong { font-size: 10px; }
+.kitchen-receipt-summary { min-height: 38px; display: flex; align-items: center; justify-content: space-between; padding: 8px 4px; border-block: 1px dashed #bbb; font-size: 9px; }
+.kitchen-receipt-summary b { font-size: 14px; }
+.kitchen-receipt-note { margin-top: 9px; padding: 9px; border: 1px solid #d9b48d; border-radius: 7px; background: #fff7ee; }
+.kitchen-receipt-note strong { color: #8d5229; font-size: 9px; }
+.kitchen-receipt-note p { margin-top: 4px; font-size: 9px; font-weight: 700; }
+.receipt-print-disabled { min-height: 210px; display: grid; place-items: center; align-content: center; gap: 7px; color: #7a8580; text-align: center; }
+.receipt-print-disabled svg { width: 42px; height: 42px; padding: 10px; border-radius: 11px; background: #eef2ef; }
+.receipt-print-disabled strong { color: #35433c; font-size: 14px; }
+.receipt-print-disabled small { font-size: 10px; }
 
 .customers-page { min-width: 0; }
 .customers-panel { overflow: hidden; }
@@ -1532,6 +1555,41 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .settings-form input:hover { border-color: #c2d1c8; background: #fff; }
 .settings-form input:focus { border-color: var(--green-700); background: #fff; box-shadow: 0 0 0 3px #3d675817; }
 .settings-form .full-field { grid-column: 1 / -1; }
+.receipt-print-settings { display: grid; gap: 12px; padding: 15px; border: 1px solid #dbe5df; border-radius: 13px; background: #f8fbf9; }
+.receipt-print-settings-title { display: flex; align-items: center; gap: 10px; }
+.receipt-print-settings-title > svg { width: 36px; height: 36px; padding: 8px; border-radius: 9px; background: #e7f0eb; color: var(--green-700); }
+.receipt-print-settings-title > span { display: grid; gap: 3px; }
+.receipt-print-settings-title strong { color: #1e3028; font-size: 13px; }
+.receipt-print-settings-title small { color: #6d7a73; font-size: 9px; }
+.receipt-print-settings-title .receipt-printers-refresh { min-height: 36px; margin-inline-start: auto; padding: 7px 11px; font-size: 9px; }
+.receipt-print-settings-title .receipt-printers-refresh svg { width: 15px; }
+.receipt-print-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.settings-form .receipt-print-option { min-height: 132px; position: relative; display: grid; gap: 11px; padding: 11px 12px; border: 1px solid #d9e2dd; border-radius: 11px; background: #fff; transition: .18s ease; }
+.settings-form .receipt-print-option:hover { border-color: #a9beb3; transform: translateY(-1px); }
+.settings-form .receipt-print-option.active { border-color: #75a089; background: #f0f7f3; box-shadow: inset 0 0 0 1px #75a08930; }
+.receipt-print-option-main { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px; align-items: center; gap: 10px; cursor: pointer; }
+.settings-form .receipt-print-option-main > input { width: 1px; min-height: 0; height: 1px; position: absolute; opacity: 0; pointer-events: none; }
+.receipt-print-option-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 10px; background: #e8f1ec; color: var(--green-700); }
+.receipt-print-option-icon.kitchen { background: #fff0df; color: #ad6931; }
+.receipt-print-option-icon svg { width: 20px; }
+.receipt-print-option-main > span:nth-of-type(2) { min-width: 0; display: grid; gap: 4px; }
+.receipt-print-option-main > span:nth-of-type(2) strong { color: #24342d; font-size: 12px; }
+.receipt-print-option-main > span:nth-of-type(2) small { color: #6e7a73; font-size: 9px; line-height: 1.55; }
+.receipt-print-option-main > i { width: 39px; height: 23px; position: relative; border-radius: 20px; background: #cbd4cf; transition: .18s ease; }
+.receipt-print-option-main > i b { width: 17px; height: 17px; position: absolute; top: 3px; right: 3px; border-radius: 50%; background: #fff; box-shadow: 0 2px 5px #1d33283b; transition: .18s ease; }
+.receipt-print-option.active .receipt-print-option-main > i { background: var(--green-700); }
+.receipt-print-option.active .receipt-print-option-main > i b { transform: translateX(-16px); }
+.receipt-printer-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; padding-top: 10px; border-top: 1px solid #dfe7e2; }
+.receipt-printer-field > label { min-width: 0; display: grid; gap: 5px; color: #53635b; font-size: 8px; font-weight: 700; }
+.receipt-printer-field select { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid #cad8d0; border-radius: 8px; background: #fff; color: #24342d; font: 600 9px Cairo, sans-serif; outline: 0; }
+.receipt-printer-field select:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px #3d675817; }
+.receipt-printer-field select:disabled { color: #87918c; background: #f1f3f1; }
+.receipt-printer-field .soft-button { min-height: 38px; padding: 7px 10px; white-space: nowrap; font-size: 8px; }
+.receipt-printer-field .soft-button svg { width: 14px; }
+.receipt-printer-status { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 9px; font-weight: 700; }
+.receipt-printer-status.success { background: #e7f4eb; color: #27623f; }
+.receipt-printer-status.error, .receipt-print-error { background: #fff0ed; color: #a54337; }
+.receipt-print-error { width: min(100%, 560px); margin: 10px auto 0; padding: 9px 11px; border-radius: 8px; font-size: 9px; font-weight: 700; }
 .settings-form .primary-button { grid-column: 1 / -1; min-height: 50px; align-self: end; font-size: 13px; box-shadow: 0 9px 22px #2c4d4226; }
 .settings-operations { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 26px; }
 .settings-operations .primary-button { min-width: 240px; justify-self: stretch; }
@@ -2454,7 +2512,9 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   body.print-receipt .page > div > *:not(.modal-backdrop),
   body.print-receipt .modal-backdrop:not(:has(.receipt-paper)),
   body.print-receipt .modal > header,
-  body.print-receipt .print-receipt-button { display: none !important; }
+  body.print-receipt .print-receipt-button,
+  body.print-receipt .receipt-preview-label,
+  body.print-receipt .receipt-print-disabled { display: none !important; }
   body.print-receipt .app-shell,
   body.print-receipt .main,
   body.print-receipt .page,
@@ -2462,6 +2522,9 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   body.print-receipt .modal-backdrop:has(.receipt-paper) { position: static; display: block; width: 100%; padding: 0; background: #fff; }
   body.print-receipt .modal { width: 100%; max-width: none; max-height: none; margin: 0; border-radius: 0; box-shadow: none; overflow: visible; }
   body.print-receipt .modal-body { padding: 0; }
+  body.print-receipt .receipt-print-stack { display: block; }
+  body.print-receipt .receipt-preview { display: block; margin: 0; padding: 0; break-after: page; page-break-after: always; }
+  body.print-receipt .receipt-preview:last-child { break-after: auto; page-break-after: auto; }
   body.print-receipt .receipt-paper {
     width: 100%;
     max-width: 72mm;
@@ -2487,6 +2550,15 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   body.print-receipt .receipt-paper td { padding: 2mm 1mm; }
   body.print-receipt .receipt-totals > strong { font-size: 12pt; }
   body.print-receipt .receipt-footer { gap: 1.8mm; padding-top: 3mm; font-size: 9pt; }
+  body.print-receipt .receipt-kind { padding: 1mm 2.5mm; font-size: 10pt; }
+  body.print-receipt .receipt-item-note { margin-top: 1mm; font-size: 8pt; }
+  body.print-receipt .kitchen-receipt-table td:first-child b { font-size: 14pt; }
+  body.print-receipt .kitchen-receipt-table td:last-child strong { font-size: 11pt; }
+  body.print-receipt .kitchen-receipt-summary { min-height: 9mm; padding: 2mm 1mm; font-size: 10pt; }
+  body.print-receipt .kitchen-receipt-summary b { font-size: 15pt; }
+  body.print-receipt .kitchen-receipt-note { margin-top: 2mm; padding: 2.5mm; }
+  body.print-receipt .kitchen-receipt-note strong,
+  body.print-receipt .kitchen-receipt-note p { font-size: 10pt; }
   body.print-receipt .receipt-paper header,
   body.print-receipt .receipt-meta,
   body.print-receipt .receipt-customer,
@@ -2525,6 +2597,10 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   .product-image-upload { min-height: 180px; }
   .product-image-upload > img { height: 180px; }
   .settings-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-brand { grid-template-columns: 1fr; }
+  .receipt-print-options { grid-template-columns: 1fr; }
+  .receipt-print-settings-title { flex-wrap: wrap; }
+  .receipt-print-settings-title .receipt-printers-refresh { margin-inline-start: 0; }
   .network-guide { grid-template-columns: 1fr; }
   .network-address-form { grid-template-columns: 1fr; }
   .network-address-form button { width: 100%; justify-content: center; }

@@ -8,7 +8,7 @@ import type {
   CashTransaction, Ingredient, Product, RecipeItem, StockMovement
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
-import { money, shortDate } from "../../shared/format";
+import { money, qty, shortDate } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 
@@ -86,7 +86,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
 
   const currentStock = stockIngredient?.stockQty || 0;
   const currentCost = stockIngredient?.unitCost || 0;
-  const newStock = currentStock + roundedQty;
+  const newStock = Math.round((currentStock + roundedQty) * 1000) / 1000;
   const newWeightedCost = newStock > 0
     ? ((currentStock * currentCost) + roundedTotalCost) / newStock
     : roundedUnitCost;
@@ -205,8 +205,8 @@ export function InventoryView({ state, update, notify }: ViewProps) {
               return (
                 <div className={`inventory-row ${isLow ? "low" : ""}`} key={ingredient.id}>
                   <span className="inventory-name-cell"><i><Scale /></i><span><strong>{ingredient.name}</strong><small>{isLow ? "يحتاج إعادة طلب" : "الرصيد مطمئن"}</small></span></span>
-                  <span className="inventory-stock-cell"><b>{ingredient.stockQty.toLocaleString("en-US")} <small>{ingredient.unit}</small></b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
-                  <span>{ingredient.minStock.toLocaleString("en-US")} {ingredient.unit}</span>
+                  <span className="inventory-stock-cell"><b>{qty(ingredient.stockQty)} <small>{ingredient.unit}</small></b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
+                  <span>{qty(ingredient.minStock)} {ingredient.unit}</span>
                   <span>{money(ingredient.unitCost)}</span>
                   <span><strong>{money(ingredient.stockQty * ingredient.unitCost)}</strong></span>
                   <span className="inventory-row-actions"><button className="stock-add-button" onClick={() => openAddStockModal(ingredient)}><PackagePlus /> إضافة رصيد</button><button className="stock-edit-button" onClick={() => {
@@ -288,7 +288,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
               <PackagePlus />
               <div>
                 <strong>تسجيل مشتريات ({stockIngredient.name})</strong>
-                <small>الرصيد الحالي: {stockIngredient.stockQty.toLocaleString("en-US")} {stockIngredient.unit} · التكلفة الحالية: {money(Math.round(stockIngredient.unitCost * 100) / 100)} ج.م / {stockIngredient.unit}</small>
+                <small>الرصيد الحالي: {qty(stockIngredient.stockQty)} {stockIngredient.unit} · التكلفة الحالية: {money(Math.round(stockIngredient.unitCost * 100) / 100)} ج.م / {stockIngredient.unit}</small>
               </div>
             </div>
 
