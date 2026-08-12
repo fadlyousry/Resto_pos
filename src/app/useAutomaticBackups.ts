@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { AppState } from "../domain/types";
 import {
   BACKUP_SETTINGS_CHANGED_EVENT,
@@ -22,6 +23,11 @@ export function useAutomaticBackups(state: AppState | null) {
     let intervalId: number | null = null;
     let removeCloseListener: (() => void) | undefined;
     let allowingClose = false;
+    let closeInProgress = false;
+
+    const wait = (milliseconds: number) => new Promise<void>((resolve) => {
+      window.setTimeout(resolve, milliseconds);
+    });
 
     const runBackup = async (reason: "startup" | "interval" | "close") => {
       const current = stateRef.current;
@@ -61,14 +67,31 @@ export function useAutomaticBackups(state: AppState | null) {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const appWindow = getCurrentWindow();
         if (appWindow.label !== "main") return;
-        removeCloseListener = await appWindow.onCloseRequested(async (event) => {
+        removeCloseListener = await appWindow.onCloseRequested((event) => {
           if (allowingClose) return;
-          const info = await getStorageInfo().catch(() => null);
-          if (!info?.hostServer || !info.backupOnClose) return;
           event.preventDefault();
-          await runBackup("close");
-          allowingClose = true;
-          await appWindow.close();
+          if (closeInProgress) return;
+          closeInProgress = true;
+          void (async () => {
+            try {
+              const info = await Promise.race([
+                getStorageInfo().catch(() => null),
+                wait(2_000).then(() => null)
+              ]);
+              if (info?.hostServer && info.backupOnClose) {
+                await Promise.race([runBackup("close"), wait(6_000)]);
+              }
+            } finally {
+              allowingClose = true;
+              try {
+                await invoke("exit_application");
+              } catch (error) {
+                allowingClose = false;
+                closeInProgress = false;
+                console.error("Failed to close the application window", error);
+              }
+            }
+          })();
         });
       } catch (error) {
         console.error("Failed to register close backup", error);

@@ -51,6 +51,11 @@ fn save_network_config(app: tauri::AppHandle, config: NetworkConfig) -> Result<(
 }
 
 #[tauri::command]
+fn exit_application(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn list_printers() -> Result<Vec<printing::PrinterInfo>, String> {
     tauri::async_runtime::spawn_blocking(printing::list_printers)
         .await
@@ -81,6 +86,7 @@ pub fn run() {
             get_server_info,
             get_network_config,
             save_network_config,
+            exit_application,
             list_printers,
             print_receipt,
             print_escpos_receipts,

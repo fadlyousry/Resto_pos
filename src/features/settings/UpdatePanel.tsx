@@ -17,7 +17,7 @@ export function UpdatePanel({ updater }: { updater?: AppUpdaterController }) {
     <div className="app-update-icon"><CloudDownload /></div>
     <div className="app-update-copy">
       <div><strong>تحديثات Resto POS</strong><span className={`app-update-status ${updater.status}`}>{statusLabel}</span></div>
-      <p>الإصدار الحالي <b dir="ltr">v{updater.configuration?.currentVersion ?? "0.1.0"}</b></p>
+      <p>الإصدار الحالي <b dir="ltr">v{updater.configuration?.currentVersion ?? "0.1.1"}</b></p>
       {updater.configuration?.repository && <small><Github /> {updater.configuration.repository}</small>}
       {updater.status === "unconfigured" && <small><ShieldCheck /> سيتم التعرف على المستودع تلقائيًا عند البناء من GitHub Actions.</small>}
       {updater.update?.notes && <div className="app-update-notes">{updater.update.notes}</div>}
