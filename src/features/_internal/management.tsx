@@ -209,8 +209,8 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
         </div>
       </div>
       <div className="product-management">
-        <div className="product-manage-table-head" style={{ gridTemplateColumns: "minmax(160px, 1.2fr) minmax(100px, 0.7fr) minmax(70px, 0.5fr) minmax(210px, 1.4fr) 68px 65px 36px" }}><span>الصنف</span><span>الوحدة والمقاسات</span><span>التكلفة</span><span>سعر البيع السريع</span><span style={{ textAlign: "center" }}>تعديل</span><span style={{ textAlign: "center" }}>متاح</span><span style={{ textAlign: "center" }}>حذف</span></div>
-        {products.map((product) => <div className={product.available ? "product-manage-row editable" : "product-manage-row editable unavailable"} key={product.id} style={{ gridTemplateColumns: "minmax(160px, 1.2fr) minmax(100px, 0.7fr) minmax(70px, 0.5fr) minmax(210px, 1.4fr) 68px 65px 36px", minHeight: "62px" }}>
+        <div className="product-manage-table-head product-catalog-table-grid"><span>الصنف</span><span>الوحدة والمقاسات</span><span>التكلفة</span><span>سعر البيع السريع</span><span className="product-actions-heading">الإجراءات</span></div>
+        {products.map((product) => <div className={product.available ? "product-manage-row editable product-catalog-table-grid" : "product-manage-row editable unavailable product-catalog-table-grid"} key={product.id}>
           <div className="product-admin-name"><span className="product-admin-icon" style={{ background: `${product.accent}24`, color: product.accent }}>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <CookingPot />}</span><span><strong>{product.name}</strong><small>{product.category}</small></span></div>
           <span className="product-admin-units"><b>{product.unit}</b>{product.options?.length ? <small>{product.options.length} مقاسات</small> : <small>سعر واحد</small>}</span>
           <span className="product-admin-cost"><small>التكلفة</small><b>{money(product.cost)}</b></span>
@@ -228,16 +228,18 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
             <input type="number" min="0" value={draftPrices[product.id] ?? product.price} onChange={(event) => setDraftPrices({ ...draftPrices, [product.id]: Number(event.target.value) })} onKeyDown={(event) => event.key === "Enter" && savePriceChanges()} />
             <span>سعر البيع</span>
           </label>}
-          <button className="product-edit-button" title="فتح كل بيانات الصنف والمقاسات" onClick={() => setEditing({ ...product, options: product.options?.map((option) => ({ ...option })) })}><Edit3 /><span>تعديل</span></button>
-          <button className={product.available ? "product-availability active" : "product-availability"} title={product.available ? "إيقاف الصنف" : "إتاحة الصنف"} onClick={() => toggle(product.id)}><i /><span>{product.available ? "متاح" : "متوقف"}</span></button>
-          <button type="button" style={{ border: 0, background: "#fff1ee", color: "#b66052", width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center", cursor: "pointer" }} title="حذف الصنف" onClick={() => {
-            if (!window.confirm(`هل أنت تأكد من حذف الصنف "${product.name}"؟`)) return;
-            update((current) => ({
-              ...current,
-              products: current.products.filter((item) => item.id !== product.id)
-            }));
-            notify(`تم حذف الصنف ${product.name}`);
-          }}><Trash2 size={15} /></button>
+          <div className="product-row-actions">
+            <button className="product-icon-action edit" type="button" title="تعديل الصنف" aria-label={`تعديل صنف ${product.name}`} onClick={() => setEditing({ ...product, options: product.options?.map((option) => ({ ...option })) })}><Edit3 /></button>
+            <button className={product.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={product.available ? "إيقاف الصنف" : "إتاحة الصنف"} aria-label={product.available ? `إيقاف صنف ${product.name}` : `إتاحة صنف ${product.name}`} onClick={() => toggle(product.id)}>{product.available ? <CheckCircle2 /> : <Minus />}</button>
+            <button className="product-icon-action delete" type="button" title="حذف الصنف" aria-label={`حذف صنف ${product.name}`} onClick={() => {
+              if (!window.confirm(`هل أنت متأكد من حذف الصنف "${product.name}"؟`)) return;
+              update((current) => ({
+                ...current,
+                products: current.products.filter((item) => item.id !== product.id)
+              }));
+              notify(`تم حذف الصنف ${product.name}`);
+            }}><Trash2 /></button>
+          </div>
         </div>)}
         {!products.length && <Empty icon={<Search />} title="لا توجد أصناف مطابقة" text="غيّر البحث أو اختر تصنيفًا آخر" />}
       </div>
