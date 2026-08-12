@@ -81,7 +81,7 @@ export async function loadVersionedState(sourceId: string): Promise<VersionedSta
     await waitForServer();
     return await requestServerState();
   } catch (error) {
-    if (error instanceof StateNotInitializedError) {
+    if (error instanceof StateNotInitializedError && isLocalServerUrl(getServerUrl())) {
       try {
         const legacyState = await loadState();
         return await bootstrapServerState(legacyState, sourceId);
@@ -89,14 +89,9 @@ export async function loadVersionedState(sourceId: string): Promise<VersionedSta
         console.error("Failed to bootstrap server state", bootErr);
       }
     }
-    // Fallback to direct local database if server is temporarily unreachable
-    try {
-      const localState = await loadState();
-      return { state: localState, revision: crypto.randomUUID() };
-    } catch (localErr) {
-      console.error("Failed to load local DB state as fallback", localErr);
-      throw error;
-    }
+    // The central server is the source of truth. Falling back to a second local
+    // SQLite file after moving the data directory could expose stale data.
+    throw error;
   }
 }
 

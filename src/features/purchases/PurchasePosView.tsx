@@ -276,17 +276,20 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
                 className={`product-card ${isLow ? "low-stock-card" : ""}`}
                 onClick={() => addIngredient(ingredient)}
               >
-                <span className="food-visual" style={{ background: isLow ? "linear-gradient(145deg, #fee2e2, #fecaca)" : "linear-gradient(145deg, #e0f2fe, #bae6fd)" }}>
-                  <Scale size={28} style={{ color: isLow ? "#dc2626" : "#0284c7" }} />
-                </span>
-                <span className="product-info">
-                  <strong>{ingredient.name}</strong>
-                  <small>رصيد: {qty(ingredient.stockQty)} {ingredient.unit}</small>
-                  <b>{money(ingredient.unitCost)} ج.م / {ingredient.unit}</b>
-                </span>
-                <span className="quick-add">
-                  <Plus size={18} />
-                </span>
+                <div className="product-card-top">
+                  <span className="food-visual" style={{ background: isLow ? "linear-gradient(145deg, #fee2e2, #fecaca)" : "linear-gradient(145deg, #e0f2fe, #bae6fd)" }}>
+                    <Scale size={26} style={{ color: isLow ? "#dc2626" : "#0284c7" }} />
+                  </span>
+                  <span className="product-info">
+                    <strong>{ingredient.name}</strong>
+                    <small>رصيد: {qty(ingredient.stockQty)} {ingredient.unit}</small>
+                  </span>
+                </div>
+                <div className="product-card-footer">
+                  <span className="price-label">سعر الشراء</span>
+                  <span className="price-divider" />
+                  <span className="price-value">{money(ingredient.unitCost)} ج.م / {ingredient.unit}</span>
+                </div>
               </button>
             );
           })}

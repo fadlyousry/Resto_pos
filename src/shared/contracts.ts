@@ -1,5 +1,6 @@
 import type { AppState } from "../domain/types";
 import type { ConnectionStatus, EmbeddedServerInfo } from "../infrastructure/dataClient";
+import type { AppUpdaterController } from "../infrastructure/updater";
 
 export type StateUpdater = (updater: (current: AppState) => AppState) => void;
 
@@ -15,4 +16,5 @@ export interface ViewProps {
   update: StateUpdater;
   notify: (message: string) => void;
   network?: NetworkConnection;
+  updater?: AppUpdaterController;
 }

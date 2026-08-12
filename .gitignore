@@ -5,3 +5,7 @@ src-tauri/target/
 .DS_Store
 .idea/
 .vscode/
+*.key
+*.key.pub
+.env
+.env.*

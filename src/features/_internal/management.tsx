@@ -15,6 +15,7 @@ import { uid } from "../../shared/id";
 import { evaluateLicense, getMachineId, verifyLicenseKey } from "../../shared/license";
 import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 import { BackupPanel } from "../settings/BackupPanel";
+import { UpdatePanel } from "../settings/UpdatePanel";
 import { InvoiceModal } from "../orders/InvoiceModal";
 import { testServerConnection } from "../../infrastructure/dataClient";
 import {
@@ -61,6 +62,12 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [search, setSearch] = useState("");
   const [draftPrices, setDraftPrices] = useState<Record<string, number>>({});
   const [draftOptionPrices, setDraftOptionPrices] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (section !== MEALS_SECTION && !state.sections.some((item) => item.id === section)) {
+      setSection(state.sections[0]?.id ?? MEALS_SECTION);
+      setCategoryFilter("الكل");
+    }
+  }, [section, state.sections]);
   const sectionProducts = state.products.filter((product) => product.section === section);
   const sectionCategories = ["الكل", ...new Set(sectionProducts.map((product) => product.category))];
   const products = state.products.filter((product) =>
@@ -375,21 +382,23 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
       <span className="category-list-icon">{state.sections.findIndex((item) => item.id === category.section) % 2 ? <ShoppingBasket /> : <CookingPot />}</span>
       <span><strong>{category.name}</strong><small>{productsCount ? `${productsCount} صنف مرتبط` : "لا توجد أصناف مرتبطة"}</small></span>
       <em className={category.active ? "active" : ""}>{category.active ? "نشط" : "متوقف"}</em>
-      <button className="category-edit-action" onClick={() => {
-        setEditingId(category.id);
-        setForm({ name: category.name, section: category.section, color: category.color, active: category.active });
-      }}><Edit3 /> تعديل</button>
-      <button className={category.active ? "product-availability active" : "product-availability"} onClick={() => update((current) => ({
-        ...current, categories: current.categories.map((item) => item.id === category.id ? { ...item, active: !item.active } : item)
-      }))}><i /><span>{category.active ? "متاح" : "متوقف"}</span></button>
-      <button type="button" style={{ border: 0, background: "#fff1ee", color: "#b66052", width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center", cursor: "pointer" }} title="حذف التصنيف" onClick={() => {
-        if (!window.confirm(`هل أنت تأكد من حذف التصنيف "${category.name}"؟`)) return;
-        update((current) => ({
-          ...current,
-          categories: current.categories.filter((item) => item.id !== category.id)
-        }));
-        notify(`تم حذف التصنيف ${category.name}`);
-      }}><Trash2 size={15} /></button>
+      <div className="category-row-actions">
+        <button className="category-icon-action edit" type="button" title="تعديل التصنيف" aria-label={`تعديل تصنيف ${category.name}`} onClick={() => {
+          setEditingId(category.id);
+          setForm({ name: category.name, section: category.section, color: category.color, active: category.active });
+        }}><Edit3 /></button>
+        <button className={category.active ? "category-icon-action availability active" : "category-icon-action availability"} type="button" title={category.active ? "إيقاف التصنيف" : "تفعيل التصنيف"} aria-label={category.active ? `إيقاف تصنيف ${category.name}` : `تفعيل تصنيف ${category.name}`} onClick={() => update((current) => ({
+          ...current, categories: current.categories.map((item) => item.id === category.id ? { ...item, active: !item.active } : item)
+        }))}>{category.active ? <CheckCircle2 /> : <Minus />}</button>
+        <button className="category-icon-action delete" type="button" title="حذف التصنيف" aria-label={`حذف تصنيف ${category.name}`} onClick={() => {
+          if (!window.confirm(`هل أنت متأكد من حذف التصنيف "${category.name}"؟`)) return;
+          update((current) => ({
+            ...current,
+            categories: current.categories.filter((item) => item.id !== category.id)
+          }));
+          notify(`تم حذف التصنيف ${category.name}`);
+        }}><Trash2 /></button>
+      </div>
     </div>;
       })}
       {!visibleCategories.length && <Empty icon={<Boxes />} title="لا توجد تصنيفات" text="أضف تصنيفًا جديدًا أو غيّر كلمة البحث" />}
@@ -401,6 +410,7 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
 function SectionManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
   const [name, setName] = useState("");
   const [editingId, setEditingId] = useState<ProductSection>("");
+  const [deleteTarget, setDeleteTarget] = useState<MenuSection | null>(null);
   const reset = () => { setName(""); setEditingId(""); };
   const save = () => {
     const trimmed = name.trim();
@@ -418,7 +428,38 @@ function SectionManager({ state, update, notify, onClose }: ViewProps & { onClos
     notify(editingId ? "تم تعديل اسم القسم" : "تمت إضافة القسم");
     reset();
   };
-  return <Modal title="إدارة الأقسام" onClose={onClose} size="medium">
+  const confirmDelete = () => {
+    if (!deleteTarget || state.sections.length <= 1) return;
+    const sectionId = deleteTarget.id;
+    const sectionName = deleteTarget.name;
+    update((current) => {
+      const removedProductIds = new Set(
+        current.products.filter((product) => product.section === sectionId).map((product) => product.id)
+      );
+      return {
+        ...current,
+        sections: current.sections.filter((section) => section.id !== sectionId),
+        categories: current.categories.filter((category) => category.section !== sectionId),
+        products: current.products.filter((product) => product.section !== sectionId),
+        recipes: current.recipes.filter((recipe) => !removedProductIds.has(recipe.productId)),
+        meals: current.meals.map((meal) => ({
+          ...meal,
+          components: meal.components.filter((component) => !removedProductIds.has(component.productId))
+        }))
+      };
+    });
+    if (editingId === sectionId) reset();
+    setDeleteTarget(null);
+    notify(`تم حذف قسم ${sectionName}`);
+  };
+  const deleteProductsCount = deleteTarget
+    ? state.products.filter((product) => product.section === deleteTarget.id).length
+    : 0;
+  const deleteCategoriesCount = deleteTarget
+    ? state.categories.filter((category) => category.section === deleteTarget.id).length
+    : 0;
+  return <>
+  <Modal title="إدارة الأقسام" onClose={onClose} size="medium">
     <div className="section-manager">
       <div className="category-manager-hero section-manager-hero">
         <span><SlidersHorizontal /></span>
@@ -441,11 +482,34 @@ function SectionManager({ state, update, notify, onClose }: ViewProps & { onClos
             <span className="category-list-icon">{index % 2 ? <ShoppingBasket /> : <CookingPot />}</span>
             <span><strong>{item.name}</strong><small>{productsCount} صنف · {categoriesCount} تصنيف</small></span>
             <button className="category-edit-action" onClick={() => { setEditingId(item.id); setName(item.name); }}><Edit3 /> تعديل الاسم</button>
+            <button
+              type="button"
+              className="section-delete-action"
+              disabled={state.sections.length <= 1}
+              title={state.sections.length <= 1 ? "لا يمكن حذف آخر قسم" : `حذف قسم ${item.name}`}
+              onClick={() => setDeleteTarget(item)}
+            ><Trash2 /> حذف</button>
           </div>;
         })}
       </div>
     </div>
-  </Modal>;
+  </Modal>
+  {deleteTarget && <Modal title="تأكيد حذف القسم" onClose={() => setDeleteTarget(null)}>
+    <div className="section-delete-confirm">
+      <span><Trash2 /></span>
+      <strong>هل تريد حذف قسم «{deleteTarget.name}»؟</strong>
+      <p>لا يمكن التراجع عن هذا الإجراء. سيتم حذف القسم وكل البيانات التابعة له من المنيو.</p>
+      <div>
+        <span><small>الأصناف التي سيتم حذفها</small><b>{deleteProductsCount}</b></span>
+        <span><small>التصنيفات التي سيتم حذفها</small><b>{deleteCategoriesCount}</b></span>
+      </div>
+      <footer>
+        <button type="button" className="soft-button" onClick={() => setDeleteTarget(null)}>إلغاء</button>
+        <button type="button" className="section-delete-confirm-button" onClick={confirmDelete}><Trash2 /> نعم، حذف القسم</button>
+      </footer>
+    </div>
+  </Modal>}
+  </>;
 }
 
 function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps & { initialMeal: Meal | null; onClose: () => void }) {
@@ -778,7 +842,7 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
   </>;
 }
 
-export function SettingsView({ state, update, notify, network }: ViewProps) {
+export function SettingsView({ state, update, notify, network, updater }: ViewProps) {
   const [tab, setTab] = useState<"identity" | "operations" | "network" | "backup" | "support">("identity");
   const [settings, setSettings] = useState({ ...state.settings });
   const [serverAddress, setServerAddress] = useState(network?.serverUrl ?? "http://127.0.0.1:4312");
@@ -883,7 +947,7 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
         <Network /><span><strong>السيرفر والشبكة</strong><small>{network?.status === "online" ? "متصل لحظيًا" : "إعداد أجهزة المطعم"}</small></span>
       </button>
       <button role="tab" aria-selected={tab === "backup"} className={tab === "backup" ? "active" : ""} onClick={() => setTab("backup")}>
-        <DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>تنزيل واسترجاع البيانات</small></span>
+        <DatabaseBackup /><span><strong>النسخ الاحتياطي</strong><small>المسارات والجدولة</small></span>
       </button>
       <button role="tab" aria-selected={tab === "support"} className={tab === "support" ? "active" : ""} onClick={() => setTab("support")}>
         <Headphones /><span><strong>الدعم الفني والتفعيل</strong><small>{licenseEval.isLifetime ? "مدى الحياة" : `${licenseEval.daysRemaining ?? 0} يوم متبقي`}</small></span>
@@ -907,7 +971,7 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
           <div className="receipt-print-settings full-field">
             <div className="receipt-print-settings-title">
               <Printer />
-              <span><strong>الطباعة الفورية عند تسجيل الطلب</strong><small>{desktopRuntime ? `${printers.length} طابعة متاحة على Windows` : "اختيار الطابعة والطباعة الصامتة يعملان في نسخة الديسكتوب"}</small></span>
+              <span><strong>الطباعة الفورية ESC/POS</strong><small>{desktopRuntime ? `إرسال RAW مباشر — ${printers.length} طابعة متاحة على Windows` : "الطباعة المباشرة ESC/POS تعمل في نسخة الديسكتوب"}</small></span>
               {desktopRuntime && <button type="button" className="soft-button receipt-printers-refresh" disabled={printersLoading} onClick={() => void refreshPrinters()}><RefreshCw /> {printersLoading ? "جاري التحديث..." : "تحديث الطابعات"}</button>}
             </div>
             <div className="receipt-print-options">
@@ -990,6 +1054,7 @@ export function SettingsView({ state, update, notify, network }: ViewProps) {
     {tab === "backup" && <div role="tabpanel"><BackupPanel state={state} update={update} notify={notify} /></div>}
 
     {tab === "support" && <div className="support-compact-container" role="tabpanel">
+      <UpdatePanel updater={updater} />
       <div className="support-compact-header">
         <div className="support-brand-info-right">
           <div className="support-brand-headline">

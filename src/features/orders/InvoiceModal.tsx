@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CookingPot, Printer, ReceiptText } from "lucide-react";
 import type { AppState, Order } from "../../domain/types";
-import { money, paymentLabels, shortDate } from "../../shared/format";
+import { money, shortDate } from "../../shared/format";
 import { Modal } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 
@@ -65,32 +65,35 @@ export function InvoiceModal({ order, settings, onClose, autoPrint = false }: {
   );
 }
 
-function ReceiptBrand({ settings, kind }: { settings: AppState["settings"]; kind?: string }) {
+function ReceiptBrand({ settings, kind }: { settings: AppState["settings"]; kind?: string | null }) {
   return <header>
     {settings.logoDataUrl ? <img className="receipt-logo" src={settings.logoDataUrl} alt="" /> : <CookingPot />}
     <h2>{settings.restaurantName}</h2>
-    {kind && <b className="receipt-kind">{kind}</b>}
-    {!kind && <p>{settings.subtitle}</p>}
-    {settings.phone && <small>{settings.phone}</small>}
-    {settings.address && <small>{settings.address}</small>}
+    {kind === undefined && <p>{settings.subtitle}</p>}
+    {(settings.phone || settings.address) && <div className="receipt-brand-contact">
+      {settings.phone && <small dir="ltr">{settings.phone}</small>}
+      {settings.address && <small>{settings.address}</small>}
+    </div>}
+    {kind !== null && <b className={kind ? "receipt-kind" : "receipt-document-type"}>{kind ?? "فاتورة بيع"}</b>}
   </header>;
 }
 
 function CustomerReceipt({ order, settings }: { order: Order; settings: AppState["settings"] }) {
   return <div className="receipt-paper customer-receipt">
     <ReceiptBrand settings={settings} />
-    <div className="receipt-meta">
-      <span>رقم الطلب <b>#{order.number}</b></span>
-      <span>التاريخ <b>{shortDate(order.createdAt)}</b></span>
-      {order.scheduledFor && <span>موعد التوصيل <b>{shortDate(order.scheduledFor)}</b></span>}
-      <span>الدفع <b>{paymentLabels[order.paymentMethod]} — {order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</b></span>
+    <div className="receipt-order-hero">
+      <div><span>رقم الطلب</span><strong>#{order.number}</strong></div>
+      <div className="receipt-order-date"><span>تاريخ الطلب</span><time>{shortDate(order.createdAt)}</time></div>
     </div>
+    {order.scheduledFor && <div className="receipt-scheduled"><span>موعد التوصيل</span><b>{shortDate(order.scheduledFor)}</b></div>}
+    <div className="receipt-section-label">بيانات العميل</div>
     <div className="receipt-customer">
       <strong className="receipt-customer-line">{order.customerName}<span dir="ltr">{order.customerPhone}</span></strong>
       <p>{order.address}</p>
     </div>
-    <table>
-      <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th></tr></thead>
+    <div className="receipt-section-label">تفاصيل الطلب</div>
+    <table className="customer-receipt-table">
+      <thead><tr><th>الصنف</th><th>العدد</th><th>الإجمالي</th></tr></thead>
       <tbody>{order.items.map((item) => (
         <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
           <td><strong>{item.name}</strong>{item.note && <small className="receipt-item-note">{item.note}</small>}</td>
@@ -100,10 +103,10 @@ function CustomerReceipt({ order, settings }: { order: Order; settings: AppState
       ))}</tbody>
     </table>
     <div className="receipt-totals">
-      <span>الأصناف <b>{money(order.subtotal)}</b></span>
+      <span>المجموع <b>{money(order.subtotal)}</b></span>
       <span>التوصيل <b>{money(order.deliveryFee)}</b></span>
       {order.discount > 0 && <span>الخصم <b>- {money(order.discount)}</b></span>}
-      <strong>الإجمالي <b>{money(order.total)}</b></strong>
+      <strong className="receipt-grand-total"><span>الإجمالي</span><b>{money(order.total)}</b></strong>
     </div>
     <div className="receipt-footer">
       {order.note && <p>ملاحظة: {order.note}</p>}
@@ -114,14 +117,14 @@ function CustomerReceipt({ order, settings }: { order: Order; settings: AppState
 
 function KitchenReceipt({ order, settings }: { order: Order; settings: AppState["settings"] }) {
   return <div className="receipt-paper kitchen-receipt">
-    <ReceiptBrand settings={settings} kind="ريسيت المطبخ" />
-    <div className="receipt-meta kitchen-receipt-meta">
-      <span>رقم الطلب <b>#{order.number}</b></span>
-      <span>وقت الطلب <b>{shortDate(order.createdAt)}</b></span>
-      <span>نوع الطلب <b>{order.scheduledFor ? "طلب مجدول" : "مطلوب الآن"}</b></span>
-      {order.scheduledFor && <span>موعد التجهيز <b>{shortDate(order.scheduledFor)}</b></span>}
-      <span>العميل <b>{order.customerName}</b></span>
+    <ReceiptBrand settings={settings} kind={null} />
+    <div className="kitchen-order-hero">
+      <div><span>رقم الطلب</span><strong>#{order.number}</strong></div>
+      <time><span>وقت الطلب</span><b>{shortDate(order.createdAt)}</b></time>
     </div>
+    {order.scheduledFor && <div className="kitchen-scheduled"><span>موعد التجهيز</span><b>{shortDate(order.scheduledFor)}</b></div>}
+    <div className="kitchen-customer"><span>العميل</span><strong>{order.customerName}</strong></div>
+    <div className="receipt-section-label kitchen-section-label">الأصناف المطلوبة</div>
     <table className="kitchen-receipt-table">
       <thead><tr><th>الكمية</th><th>الصنف والتفاصيل</th></tr></thead>
       <tbody>{order.items.map((item) => {
@@ -136,6 +139,5 @@ function KitchenReceipt({ order, settings }: { order: Order; settings: AppState[
     </table>
     <div className="kitchen-receipt-summary"><span>إجمالي الوحدات</span><b>{order.items.reduce((sum, item) => sum + item.quantity, 0)}</b></div>
     {order.note && <div className="kitchen-receipt-note"><strong>ملاحظة الطلب</strong><p>{order.note}</p></div>}
-    <div className="receipt-footer"><small>للتجهيز فقط — بدون أسعار</small></div>
   </div>;
 }

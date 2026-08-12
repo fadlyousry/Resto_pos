@@ -98,11 +98,11 @@ export const initialState: AppState = {
     expiresAt: new Date(Date.now() + 3 * 86400000).toISOString()
   },
   settings: {
-    restaurantName: "بيتنا",
-    subtitle: "أكل بيتي معمول بحب",
+    restaurantName: "مطعم ريستو",
+    subtitle: "أكل طازج ومعمول بحب",
     phone: "",
     address: "",
-    invoiceFooter: "شكرًا لاختياركم بيتنا",
+    invoiceFooter: "شكرًا لاختياركم Resto POS — نتمنى لكم يومًا سعيدًا",
     printCustomerReceipt: true,
     printKitchenReceipt: true,
     customerReceiptPrinter: "",

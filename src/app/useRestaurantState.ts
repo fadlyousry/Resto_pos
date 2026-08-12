@@ -165,7 +165,7 @@ export function useRestaurantState() {
         console.error(error);
         if (!disposed) {
           setConnectionStatus("offline");
-          setConnectionError("تعذر الاتصال بسيرفر بيتنا. تأكد أن عنوان السيرفر صحيح وأن الجهاز متصل بالشبكة.");
+          setConnectionError("تعذر الاتصال بالسيرفر الرئيسي لـ Resto POS. تأكد أن عنوان السيرفر صحيح وأن الجهاز متصل بالشبكة.");
         }
       });
 

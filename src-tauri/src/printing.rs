@@ -16,6 +16,14 @@ pub struct PrinterInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EscPosPrintJob {
+    pub printer_name: String,
+    pub document_name: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ReceiptColumn {
     pub text: String,
     pub width: f64,
@@ -85,6 +93,104 @@ pub fn print_receipt(payload: ReceiptPrintPayload) -> Result<(), String> {
         Some((&"BEITNA_RECEIPT_JSON", &serialized)),
     )?;
     Ok(())
+}
+
+pub fn print_escpos_receipts(jobs: Vec<EscPosPrintJob>) -> Result<(), String> {
+    if jobs.is_empty() {
+        return Err("لا توجد فواتير للطباعة".into());
+    }
+    for job in jobs {
+        let bytes = STANDARD
+            .decode(&job.data_base64)
+            .map_err(|error| format!("تعذر فك بيانات ESC/POS: {error}"))?;
+        if bytes.is_empty() {
+            return Err(format!("محتوى {} فارغ", job.document_name));
+        }
+        raw_print(&job.printer_name, &job.document_name, &bytes)?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn raw_print(printer_name: &str, document_name: &str, bytes: &[u8]) -> Result<(), String> {
+    use windows::{
+        core::{PCWSTR, PWSTR},
+        Win32::Graphics::Printing::{
+            ClosePrinter, EndDocPrinter, EndPagePrinter, GetDefaultPrinterW, OpenPrinterW,
+            StartDocPrinterW, StartPagePrinter, WritePrinter, DOC_INFO_1W, PRINTER_HANDLE,
+        },
+    };
+
+    fn wide(value: &str) -> Vec<u16> {
+        value.encode_utf16().chain(std::iter::once(0)).collect()
+    }
+
+    fn default_printer() -> Result<String, String> {
+        let mut length = 0u32;
+        unsafe { let _ = GetDefaultPrinterW(None, &mut length); }
+        if length == 0 {
+            return Err("لا توجد طابعة افتراضية في Windows".into());
+        }
+        let mut buffer = vec![0u16; length as usize];
+        if !unsafe { GetDefaultPrinterW(Some(PWSTR(buffer.as_mut_ptr())), &mut length) }.as_bool() {
+            return Err(format!("تعذر قراءة الطابعة الافتراضية: {}", windows::core::Error::from_win32()));
+        }
+        let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+        String::from_utf16(&buffer[..end]).map_err(|error| error.to_string())
+    }
+
+    let resolved_printer = if printer_name.trim().is_empty() {
+        default_printer()?
+    } else {
+        printer_name.trim().to_string()
+    };
+    let printer_wide = wide(&resolved_printer);
+    let mut handle = PRINTER_HANDLE::default();
+    unsafe { OpenPrinterW(PCWSTR(printer_wide.as_ptr()), &mut handle, None) }
+        .map_err(|error| format!("تعذر فتح الطابعة {resolved_printer}: {error}"))?;
+
+    let mut document_wide = wide(document_name);
+    let mut data_type_wide = wide("RAW");
+    let document_info = DOC_INFO_1W {
+        pDocName: PWSTR(document_wide.as_mut_ptr()),
+        pOutputFile: PWSTR::null(),
+        pDatatype: PWSTR(data_type_wide.as_mut_ptr()),
+    };
+
+    let result = unsafe {
+        let job_id = StartDocPrinterW(handle, 1, &document_info);
+        if job_id == 0 {
+            Err(format!("تعذر بدء مهمة الطباعة: {}", windows::core::Error::from_win32()))
+        } else if !StartPagePrinter(handle).as_bool() {
+            let _ = EndDocPrinter(handle);
+            Err(format!("تعذر بدء صفحة الطباعة: {}", windows::core::Error::from_win32()))
+        } else {
+            let mut written = 0u32;
+            let write_ok = WritePrinter(
+                handle,
+                bytes.as_ptr().cast(),
+                bytes.len().try_into().map_err(|_| "حجم الفاتورة كبير جدًا")?,
+                &mut written,
+            ).as_bool();
+            let write_error = if write_ok { None } else { Some(windows::core::Error::from_win32()) };
+            let page_ok = EndPagePrinter(handle).as_bool();
+            let document_ok = EndDocPrinter(handle).as_bool();
+            if !write_ok || written as usize != bytes.len() {
+                Err(format!("فشل إرسال بيانات ESC/POS: {}", write_error.map(|error| error.to_string()).unwrap_or_else(|| "لم تصل كل البيانات".into())))
+            } else if !page_ok || !document_ok {
+                Err("وصلت البيانات لكن تعذر إغلاق مهمة الطباعة".into())
+            } else {
+                Ok(())
+            }
+        }
+    };
+    let _ = unsafe { ClosePrinter(handle) };
+    result
+}
+
+#[cfg(not(windows))]
+fn raw_print(_printer_name: &str, _document_name: &str, _bytes: &[u8]) -> Result<(), String> {
+    Err("طباعة ESC/POS المباشرة متاحة على Windows فقط".into())
 }
 
 fn run_powershell(script: &str, environment: Option<(&str, &str)>) -> Result<String, String> {
@@ -270,5 +376,17 @@ mod tests {
         };
         let error = print_receipt(payload).expect_err("An unavailable printer must be rejected");
         assert!(error.contains("غير متاحة") || error.contains("failed"));
+    }
+
+    #[test]
+    fn escpos_rejects_an_unavailable_printer_without_spooling() {
+        let job = EscPosPrintJob {
+            printer_name: "__BEITNA_MISSING_ESC_POS_PRINTER__".into(),
+            document_name: "Beitna ESC POS safe test".into(),
+            data_base64: STANDARD.encode([0x1b, 0x40, 0x0a]),
+        };
+        let error = print_escpos_receipts(vec![job])
+            .expect_err("An unavailable raw printer must be rejected");
+        assert!(error.contains("تعذر فتح الطابعة"));
     }
 }

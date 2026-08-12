@@ -17,6 +17,9 @@ import { currentArabicDate, shortDate } from "../shared/format";
 import { evaluateLicense } from "../shared/license";
 import { navigationItems, type AppView } from "./navigation";
 import { useRestaurantState } from "./useRestaurantState";
+import { useAutomaticBackups } from "./useAutomaticBackups";
+import { useAppUpdater } from "./useAppUpdater";
+import { UpdatePrompt } from "../features/settings/UpdatePrompt";
 
 export default function App() {
   const {
@@ -28,13 +31,15 @@ export default function App() {
   const [editReturnView, setEditReturnView] = useState<AppView>("orders");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("beitna-sidebar-collapsed") === "true");
   const [serverDraft, setServerDraft] = useState(serverUrl);
+  useAutomaticBackups(state);
+  const updater = useAppUpdater(state, notify);
 
   if (!state) {
     if (connectionError) {
       return <div className="server-connection-screen">
         <div className="server-connection-card">
           <span className="server-connection-icon"><Server /></span>
-          <h1>تعذر الاتصال بسيرفر بيتنا</h1>
+          <h1>تعذر الاتصال بالسيرفر الرئيسي لـ Resto POS</h1>
           <p>{connectionError}</p>
           <label>
             عنوان السيرفر
@@ -67,7 +72,8 @@ export default function App() {
     state,
     update,
     notify,
-    network: { status: connectionStatus, serverUrl, embeddedServer, changeServerUrl }
+    network: { status: connectionStatus, serverUrl, embeddedServer, changeServerUrl },
+    updater
   };
   const editOrderInPos = (order: Order) => {
     setEditingOrder(order);
@@ -110,8 +116,8 @@ export default function App() {
               : <CookingPot />}
           </div>
           <div>
-            <strong>{state.settings.restaurantName}</strong>
-            <span>{state.settings.subtitle || "إدارة المطعم"}</span>
+            <strong>Resto POS</strong>
+            <span>FYC Solutions</span>
           </div>
         </div>
 
@@ -164,6 +170,7 @@ export default function App() {
       </main>
 
       {toast && <div className="toast"><Check size={18} /> {toast}</div>}
+      <UpdatePrompt updater={updater} />
     </div>
   );
 }

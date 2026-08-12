@@ -1,5 +1,7 @@
 mod printing;
 mod server;
+mod storage;
+mod updater;
 
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path};
@@ -62,21 +64,40 @@ async fn print_receipt(payload: printing::ReceiptPrintPayload) -> Result<(), Str
         .map_err(|error| format!("تعذر تشغيل مهمة الطباعة: {error}"))?
 }
 
+#[tauri::command]
+async fn print_escpos_receipts(jobs: Vec<printing::EscPosPrintJob>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || printing::print_escpos_receipts(jobs))
+        .await
+        .map_err(|error| format!("تعذر تشغيل مهمة ESC/POS: {error}"))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_sql::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updater::PendingUpdate::default())
         .invoke_handler(tauri::generate_handler![
             get_server_info,
             get_network_config,
             save_network_config,
             list_printers,
-            print_receipt
+            print_receipt,
+            print_escpos_receipts,
+            storage::get_storage_info,
+            storage::select_data_directory,
+            storage::select_backup_directory,
+            storage::save_backup_preferences,
+            storage::create_state_backup,
+            updater::get_updater_configuration,
+            updater::check_for_update,
+            updater::install_pending_update
         ])
         .setup(|app| {
             let app_data_directory = app.path().app_data_dir()?;
             if read_network_config(&app_data_directory).host_server {
-                let database_path = app_data_directory.join("beitna.db");
+                let database_path = storage::initialize(app.handle())
+                    .map_err(std::io::Error::other)?;
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = server::run(database_path).await {
                         eprintln!("Beitna central server stopped: {error}");

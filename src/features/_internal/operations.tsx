@@ -382,21 +382,37 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         <div className="product-grid">
           {section === MEALS_SECTION ? meals.map((meal) => (
             <button className="product-card meal-card" onClick={() => addMeal(meal)} key={meal.id}>
-              <span className="food-visual meal-visual"><ShoppingBag size={28} /></span>
-              <span className="product-info"><strong>{meal.name}</strong><small>{meal.components.map((item) => `${item.quantity}× ${item.name}`).join(" · ")}</small><b>{money(meal.price)}</b></span>
-              <span className="quick-add"><Plus size={18} /></span>
+              <div className="product-card-top">
+                <span className="food-visual meal-visual"><ShoppingBag size={26} /></span>
+                <span className="product-info">
+                  <strong>{meal.name}</strong>
+                  <small>{meal.components.map((item) => `${item.quantity}× ${item.name}`).join(" · ")}</small>
+                </span>
+              </div>
+              <div className="product-card-footer">
+                <span className="price-label">السعر</span>
+                <span className="price-divider" />
+                <span className="price-value">{money(meal.price)} ج.م</span>
+              </div>
             </button>
           )) : products.map((product) => (
             <button className="product-card" onClick={() => product.options?.length ? setOptionProduct(product) : addProduct(product, undefined)} key={product.id}>
-              <span className="food-visual" style={{ background: `linear-gradient(145deg, ${product.accent}30, ${product.accent}80)` }}>
-                {product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <Utensils size={28} style={{ color: product.accent }} />}
-              </span>
-              <span className="product-info">
-                <strong>{product.name}</strong>
-                <small>{product.options?.length ? `${product.options.length} مقاسات متاحة` : product.unit}</small>
-                <b>{product.options?.length ? `يبدأ من ${money(Math.min(...product.options.map((option) => option.price)))}` : money(product.price)}</b>
-              </span>
-              <span className="quick-add"><Plus size={18} /></span>
+              <div className="product-card-top">
+                <span className="food-visual" style={{ background: `linear-gradient(145deg, ${product.accent}30, ${product.accent}80)` }}>
+                  {product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <Utensils size={26} style={{ color: product.accent }} />}
+                </span>
+                <span className="product-info">
+                  <strong>{product.name}</strong>
+                  <small>{product.options?.length ? `${product.options.length} مقاسات متاحة` : product.unit}</small>
+                </span>
+              </div>
+              <div className="product-card-footer">
+                <span className="price-label">السعر</span>
+                <span className="price-divider" />
+                <span className="price-value">
+                  {product.options?.length ? `يبدأ من ${money(Math.min(...product.options.map((option) => option.price)))} ج.م` : `${money(product.price)} ج.م`}
+                </span>
+              </div>
             </button>
           ))}
           {section === MEALS_SECTION && !meals.length && <div className="empty-state"><ShoppingBag /><strong>مفيش وجبات متاحة</strong><span>أضف وجبات من شاشة إدارة الأصناف</span></div>}
@@ -405,27 +421,25 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       </div>
 
       <aside className="cart-panel">
-        <div className="cart-title">
-          <div className="cart-heading">
-            <span className="cart-heading-icon"><ShoppingBag /></span>
-            <span><b>{editingOrder ? "تعديل الطلب" : "الطلب الحالي"}</b><small>{cart.length ? `${cart.length} صنف · ${totalUnits} وحدة` : "ابدأ بإضافة الأصناف"}</small></span>
-            <strong>#{editingOrder?.number ?? state.nextOrderNumber}</strong>
+        <div className="customer-picker" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {customer ? (
+              <div className="selected-customer">
+                <span className="customer-avatar">{customer.name.charAt(0)}</span>
+                <div><strong>{customer.name}</strong><small><Phone size={12} /> {customer.phone}</small><p>{customer.address}</p></div>
+                <span className="selected-customer-actions">
+                  <button title="تعديل عنوان التوصيل" onClick={() => { setCustomerCandidate({ ...customer }); setShowCustomers(true); }}><MapPin size={16} /></button>
+                  <button title="إلغاء اختيار العميل" onClick={() => setCustomer(null)}><X size={17} /></button>
+                </span>
+              </div>
+            ) : (
+              <button className="select-customer" onClick={openCustomerPicker}><UserPlus size={19} /> اختيار العميل وعنوان التوصيل <ChevronLeft size={18} /></button>
+            )}
           </div>
-          <button className="clear-cart-button" title="تفريغ السلة" onClick={() => setCart([])} disabled={!cart.length}><Trash2 size={18} /></button>
-        </div>
-        <div className="customer-picker">
-          {customer ? (
-            <div className="selected-customer">
-              <span className="customer-avatar">{customer.name.charAt(0)}</span>
-              <div><strong>{customer.name}</strong><small><Phone size={12} /> {customer.phone}</small><p>{customer.address}</p></div>
-              <span className="selected-customer-actions">
-                <button title="تعديل عنوان التوصيل" onClick={() => { setCustomerCandidate({ ...customer }); setShowCustomers(true); }}><MapPin size={16} /></button>
-                <button title="إلغاء اختيار العميل" onClick={() => setCustomer(null)}><X size={17} /></button>
-              </span>
-            </div>
-          ) : (
-            <button className="select-customer" onClick={openCustomerPicker}><UserPlus size={19} /> اختيار العميل وعنوان التوصيل <ChevronLeft size={18} /></button>
-          )}
+          <strong title="رقم الطلب" style={{ padding: "7px 12px", background: "#f3f4f6", border: "1px solid #9ca3af", borderRadius: "9px", fontSize: "12px", color: "#111827", whiteSpace: "nowrap", flexShrink: 0, fontWeight: 800 }}>
+            <span style={{ color: "#374151", fontWeight: 700, marginLeft: "5px" }}>رقم الطلب:</span>
+            <b>#{editingOrder?.number ?? state.nextOrderNumber}</b>
+          </strong>
         </div>
         <div className="cart-items">
           {cart.length > 0 && <div className="cart-table-head"><span>الصنف</span><span>الكمية</span><span>الإجمالي</span><span /></div>}
