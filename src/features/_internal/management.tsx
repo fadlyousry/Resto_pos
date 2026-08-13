@@ -857,7 +857,7 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
   const [testingPrinter, setTestingPrinter] = useState<"customer" | "kitchen" | null>(null);
   const desktopRuntime = isDesktopRuntime();
 
-  const machineId = state.license?.machineId || getMachineId();
+  const machineId = getMachineId();
   const licenseEval = evaluateLicense(state.license);
 
   const refreshPrinters = async () => {

@@ -8,8 +8,8 @@ interface LicenseLockModalProps {
   onActivate: (newLicense: LicenseInfo) => void;
 }
 
-export function LicenseLockModal({ license, onActivate }: LicenseLockModalProps) {
-  const machineId = license?.machineId || getMachineId();
+export function LicenseLockModal({ onActivate }: LicenseLockModalProps) {
+  const machineId = getMachineId();
   const [inputKey, setInputKey] = useState("");
   const [copied, setCopied] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");

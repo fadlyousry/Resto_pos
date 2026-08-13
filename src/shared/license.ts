@@ -1,12 +1,15 @@
 import type { LicenseInfo, LicenseType } from "../domain/types";
+import { invoke } from "@tauri-apps/api/core";
 
 const LICENSE_SECRET = "RESTRANT-PRO-SECRET-KEY-2026";
 const MACHINE_ID_KEY = "restrant_machine_id";
+const DEVICE_LICENSE_KEY = "restrant_device_license_v2";
+let runtimeMachineId = "";
 
 /**
   توليد أو جلب معرف الجهاز الفريد (Machine ID)
  */
-export function getMachineId(): string {
+function getBrowserMachineId(): string {
   let id = localStorage.getItem(MACHINE_ID_KEY);
   if (!id) {
     const raw = `${navigator.userAgent}-${navigator.language}-${screen.width}x${screen.height}`;
@@ -21,6 +24,102 @@ export function getMachineId(): string {
     localStorage.setItem(MACHINE_ID_KEY, id);
   }
   return id;
+}
+
+export async function initializeMachineId(): Promise<string> {
+  if (runtimeMachineId) return runtimeMachineId;
+  if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    try {
+      runtimeMachineId = await invoke<string>("get_machine_id");
+      localStorage.setItem(MACHINE_ID_KEY, runtimeMachineId);
+      return runtimeMachineId;
+    } catch (error) {
+      console.error("Failed to read Windows machine ID", error);
+    }
+  }
+  runtimeMachineId = getBrowserMachineId();
+  return runtimeMachineId;
+}
+
+export function getMachineId(): string {
+  if (runtimeMachineId) return runtimeMachineId;
+  runtimeMachineId = getBrowserMachineId();
+  return runtimeMachineId;
+}
+
+function expiredDeviceLicense(machineId: string): LicenseInfo {
+  return {
+    machineId,
+    type: "trial",
+    status: "expired",
+    activatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() - 1000).toISOString()
+  };
+}
+
+function initialDeviceTrial(machineId: string): LicenseInfo {
+  return {
+    machineId,
+    type: "trial",
+    status: "active",
+    activatedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 3 * 86400000).toISOString()
+  };
+}
+
+export function loadDeviceLicense(sharedFallback?: LicenseInfo): LicenseInfo {
+  const machineId = getMachineId();
+  let stored: LicenseInfo | undefined;
+  try {
+    const raw = localStorage.getItem(DEVICE_LICENSE_KEY);
+    if (raw) stored = JSON.parse(raw) as LicenseInfo;
+  } catch {
+    localStorage.removeItem(DEVICE_LICENSE_KEY);
+  }
+
+  const candidate = stored ?? (
+    sharedFallback?.machineId === machineId ? sharedFallback : undefined
+  );
+  if (!candidate) {
+    const trial = initialDeviceTrial(machineId);
+    saveDeviceLicense(trial);
+    return trial;
+  }
+  if (candidate.machineId !== machineId) {
+    const expired = expiredDeviceLicense(machineId);
+    saveDeviceLicense(expired);
+    return expired;
+  }
+  if (candidate.licenseKey) {
+    const verification = verifyLicenseKey(candidate.licenseKey, machineId);
+    if (!verification.valid) {
+      const expired = expiredDeviceLicense(machineId);
+      saveDeviceLicense(expired);
+      return expired;
+    }
+    const verified: LicenseInfo = {
+      ...candidate,
+      machineId,
+      type: verification.type ?? "subscription",
+      status: "active",
+      expiresAt: verification.expiresAt ?? null
+    };
+    saveDeviceLicense(verified);
+    return verified;
+  }
+  if (candidate.type !== "trial") {
+    const expired = expiredDeviceLicense(machineId);
+    saveDeviceLicense(expired);
+    return expired;
+  }
+  const normalized = { ...candidate, machineId };
+  saveDeviceLicense(normalized);
+  return normalized;
+}
+
+export function saveDeviceLicense(license: LicenseInfo) {
+  const normalized = { ...license, machineId: getMachineId() };
+  localStorage.setItem(DEVICE_LICENSE_KEY, JSON.stringify(normalized));
 }
 
 /**

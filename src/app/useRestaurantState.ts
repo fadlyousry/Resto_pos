@@ -13,8 +13,13 @@ import {
   type EmbeddedServerInfo
 } from "../infrastructure/dataClient";
 import type { StateUpdater } from "../shared/contracts";
+import { loadDeviceLicense, saveDeviceLicense } from "../shared/license";
 
 type AppStateUpdater = (current: AppState) => AppState;
+
+function withDeviceLicense(state: AppState): AppState {
+  return { ...state, license: loadDeviceLicense(state.license) };
+}
 
 export function useRestaurantState() {
   const [state, setState] = useState<AppState | null>(null);
@@ -67,7 +72,7 @@ export function useRestaurantState() {
         (current, updater) => updater(current),
         latest.state
       );
-      applyState(rebased);
+      applyState(withDeviceLicense(rebased));
       if (pendingUpdatersRef.current.length) scheduleFlush();
     } catch (error) {
       console.error(error);
@@ -89,15 +94,19 @@ export function useRestaurantState() {
     saveInProgressRef.current = true;
     const batchLength = pendingUpdatersRef.current.length;
     const candidate = stateRef.current;
+    const serverCandidate = {
+      ...candidate,
+      license: syncedStateRef.current.license
+    };
     let retryDelay = 100;
     try {
       const revision = await saveVersionedState(
-        candidate,
+        serverCandidate,
         revisionRef.current,
         sourceIdRef.current
       );
       pendingUpdatersRef.current.splice(0, batchLength);
-      syncedStateRef.current = candidate;
+      syncedStateRef.current = serverCandidate;
       revisionRef.current = revision;
       if (mountedRef.current) {
         setConnectionStatus(isTauriRuntime() ? "online" : "local");
@@ -111,7 +120,7 @@ export function useRestaurantState() {
           (current, updater) => updater(current),
           error.current.state
         );
-        applyState(rebased);
+        applyState(withDeviceLicense(rebased));
       } else {
         retryDelay = 2_000;
         console.error(error);
@@ -146,7 +155,7 @@ export function useRestaurantState() {
         if (disposed) return;
         syncedStateRef.current = loaded.state;
         revisionRef.current = loaded.revision;
-        applyState(loaded.state);
+        applyState(withDeviceLicense(loaded.state));
         setConnectionError("");
         unsubscribe = await subscribeToStateUpdates(
           sourceIdRef.current,
@@ -192,8 +201,10 @@ export function useRestaurantState() {
   const update: StateUpdater = (updater) => {
     const current = stateRef.current;
     if (!current) return;
+    const next = updater(current);
+    if (next.license !== current.license) saveDeviceLicense(next.license);
     pendingUpdatersRef.current.push(updater);
-    applyState(updater(current));
+    applyState(next);
     scheduleFlush();
   };
 

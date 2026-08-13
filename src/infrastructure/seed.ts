@@ -91,7 +91,7 @@ export const initialState: AppState = {
   nextOrderNumber: 1001,
   nextPurchaseInvoiceNumber: 1,
   license: {
-    machineId: "POS-DEFAULT-0001",
+    machineId: "",
     type: "trial",
     status: "active",
     activatedAt: new Date().toISOString(),
