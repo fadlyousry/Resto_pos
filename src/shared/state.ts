@@ -1,4 +1,4 @@
-import type { AppState, Customer, MenuSection, Order, OrderStage } from "../domain/types";
+import type { AppState, CashShift, Customer, MenuSection, Order, OrderStage } from "../domain/types";
 
 const isArray = <T,>(value: T[] | undefined): value is T[] => Array.isArray(value);
 
@@ -26,6 +26,8 @@ function cleanOrder(order: Order): Order {
   return {
     id: order.id,
     number: order.number,
+    shiftNumber: order.shiftNumber,
+    shiftId: order.shiftId,
     customerId: order.customerId,
     customerName: order.customerName,
     customerPhone: order.customerPhone,
@@ -52,6 +54,31 @@ function cleanOrder(order: Order): Order {
   };
 }
 
+function attachLegacyOrdersToShifts(orders: Order[], shifts: CashShift[]) {
+  const counters = new Map<string, number>();
+  for (const order of orders) {
+    if (order.shiftId && order.shiftNumber) {
+      counters.set(order.shiftId, Math.max(counters.get(order.shiftId) ?? 1000, order.shiftNumber));
+    }
+  }
+  return [...orders]
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime())
+    .map((order) => {
+      if (order.shiftId && order.shiftNumber) return order;
+      const createdAt = new Date(order.createdAt).getTime();
+      const shift = shifts.find((item) => {
+        const openedAt = new Date(item.openedAt).getTime();
+        const closedAt = item.closedAt ? new Date(item.closedAt).getTime() : Number.POSITIVE_INFINITY;
+        return createdAt >= openedAt && createdAt <= closedAt;
+      });
+      if (!shift) return order;
+      const shiftNumber = (counters.get(shift.id) ?? 1000) + 1;
+      counters.set(shift.id, shiftNumber);
+      return { ...order, shiftId: shift.id, shiftNumber };
+    })
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+}
+
 export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState): AppState {
   const products = isArray(parsed.products) ? parsed.products : fallback.products;
   const derivedSections: MenuSection[] = [...new Set(products.map((product) => product.section))].map((id) => ({
@@ -63,26 +90,31 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     : isArray(fallback.sections) && fallback.sections.length
       ? fallback.sections
       : derivedSections;
+  const cashShifts = isArray(parsed.cashShifts)
+    ? parsed.cashShifts
+    : [{
+      id: "legacy-shift",
+      openedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
+      openingBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance
+    }];
+  const orders = attachLegacyOrdersToShifts(
+    isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders,
+    cashShifts
+  );
   return {
     products,
     sections,
     meals: isArray(parsed.meals) ? parsed.meals : (isArray(fallback.meals) ? fallback.meals : []),
     categories: isArray(parsed.categories) ? parsed.categories : fallback.categories,
     customers: isArray(parsed.customers) ? parsed.customers.map(cleanCustomer) : fallback.customers,
-    orders: isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders,
+    orders,
     drivers: isArray(parsed.drivers) ? parsed.drivers : fallback.drivers,
     driverSettlements: isArray(parsed.driverSettlements) ? parsed.driverSettlements : fallback.driverSettlements,
     ingredients: isArray(parsed.ingredients) ? parsed.ingredients : fallback.ingredients,
     recipes: isArray(parsed.recipes) ? parsed.recipes : fallback.recipes,
     stockMovements: isArray(parsed.stockMovements) ? parsed.stockMovements : fallback.stockMovements,
     cashTransactions: isArray(parsed.cashTransactions) ? parsed.cashTransactions : fallback.cashTransactions,
-    cashShifts: isArray(parsed.cashShifts)
-      ? parsed.cashShifts
-      : [{
-        id: "legacy-shift",
-        openedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
-        openingBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance
-      }],
+    cashShifts,
     suppliers: isArray(parsed.suppliers) ? parsed.suppliers : fallback.suppliers,
     purchaseInvoices: isArray(parsed.purchaseInvoices) ? parsed.purchaseInvoices : fallback.purchaseInvoices,
     shiftOpeningBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance,

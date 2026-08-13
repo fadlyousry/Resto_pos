@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CookingPot, Printer, ReceiptText } from "lucide-react";
 import type { AppState, Order } from "../../domain/types";
-import { money, shortDate } from "../../shared/format";
+import { money, orderDisplayNumber, shortDate } from "../../shared/format";
 import { Modal } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 
@@ -47,7 +47,7 @@ export function InvoiceModal({ order, settings, onClose, autoPrint = false }: {
   }, [autoPrint, order.id, receiptCount]);
 
   return (
-    <Modal title={`طباعة الطلب #${order.number}`} onClose={onClose}>
+    <Modal title={`طباعة الطلب #${orderDisplayNumber(order)}`} onClose={onClose}>
       <div className="receipt-print-stack">
         {printCustomerReceipt && <section className="receipt-preview">
           <span className="receipt-preview-label"><ReceiptText /> فاتورة العميل</span>
@@ -82,7 +82,7 @@ function CustomerReceipt({ order, settings }: { order: Order; settings: AppState
   return <div className="receipt-paper customer-receipt">
     <ReceiptBrand settings={settings} />
     <div className="receipt-order-hero">
-      <div><span>رقم الطلب</span><strong>#{order.number}</strong></div>
+      <div><span>رقم الطلب</span><strong>#{orderDisplayNumber(order)}</strong></div>
       <div className="receipt-order-date"><span>تاريخ الطلب</span><time>{shortDate(order.createdAt)}</time></div>
     </div>
     {order.scheduledFor && <div className="receipt-scheduled"><span>موعد التوصيل</span><b>{shortDate(order.scheduledFor)}</b></div>}
@@ -119,7 +119,7 @@ function KitchenReceipt({ order, settings }: { order: Order; settings: AppState[
   return <div className="receipt-paper kitchen-receipt">
     <ReceiptBrand settings={settings} kind={null} />
     <div className="kitchen-order-hero">
-      <div><span>رقم الطلب</span><strong>#{order.number}</strong></div>
+      <div><span>رقم الطلب</span><strong>#{orderDisplayNumber(order)}</strong></div>
       <time><span>وقت الطلب</span><b>{shortDate(order.createdAt)}</b></time>
     </div>
     {order.scheduledFor && <div className="kitchen-scheduled"><span>موعد التجهيز</span><b>{shortDate(order.scheduledFor)}</b></div>}

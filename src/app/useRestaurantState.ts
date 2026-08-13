@@ -13,6 +13,7 @@ import {
   type EmbeddedServerInfo
 } from "../infrastructure/dataClient";
 import type { StateUpdater } from "../shared/contracts";
+import { uid } from "../shared/id";
 import { loadDeviceLicense, saveDeviceLicense } from "../shared/license";
 
 type AppStateUpdater = (current: AppState) => AppState;
@@ -27,7 +28,7 @@ export function useRestaurantState() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [connectionError, setConnectionError] = useState("");
   const [embeddedServer, setEmbeddedServer] = useState<EmbeddedServerInfo | null>(null);
-  const sourceIdRef = useRef(crypto.randomUUID());
+  const sourceIdRef = useRef(uid());
   const stateRef = useRef<AppState | null>(null);
   const syncedStateRef = useRef<AppState | null>(null);
   const revisionRef = useRef("");

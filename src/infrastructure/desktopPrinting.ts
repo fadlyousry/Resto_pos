@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { AppState, Order } from "../domain/types";
-import { money, shortDate } from "../shared/format";
+import { money, orderDisplayNumber, shortDate } from "../shared/format";
 
 export interface PrinterInfo {
   name: string;
@@ -438,7 +438,7 @@ function bytesToBase64(bytes: Uint8Array) {
 function customerReceipt(order: Order, settings: AppState["settings"]): ReceiptDocument {
   const blocks: ReceiptBlock[] = [
     ...brandBlocks(settings),
-    orderHero(order.number, shortDate(order.createdAt)),
+    orderHero(orderDisplayNumber(order), shortDate(order.createdAt)),
     ...(order.scheduledFor ? [columns(
       column(shortDate(order.scheduledFor), 0.58, { align: "left", size: 7 }),
       column("موعد التوصيل", 0.42, { size: 7, bold: true })
@@ -474,7 +474,7 @@ function customerReceipt(order: Order, settings: AppState["settings"]): ReceiptD
 
   return {
     printerName: settings.customerReceiptPrinter ?? "",
-    documentName: `فاتورة العميل #${order.number}`,
+    documentName: `فاتورة العميل #${orderDisplayNumber(order)}`,
     paperWidthMm: ESC_POS_PAPER_WIDTH_MM,
     blocks
   };
@@ -484,7 +484,7 @@ function kitchenReceipt(order: Order, settings: AppState["settings"]): ReceiptDo
   const blocks: ReceiptBlock[] = [
     text(settings.restaurantName, { align: "center", size: 13, bold: true }),
     space(3),
-    band("رقم الطلب", `#${order.number}`, 12, true),
+    band("رقم الطلب", `#${orderDisplayNumber(order)}`, 12, true),
     columns(
       column(shortDate(order.createdAt), 0.62, { align: "left", size: 8 }),
       column("وقت الطلب", 0.38, { size: 9, bold: true })
@@ -525,7 +525,7 @@ function kitchenReceipt(order: Order, settings: AppState["settings"]): ReceiptDo
 
   return {
     printerName: settings.kitchenReceiptPrinter ?? "",
-    documentName: `ريسيت المطبخ #${order.number}`,
+    documentName: `ريسيت المطبخ #${orderDisplayNumber(order)}`,
     paperWidthMm: ESC_POS_PAPER_WIDTH_MM,
     blocks
   };

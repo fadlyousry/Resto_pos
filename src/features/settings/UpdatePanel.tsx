@@ -1,4 +1,4 @@
-import { CheckCircle2, CloudDownload, Github, RefreshCw, Rocket, ShieldCheck } from "lucide-react";
+import { CheckCircle2, CloudDownload, RefreshCw, Rocket } from "lucide-react";
 import type { AppUpdaterController } from "../../infrastructure/updater";
 
 export function UpdatePanel({ updater }: { updater?: AppUpdaterController }) {
@@ -9,7 +9,7 @@ export function UpdatePanel({ updater }: { updater?: AppUpdaterController }) {
       : updater.status === "downloading" ? `جاري التنزيل ${updater.progress}%`
         : updater.status === "installing" ? "جاري تثبيت التحديث..."
           : updater.status === "up-to-date" ? "أحدث إصدار مثبت"
-            : updater.status === "unconfigured" ? "بانتظار ربط مستودع GitHub"
+            : updater.status === "unconfigured" ? "خدمة التحديث غير متاحة"
               : updater.status === "error" ? "تعذر الاتصال بخدمة التحديث"
                 : "جاهز للبحث عن تحديثات";
 
@@ -18,8 +18,7 @@ export function UpdatePanel({ updater }: { updater?: AppUpdaterController }) {
     <div className="app-update-copy">
       <div><strong>تحديثات Resto POS</strong><span className={`app-update-status ${updater.status}`}>{statusLabel}</span></div>
       <p>الإصدار الحالي <b dir="ltr">v{updater.configuration?.currentVersion ?? "0.1.1"}</b></p>
-      {updater.configuration?.repository && <small><Github /> {updater.configuration.repository}</small>}
-      {updater.status === "unconfigured" && <small><ShieldCheck /> سيتم التعرف على المستودع تلقائيًا عند البناء من GitHub Actions.</small>}
+      {updater.status === "unconfigured" && <small>يرجى التواصل مع الدعم الفني لتفعيل خدمة التحديث.</small>}
       {updater.update?.notes && <div className="app-update-notes">{updater.update.notes}</div>}
       {(updater.status === "downloading" || updater.status === "installing") && <div className="app-update-progress"><i style={{ width: `${updater.progress}%` }} /></div>}
       {updater.error && <em>{updater.error}</em>}

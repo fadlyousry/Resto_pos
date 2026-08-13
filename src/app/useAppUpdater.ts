@@ -36,7 +36,7 @@ export function useAppUpdater(state: AppState | null, notify: (message: string) 
       setConfiguration(config);
       if (!config.configured) {
         setStatus("unconfigured");
-        if (!silent) notify("سيتم ربط GitHub Releases تلقائيًا عند بناء النسخة من المستودع");
+        if (!silent) notify("خدمة التحديث غير متاحة حاليًا؛ يرجى التواصل مع الدعم الفني");
         return;
       }
       const available = await checkForUpdate();

@@ -2883,6 +2883,128 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   .purchase-invoice-row { grid-template-columns: 50px 1.3fr 1.1fr 0.9fr 0.8fr 0.9fr 0.8fr 80px; font-size: 10px; }
 }
 
+/* Compact desktop layout for common 15-inch POS screens (1366x768). */
+@media (max-width: 1440px), (max-height: 800px) {
+  body { min-width: 1024px; }
+  .sidebar { width: 202px; padding: 17px 13px 13px; }
+  .main { width: calc(100% - 202px); margin-right: 202px; }
+  .brand { gap: 9px; padding: 0 7px 15px; }
+  .brand-mark { width: 39px; height: 39px; border-radius: 11px; }
+  .brand strong { font-size: 17px; }
+  .brand span { font-size: 9px; }
+  .sidebar nav { gap: 2px; padding-top: 10px; }
+  .nav-item { min-height: 37px; gap: 9px; padding: 7px 10px; font-size: 11px; }
+  .nav-item svg { width: 17px; height: 17px; }
+  .shift-card { gap: 4px; padding: 10px; }
+  .shift-card div { font-size: 10px; }
+  .shift-card strong, .shift-card small { font-size: 8px; }
+
+  .topbar { height: 66px; padding: 10px 18px; }
+  .topbar h1 { margin-bottom: 2px; font-size: 16px; }
+  .topbar p { font-size: 9px; }
+  .pending-pill { padding: 7px 10px; font-size: 9px; }
+  .page { padding: 13px 16px 20px; }
+  .pos-active .page { height: calc(100vh - 66px); }
+
+  .pos-layout { grid-template-columns: minmax(0, 1fr) 400px; gap: 13px; }
+  .section-switch { gap: 8px; margin-bottom: 9px; padding-bottom: 2px; }
+  .section-switch button { flex-basis: 150px; min-width: 145px; min-height: 54px; gap: 8px; padding: 7px 10px; border-radius: 11px; }
+  .section-switch button > svg { width: 31px; height: 31px; padding: 6px; }
+  .section-switch strong { font-size: 11px; }
+  .section-switch small { font-size: 8px; }
+  .catalog-tools { gap: 8px; margin-bottom: 9px; }
+  .search-box { height: 38px; min-width: 180px; padding-inline: 10px; }
+  .search-box input { font-size: 10px; }
+  .category-list button, .filter-tabs button { padding: 6px 10px; border-radius: 8px; font-size: 9px; }
+  .product-grid { gap: 9px; padding-top: 3px; }
+  .product-card { min-height: 105px; border-radius: 11px; }
+  .product-card-top { grid-template-columns: 46px 1fr; gap: 8px; padding: 9px; }
+  .food-visual { width: 46px; height: 46px; border-radius: 9px; }
+  .product-info strong { font-size: 11px; }
+  .product-info small { font-size: 8px; }
+  .product-card-footer { height: 31px; }
+  .price-label, .price-value { font-size: 11px; }
+  .price-divider { height: 18px; }
+
+  .cart-panel { border-radius: 14px; }
+  .cart-title { min-height: 60px; padding: 9px 12px; }
+  .cart-heading { gap: 8px; }
+  .cart-heading-icon { width: 35px; height: 35px; border-radius: 9px; }
+  .cart-heading b { font-size: 12px; }
+  .cart-heading small, .cart-heading strong { font-size: 8px; }
+  .customer-picker { padding: 8px 10px; }
+  .select-customer { min-height: 43px; padding: 8px 9px; font-size: 10px; }
+  .selected-customer { min-height: 51px; padding: 7px 8px; }
+  .selected-customer .customer-avatar { width: 34px; height: 34px; }
+  .selected-customer strong { font-size: 11px; }
+  .selected-customer small { font-size: 8px; }
+  .selected-customer p { font-size: 7px; }
+  .cart-items { padding-inline: 9px; }
+  .cart-table-head, .cart-item { grid-template-columns: minmax(105px, 1fr) 94px 70px 28px; gap: 5px; padding-inline: 7px; }
+  .cart-table-head { min-height: 32px; font-size: 8px; }
+  .cart-item { min-height: 61px; padding-block: 7px; }
+  .cart-product-cell { gap: 3px; }
+  .cart-product-cell strong, .cart-line-total { font-size: 11px; }
+  .cart-product-cell small { font-size: 8px; }
+  .quantity { gap: 3px; }
+  .quantity button { width: 27px; height: 27px; }
+  .quantity span { min-width: 24px; font-size: 11px; }
+  .remove-cart-item { width: 28px; height: 28px; }
+  .cart-summary { padding: 9px 12px 11px; }
+  .cart-summary-title { margin-bottom: 6px; font-size: 10px; }
+  .cart-summary > div { margin-bottom: 5px; font-size: 9px; }
+  .cart-summary > div.cart-total-row { margin: 3px 0 8px; padding-top: 7px; }
+  .cart-summary > div strong { font-size: 15px; }
+  .checkout-button { min-height: 42px; font-size: 10px; }
+  .hint { margin-top: 5px; font-size: 7px; }
+
+  .workspace-section-header { min-height: 62px; gap: 10px; padding-block: 8px; }
+  .workspace-section-header > div:first-child strong { font-size: 13px; }
+  .workspace-section-header > div:first-child small { font-size: 8px; }
+  .workspace-section-actions button { min-height: 34px; font-size: 9px; }
+  .mini-stat { gap: 8px; padding: 10px; }
+  .mini-stat > span { width: 34px; height: 34px; }
+  .mini-stat small { font-size: 8px; }
+  .mini-stat strong { font-size: 12px; }
+  .workflow-page, .delivery-page, .management-page { gap: 10px; }
+  .workflow-stats { gap: 8px; }
+  .workflow-toolbar { min-height: 54px; gap: 8px; padding: 7px 9px; }
+  .workflow-search { min-height: 36px; }
+  .kitchen-board { gap: 9px; padding: 10px; }
+  .kitchen-orders-panel .kitchen-board { padding: 10px; }
+  .kitchen-ticket { border-radius: 11px; }
+  .kitchen-ticket > header { min-height: 52px; padding: 8px 10px; }
+  .kitchen-ticket > header strong { font-size: 16px; }
+  .kitchen-ticket-customer { padding: 8px 10px 6px; }
+  .kitchen-ticket ul { gap: 5px; padding: 0 10px 8px; }
+  .kitchen-ticket li { min-height: 36px; padding: 5px 7px; }
+  .kitchen-action { min-height: 36px; margin: 0 10px 10px; width: calc(100% - 20px); }
+
+  .orders-page { height: calc(100vh - 105px); }
+  .orders-row { min-height: 67px; padding-block: 8px; }
+  .orders-head { min-height: 38px; }
+  .panel-head { min-height: 56px; padding: 9px 13px; }
+  .panel-title { min-height: 56px; padding: 9px 13px; }
+  .settings-page { gap: 12px; }
+  .settings-tabs { gap: 6px; padding: 6px; border-radius: 13px; }
+  .settings-tabs button { min-height: 61px; gap: 8px; padding: 8px 10px; border-radius: 10px; }
+  .settings-tabs button > svg { width: 34px; height: 34px; flex-basis: 34px; padding: 8px; }
+  .settings-tabs button strong { font-size: 10px; }
+  .settings-tabs button small { font-size: 8px; }
+  .settings-page .panel-title { min-height: 64px; padding: 11px 16px; }
+  .settings-page .panel-title > div > svg { width: 37px; height: 37px; }
+  .settings-page .panel-title strong { font-size: 13px; }
+  .settings-page .panel-title small { font-size: 9px; }
+  .network-settings-content { gap: 12px; padding: 15px; }
+
+  .modal-backdrop { padding: 12px; }
+  .modal { max-height: 94vh; }
+  .modal > header { padding: 12px 15px; }
+  .modal h2, .modal.medium h2 { font-size: 14px; }
+  .modal-body { padding: 14px; }
+  .toast { left: 15px; bottom: 15px; }
+}
+
 @media (max-width: 900px) {
   .app-update-panel { grid-template-columns: 46px 1fr; }
   .app-update-actions { grid-column: 1 / -1; }

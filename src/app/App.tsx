@@ -29,7 +29,11 @@ export default function App() {
   const [view, setView] = useState<AppView>("pos");
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editReturnView, setEditReturnView] = useState<AppView>("orders");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem("beitna-sidebar-collapsed") === "true");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem("beitna-sidebar-collapsed");
+    if (saved !== null) return saved === "true";
+    return window.innerWidth <= 1440 || window.innerHeight <= 800;
+  });
   const [serverDraft, setServerDraft] = useState(serverUrl);
   useAutomaticBackups(state);
   const updater = useAppUpdater(state, notify);

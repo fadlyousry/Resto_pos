@@ -10,7 +10,7 @@ import type {
   AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
-import { money, shortDate, stageLabels } from "../../shared/format";
+import { money, orderDisplayNumber, shortDate, stageLabels } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { evaluateLicense, getMachineId, verifyLicenseKey } from "../../shared/license";
 import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
@@ -779,7 +779,7 @@ export function CustomerFile({ customer, state, onClose, onEdit, onDelete, onOrd
         {orders.map((order) => <div className="customer-history-row" key={order.id} role="button" tabIndex={0} onClick={() => setViewingOrder(order)} onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") setViewingOrder(order);
         }}>
-          <span><strong>طلب #{order.number}</strong><small>{shortDate(order.createdAt)} · {order.items.length} أصناف</small></span>
+          <span><strong>طلب #{orderDisplayNumber(order)}</strong><small>{shortDate(order.createdAt)} · {order.items.length} أصناف</small></span>
           <span><b>{money(order.total)}</b><small className={order.paymentStatus === "paid" ? "paid" : "pending"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</small></span>
           <button type="button" className="customer-history-edit" title="تعديل الطلب داخل نقطة البيع" onClick={(event) => {
             event.stopPropagation();
@@ -804,11 +804,11 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
   const paymentLabel = order.paymentMethod === "cash" ? "نقدي"
     : order.paymentMethod === "instapay" ? "إنستاباي"
       : "فودافون كاش";
-  return <><Modal title={`تفاصيل الطلب رقم ${order.number}`} onClose={onClose} size="medium">
+  return <><Modal title={`تفاصيل الطلب رقم ${orderDisplayNumber(order)}`} onClose={onClose} size="medium">
     <div className="customer-order-preview">
       <div className="customer-order-preview-hero">
         <span><ReceiptText /></span>
-        <div><small>رقم الطلب</small><strong>#{order.number}</strong></div>
+        <div><small>رقم الوردية · العام #{order.number}</small><strong>#{orderDisplayNumber(order)}</strong></div>
         <div><small>تاريخ الطلب</small><b>{shortDate(order.createdAt)}</b></div>
         <div className="customer-order-preview-badges"><em className={order.stage}>{stageLabel}</em><em className={order.paymentStatus}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</em></div>
       </div>
@@ -1209,7 +1209,7 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
       <div className="support-compact-footer">
         <div>
           <ShieldCheck size={14} />
-          <span>مرخص ومدعوم رسمياً من شركة <strong>FYC Solutions</strong></span>
+          <span>جميع حقوق الملكية الفكرية محفوظة لشركة <strong>FYC Solutions</strong></span>
         </div>
         <div>
           <Clock size={13} />

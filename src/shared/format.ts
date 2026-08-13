@@ -1,4 +1,7 @@
-import type { OrderStage, PaymentMethod } from "../domain/types";
+import type { Order, OrderStage, PaymentMethod } from "../domain/types";
+
+export const orderDisplayNumber = (order: Pick<Order, "number" | "shiftNumber">) =>
+  order.shiftNumber ?? order.number;
 
 export const money = (value: number) =>
   value.toLocaleString("en-US", { maximumFractionDigits: 2 });

@@ -3,6 +3,7 @@ import type { AppState } from "../domain/types";
 import { getStateRevision, loadState, saveState } from "./db";
 import { publishStateSync, subscribeStateSync } from "./stateSync";
 import { normalizeAppState } from "../shared/state";
+import { uid } from "../shared/id";
 
 const SERVER_URL_KEY = "beitna-server-url-v1";
 const DEFAULT_SERVER_URL = "http://127.0.0.1:4312";
@@ -73,7 +74,7 @@ export async function getEmbeddedServerInfo(): Promise<EmbeddedServerInfo | null
 export async function loadVersionedState(sourceId: string): Promise<VersionedState> {
   if (!isTauriRuntime()) {
     const [state, revision] = await Promise.all([loadState(), getStateRevision()]);
-    return { state, revision: revision ?? crypto.randomUUID() };
+    return { state, revision: revision ?? uid() };
   }
 
   await hydrateServerUrl();

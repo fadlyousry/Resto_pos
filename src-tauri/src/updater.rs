@@ -136,6 +136,7 @@ fn compiled_repository() -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+        .or_else(|| Some("fadlyousry/Resto_pos".to_string()))
 }
 
 fn validate_repository(repository: &str) -> Result<(), String> {

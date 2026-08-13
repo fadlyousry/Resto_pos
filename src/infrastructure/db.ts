@@ -5,6 +5,7 @@ import type {
   Order, Product, ProductCategory, PurchaseInvoice, RecipeItem, StockMovement, Supplier
 } from "../domain/types";
 import { normalizeAppState, normalizeOrderStage } from "../shared/state";
+import { uid } from "../shared/id";
 
 const STORAGE_KEY = "beitna-pos-state-v1";
 const STATE_REVISION_KEY = "beitna-pos-state-revision-v1";
@@ -91,6 +92,8 @@ async function initDatabase() {
     "ALTER TABLE orders ADD COLUMN settlement_id TEXT",
     "ALTER TABLE orders ADD COLUMN inventory_deducted INTEGER DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN source TEXT DEFAULT 'pos'",
+    "ALTER TABLE orders ADD COLUMN shift_number INTEGER",
+    "ALTER TABLE orders ADD COLUMN shift_id TEXT",
     "ALTER TABLE orders ADD COLUMN delivery_company_id TEXT",
     "ALTER TABLE orders ADD COLUMN delivery_company TEXT"
   ]) {
@@ -150,7 +153,10 @@ export async function loadState(): Promise<AppState> {
     lastOrder: row.last_order ? String(row.last_order) : undefined
   }));
   const orders: Order[] = ordersRaw.map((row) => ({
-    id: String(row.id), number: Number(row.number), customerId: String(row.customer_id),
+    id: String(row.id), number: Number(row.number),
+    shiftNumber: row.shift_number == null ? undefined : Number(row.shift_number),
+    shiftId: row.shift_id ? String(row.shift_id) : undefined,
+    customerId: String(row.customer_id),
     customerName: String(row.customer_name), customerPhone: String(row.customer_phone),
     address: String(row.address), items: JSON.parse(String(row.items_json)),
     subtotal: Number(row.subtotal), deliveryFee: Number(row.delivery_fee),
@@ -268,7 +274,7 @@ export async function getStateRevision(): Promise<string | null> {
 }
 
 export async function saveState(state: AppState): Promise<string> {
-  const revision = crypto.randomUUID();
+  const revision = uid();
   if (!isTauri()) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     localStorage.setItem(STATE_REVISION_KEY, revision);
@@ -302,10 +308,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const order of state.orders) {
     await db.execute(
-      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22`,
-      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos"]
+      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,shift_number,shift_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,shift_number=$23,shift_id=$24`,
+      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.shiftNumber ?? null, order.shiftId ?? null]
     );
   }
   for (const driver of state.drivers) {

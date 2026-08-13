@@ -84,7 +84,11 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  /** Global, never-reset order sequence used internally and in reports. */
   number: number;
+  /** Customer-facing number that starts at 1001 for every cash shift. */
+  shiftNumber?: number;
+  shiftId?: string;
   customerId: string;
   customerName: string;
   customerPhone: string;

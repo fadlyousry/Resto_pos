@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "Resto POS — نظام إدارة المطاعم",
-        "width": 1440,
-        "height": 900,
-        "minWidth": 1120,
-        "minHeight": 720,
+        "width": 1366,
+        "height": 768,
+        "minWidth": 1024,
+        "minHeight": 640,
         "center": true,
         "resizable": true
       }
@@ -30,6 +30,7 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "copyright": "© 2026 FYC Solutions. All rights reserved.",
     "shortDescription": "نظام Resto POS لإدارة المطاعم والمبيعات والمخزون — FYC Solutions",
     "longDescription": "نظام سطح مكتب متكامل لإدارة الطلبات والمبيعات والمخزون والمطابخ Resto POS من تطوير FYC Solutions",
     "icon": [
