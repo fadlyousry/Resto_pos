@@ -447,17 +447,19 @@ function customerReceipt(order: Order, settings: AppState["settings"]): ReceiptD
     customerCard(order.customerName, order.customerPhone || "", order.address || ""),
     sectionLabel("تفاصيل الطلب"),
     tableHeader(
-      column("الإجمالي", 0.25, { align: "center", size: 7, bold: true }),
-      column("العدد", 0.18, { align: "center", size: 7, bold: true }),
-      column("اسم الصنف", 0.57, { align: "center", size: 7, bold: true })
+      column("الإجمالي", 0.23, { align: "center", size: 7, bold: true }),
+      column("السعر", 0.2, { align: "center", size: 7, bold: true }),
+      column("العدد", 0.14, { align: "center", size: 7, bold: true }),
+      column("اسم الصنف", 0.43, { align: "center", size: 7, bold: true })
     )
   ];
 
   order.items.forEach((item) => {
     blocks.push(columns(
-      column(money(item.price * item.quantity), 0.25, { align: "center", size: 8, bold: true, rtl: false }),
-      column(String(item.quantity), 0.18, { align: "center", size: 8, bold: true, rtl: false }),
-      column(item.name, 0.57, { size: 8, bold: true })
+      column(money(item.price * item.quantity), 0.23, { align: "center", size: 8, bold: true, rtl: false }),
+      column(money(item.price), 0.2, { align: "center", size: 8, bold: true, rtl: false }),
+      column(String(item.quantity), 0.14, { align: "center", size: 8, bold: true, rtl: false }),
+      column(item.name, 0.43, { size: 8, bold: true })
     ));
   });
 

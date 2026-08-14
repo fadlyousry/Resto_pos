@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, Clock3, CookingPot, PanelRightClose, PanelRightOpen, RefreshCw, Server } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, Clock3, CookingPot, Moon, PanelRightClose, PanelRightOpen, RefreshCw, Server, Sun } from "lucide-react";
 import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
@@ -12,7 +12,7 @@ import { PurchasePosView, PurchaseHistoryView } from "../features/purchases";
 import { ReportsView } from "../features/reports";
 import { SettingsView } from "../features/settings";
 import { LicenseLockModal } from "../features/license/LicenseLockModal";
-import type { Order } from "../domain/types";
+import type { Order, ProductSection } from "../domain/types";
 import { currentArabicDate, shortDate } from "../shared/format";
 import { evaluateLicense } from "../shared/license";
 import { navigationItems, type AppView } from "./navigation";
@@ -24,10 +24,14 @@ import { UpdatePrompt } from "../features/settings/UpdatePrompt";
 export default function App() {
   const {
     state, update, toast, notify, connectionStatus, connectionError,
-    serverUrl, embeddedServer, changeServerUrl, retryConnection
+    serverUrl, embeddedServer, connectedDevices, changeServerUrl, retryConnection
   } = useRestaurantState();
   const [view, setView] = useState<AppView>("pos");
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [kitchenScope, setKitchenScope] = useState<"all" | "now" | "scheduled">("all");
+  const [kitchenSection, setKitchenSection] = useState<"all" | ProductSection>("all");
+  const [kitchenFocusMode, setKitchenFocusMode] = useState(false);
+  const [kitchenDarkTheme, setKitchenDarkTheme] = useState(() => localStorage.getItem("resto-kitchen-dark-theme") === "true");
   const [editReturnView, setEditReturnView] = useState<AppView>("orders");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const saved = localStorage.getItem("beitna-sidebar-collapsed");
@@ -37,6 +41,41 @@ export default function App() {
   const [serverDraft, setServerDraft] = useState(serverUrl);
   useAutomaticBackups(state);
   const updater = useAppUpdater(state, notify);
+
+  const setWindowFullscreen = async (fullscreen: boolean) => {
+    try {
+      if ("__TAURI_INTERNALS__" in window) {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        await getCurrentWindow().setFullscreen(fullscreen);
+      } else if (fullscreen && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else if (!fullscreen && document.fullscreenElement) {
+        await document.exitFullscreen();
+      }
+    } catch {
+      // The focused kitchen layout still works if the host blocks native fullscreen.
+    }
+  };
+
+  useEffect(() => {
+    const toggleKitchenFocus = (event: KeyboardEvent) => {
+      if (event.key !== "F2" || view !== "kitchen") return;
+      event.preventDefault();
+      setKitchenFocusMode((current) => {
+        const next = !current;
+        void setWindowFullscreen(next);
+        return next;
+      });
+    };
+    window.addEventListener("keydown", toggleKitchenFocus);
+    return () => window.removeEventListener("keydown", toggleKitchenFocus);
+  }, [view]);
+
+  useEffect(() => {
+    if (view === "kitchen" || !kitchenFocusMode) return;
+    setKitchenFocusMode(false);
+    void setWindowFullscreen(false);
+  }, [view, kitchenFocusMode]);
 
   if (!state) {
     if (connectionError) {
@@ -70,13 +109,13 @@ export default function App() {
   }
 
   const pendingCount = state.orders.filter(
-    (order) => order.paymentStatus === "pending"
+    (order) => order.paymentStatus === "pending" && order.stage !== "returned"
   ).length;
   const viewProps = {
     state,
     update,
     notify,
-    network: { status: connectionStatus, serverUrl, embeddedServer, changeServerUrl },
+    network: { status: connectionStatus, serverUrl, embeddedServer, connectedDevices, changeServerUrl },
     updater
   };
   const editOrderInPos = (order: Order) => {
@@ -95,11 +134,18 @@ export default function App() {
       return next;
     });
   };
+  const toggleKitchenTheme = () => {
+    setKitchenDarkTheme((current) => {
+      const next = !current;
+      localStorage.setItem("resto-kitchen-dark-theme", String(next));
+      return next;
+    });
+  };
 
   const licenseEval = evaluateLicense(state.license);
 
   return (
-    <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${view === "pos" || view === "purchase-pos" ? " pos-active" : ""}`}>
+    <div className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}${view === "pos" || view === "purchase-pos" ? " pos-active" : ""}${view === "kitchen" ? " kitchen-active" : ""}${view === "kitchen" && kitchenFocusMode ? " kitchen-focus-mode" : ""}${view === "kitchen" && kitchenDarkTheme ? " kitchen-dark-theme" : ""}`}>
       {licenseEval.status === "expired" && (
         <LicenseLockModal
           license={state.license}
@@ -143,13 +189,28 @@ export default function App() {
       </aside>
 
       <main className="main">
-        <header className="topbar">
-          <div>
+        <header className={`topbar${view === "kitchen" ? " kitchen-topbar" : ""}`}>
+          <div className="topbar-title">
             <h1>{navigationItems.find((item) => item.id === view)?.label}</h1>
             <p>{currentArabicDate()}</p>
           </div>
+          {view === "kitchen" && <div className="topbar-kitchen-filters">
+            <div className="topbar-filter-group kitchen-scope-filters">
+              <button className={kitchenScope === "all" ? "active" : ""} onClick={() => setKitchenScope("all")}>كل الطلبات</button>
+              <button className={kitchenScope === "now" ? "active" : ""} onClick={() => setKitchenScope("now")}>مطلوب الآن</button>
+              <button className={kitchenScope === "scheduled" ? "active" : ""} onClick={() => setKitchenScope("scheduled")}>المجدولة</button>
+            </div>
+            <div className="topbar-filter-group kitchen-section-filters">
+              <button className={kitchenSection === "all" ? "active" : ""} onClick={() => setKitchenSection("all")}>الكل</button>
+              {state.sections.map((section) => <button className={kitchenSection === section.id ? "active" : ""} onClick={() => setKitchenSection(section.id)} key={section.id}>{section.name}</button>)}
+              <button className={kitchenSection === "__meals" ? "active" : ""} onClick={() => setKitchenSection("__meals")}>الوجبات</button>
+            </div>
+          </div>}
           <div className="top-actions">
-            {pendingCount > 0 && (
+            {view === "kitchen" && <button className="kitchen-theme-toggle" onClick={toggleKitchenTheme} aria-label={kitchenDarkTheme ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن"} title={kitchenDarkTheme ? "الوضع الفاتح" : "الوضع الداكن"}>
+              {kitchenDarkTheme ? <Sun /> : <Moon />}
+            </button>}
+            {view !== "kitchen" && pendingCount > 0 && (
               <button className="pending-pill" onClick={() => setView("orders")}>
                 <Clock3 size={17} /> {pendingCount} تحصيل معلق
               </button>
@@ -162,7 +223,7 @@ export default function App() {
           {view === "purchase-pos" && <PurchasePosView {...viewProps} />}
           {view === "purchase-history" && <PurchaseHistoryView {...viewProps} />}
           {view === "orders" && <OrdersView {...viewProps} onEditOrder={editOrderInPos} />}
-          {view === "kitchen" && <KitchenView {...viewProps} />}
+          {view === "kitchen" && <KitchenView {...viewProps} scope={kitchenScope} kitchenSection={kitchenSection} />}
           {view === "delivery" && <DeliveryView {...viewProps} />}
           {view === "customers" && <CustomerRecordsView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "products" && <ProductCatalogView {...viewProps} />}

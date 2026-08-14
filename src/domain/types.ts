@@ -2,7 +2,7 @@
 export type ProductSection = string;
 export type PaymentMethod = "cash" | "instapay" | "vodafone";
 export type PaymentStatus = "paid" | "pending";
-export type OrderStage = "preparing" | "ready" | "delivered";
+export type OrderStage = "preparing" | "ready" | "delivered" | "returned";
 
 export interface ProductOption {
   id: string;
@@ -107,6 +107,9 @@ export interface Order {
   driverId?: string;
   driver?: string;
   settlementId?: string;
+  returnReason?: string;
+  returnedAt?: string;
+  paymentRefunded?: boolean;
   inventoryDeducted?: boolean;
   source?: "pos" | "online";
 }

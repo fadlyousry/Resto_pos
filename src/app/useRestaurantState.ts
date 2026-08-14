@@ -10,6 +10,7 @@ import {
   StateConflictError,
   subscribeToStateUpdates,
   type ConnectionStatus,
+  type ConnectedDevice,
   type EmbeddedServerInfo
 } from "../infrastructure/dataClient";
 import type { StateUpdater } from "../shared/contracts";
@@ -28,6 +29,7 @@ export function useRestaurantState() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("connecting");
   const [connectionError, setConnectionError] = useState("");
   const [embeddedServer, setEmbeddedServer] = useState<EmbeddedServerInfo | null>(null);
+  const [connectedDevices, setConnectedDevices] = useState<ConnectedDevice[]>([]);
   const sourceIdRef = useRef(uid());
   const stateRef = useRef<AppState | null>(null);
   const syncedStateRef = useRef<AppState | null>(null);
@@ -167,6 +169,9 @@ export function useRestaurantState() {
           },
           (status) => {
             if (!disposed) setConnectionStatus(status);
+          },
+          (devices) => {
+            if (!disposed) setConnectedDevices(devices);
           }
         );
         if (disposed) unsubscribe();
@@ -229,6 +234,7 @@ export function useRestaurantState() {
     connectionError,
     serverUrl: getServerUrl(),
     embeddedServer,
+    connectedDevices,
     changeServerUrl,
     retryConnection
   };

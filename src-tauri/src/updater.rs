@@ -28,7 +28,9 @@ pub struct UpdateMetadata {
 #[serde(tag = "event", content = "data")]
 pub enum DownloadEvent {
     #[serde(rename_all = "camelCase")]
-    Started { content_length: Option<u64> },
+    Started {
+        content_length: Option<u64>,
+    },
     #[serde(rename_all = "camelCase")]
     Progress {
         chunk_length: usize,
@@ -58,11 +60,9 @@ pub async fn check_for_update(
             .to_string()
     })?;
     validate_repository(&repository)?;
-    let endpoint = format!(
-        "https://github.com/{repository}/releases/latest/download/latest.json"
-    )
-    .parse()
-    .map_err(|error| format!("عنوان تحديث GitHub غير صالح: {error}"))?;
+    let endpoint = format!("https://github.com/{repository}/releases/latest/download/latest.json")
+        .parse()
+        .map_err(|error| format!("عنوان تحديث GitHub غير صالح: {error}"))?;
 
     let update = app
         .updater_builder()
@@ -142,9 +142,12 @@ fn compiled_repository() -> Option<String> {
 fn validate_repository(repository: &str) -> Result<(), String> {
     let parts = repository.split('/').collect::<Vec<_>>();
     if parts.len() != 2
-        || parts
-            .iter()
-            .any(|part| part.is_empty() || !part.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.'))
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || !part
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.')
+        })
     {
         return Err("اسم مستودع التحديث يجب أن يكون بالصيغة owner/repository".into());
     }

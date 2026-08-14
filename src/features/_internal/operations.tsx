@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
@@ -7,17 +7,17 @@ import {
   Utensils, WalletCards, X
 } from "lucide-react";
 import type {
-  AppState, CashTransaction, Customer, Driver, DriverSettlement, Order, OrderItem,
+  AppState, CashTransaction, Customer, Driver, DriverSettlement, MenuSection, Order, OrderItem,
   OrderStage, PaymentMethod, Product, ProductSection
 } from "../../domain/types";
 import { CustomerFile } from "./management";
 import { InvoiceModal } from "../orders/InvoiceModal";
 import type { ViewProps } from "../../shared/contracts";
 import {
-  dateKey, money, orderDisplayNumber, paymentLabels, shortDate, stageLabels, todayKey
+  dateKey, dateTimeValue, money, orderDisplayNumber, paymentLabels, shortDate, stageLabels, todayKey
 } from "../../shared/format";
 import { uid } from "../../shared/id";
-import { Empty, MiniStat, Modal, StatusBadge, WorkspaceSectionHeader } from "../../shared/ui";
+import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 
 const MEALS_SECTION = "__meals";
@@ -846,7 +846,7 @@ function orderRecipeUsage(items: OrderItem[], state: AppState) {
 type OrderDatePreset = "all" | "today" | "yesterday" | "last7" | "month" | "custom";
 
 export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {
-  const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered">("all");
+  const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered" | "returned">("all");
   const [search, setSearch] = useState("");
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
@@ -876,29 +876,32 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
           : datePreset === "month" ? "هذا الشهر"
             : dateFrom && dateTo ? `${displayFilterDate(dateFrom)} – ${displayFilterDate(dateTo)}`
               : dateFrom ? `من ${displayFilterDate(dateFrom)}` : dateTo ? `حتى ${displayFilterDate(dateTo)}` : "فترة مخصصة";
+  const offsetDateKey = (value: string, days: number) => {
+    const date = new Date(`${value}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
   const selectDatePreset = (preset: Exclude<OrderDatePreset, "all" | "custom">) => {
-    const today = new Date();
+    const today = todayKey();
     let from = "";
     let to = "";
-    if (preset === "today") from = to = dateKey(today);
-    if (preset === "yesterday") {
-      const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
-      from = to = dateKey(yesterday);
-    }
+    if (preset === "today") from = to = today;
+    if (preset === "yesterday") from = to = offsetDateKey(today, -1);
     if (preset === "last7") {
-      const start = new Date(today);
-      start.setDate(today.getDate() - 6);
-      from = dateKey(start);
-      to = dateKey(today);
+      from = offsetDateKey(today, -6);
+      to = today;
     }
     if (preset === "month") {
-      from = dateKey(new Date(today.getFullYear(), today.getMonth(), 1));
-      to = dateKey(today);
+      from = `${today.slice(0, 7)}-01`;
+      to = today;
     }
     setDraftDatePreset(preset);
     setDraftDateFrom(from);
     setDraftDateTo(to);
+    setDatePreset(preset);
+    setDateFrom(from);
+    setDateTo(to);
+    setDateFilterOpen(false);
   };
   const toggleDateFilter = () => {
     if (!dateFilterOpen) {
@@ -925,21 +928,22 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
     setDateFilterOpen(false);
   };
   const orderTimer = (order: Order) => {
-    const seconds = Math.max(0, Math.floor((ordersClock - new Date(order.createdAt).getTime()) / 1000));
+    const seconds = Math.max(0, Math.floor((ordersClock - dateTimeValue(order.createdAt)) / 1000));
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   };
   const orderTimerTone = (order: Order) => {
-    const minutes = Math.max(0, Math.floor((ordersClock - new Date(order.createdAt).getTime()) / 60000));
+    const minutes = Math.max(0, Math.floor((ordersClock - dateTimeValue(order.createdAt)) / 60000));
     return minutes >= state.settings.kitchenLateMinutes ? "late" : minutes >= state.settings.kitchenWarningMinutes ? "warning" : "ok";
   };
   const filtered = state.orders.filter((order) => {
     const matchesFilter =
-      filter === "pending" ? order.paymentStatus === "pending"
-        : filter === "active" ? order.stage !== "delivered"
-          : filter === "scheduled" ? Boolean(order.scheduledFor) && new Date(order.scheduledFor!).getTime() > Date.now()
+      filter === "pending" ? order.paymentStatus === "pending" && order.stage !== "returned"
+        : filter === "active" ? order.stage !== "delivered" && order.stage !== "returned"
+          : filter === "scheduled" ? order.stage !== "returned" && Boolean(order.scheduledFor) && dateTimeValue(order.scheduledFor!) > Date.now()
             : filter === "delivered" ? order.stage === "delivered"
+              : filter === "returned" ? order.stage === "returned"
               : true;
     const matchesSearch = !normalizedSearch
       || order.customerName.toLocaleLowerCase("ar").includes(normalizedSearch)
@@ -966,6 +970,35 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       }, ...current.cashTransactions]
     }));
     notify(`تم تحصيل ${money(order.total)}`);
+  };
+  const reopenReturnedOrder = (order: Order) => {
+    if (order.stage !== "returned") return;
+    update((current) => {
+      const reopenedOrder: Order = {
+        ...order,
+        stage: "ready",
+        paymentStatus: order.paymentRefunded ? "pending" : order.paymentStatus,
+        driverId: undefined,
+        driver: undefined,
+        returnReason: undefined,
+        returnedAt: undefined
+      };
+      const successfulCustomerOrders = current.orders
+        .filter((item) => item.id !== order.id && item.customerId === order.customerId && item.stage !== "returned")
+        .concat(reopenedOrder)
+        .sort((left, right) => dateTimeValue(right.createdAt) - dateTimeValue(left.createdAt));
+      return {
+        ...current,
+        orders: current.orders.map((item) => item.id === order.id ? reopenedOrder : item),
+        customers: current.customers.map((customer) => customer.id === order.customerId ? {
+          ...customer,
+          ordersCount: customer.ordersCount + 1,
+          totalSpent: customer.totalSpent + order.total,
+          lastOrder: successfulCustomerOrders[0]?.createdAt
+        } : customer)
+      };
+    });
+    notify(`تمت إعادة فتح الطلب #${orderDisplayNumber(order)} وأصبح جاهزًا للتوزيع`);
   };
   const confirmDeleteOrder = () => {
     if (!deleteOrder) return;
@@ -1002,7 +1035,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
         (order) => order.id !== deleteOrder.id && order.customerId === deleteOrder.customerId
       );
       const latestCustomerOrder = remainingCustomerOrders.reduce<Order | null>(
-        (latest, order) => !latest || new Date(order.createdAt) > new Date(latest.createdAt) ? order : latest,
+        (latest, order) => !latest || dateTimeValue(order.createdAt) > dateTimeValue(latest.createdAt) ? order : latest,
         null
       );
 
@@ -1056,9 +1089,9 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
     <div className="orders-page">
       <div className="stat-strip">
         <MiniStat icon={<ReceiptText />} label="طلبات اليوم" value={String(state.orders.filter((o) => dateKey(o.createdAt) === todayKey()).length)} tone="green" />
-        <MiniStat icon={<Clock3 />} label="تحصيلات معلقة" value={String(state.orders.filter((o) => o.paymentStatus === "pending").length)} tone="orange" />
+        <MiniStat icon={<Clock3 />} label="تحصيلات معلقة" value={String(state.orders.filter((o) => o.paymentStatus === "pending" && o.stage !== "returned").length)} tone="orange" />
         <MiniStat icon={<Truck />} label="جاهز للتوصيل" value={String(state.orders.filter((o) => o.stage === "ready").length)} tone="blue" />
-        <MiniStat icon={<CircleDollarSign />} label="قيمة المعلق" value={money(state.orders.filter((o) => o.paymentStatus === "pending").reduce((sum, o) => sum + o.total, 0))} tone="red" />
+        <MiniStat icon={<CircleDollarSign />} label="قيمة المعلق" value={money(state.orders.filter((o) => o.paymentStatus === "pending" && o.stage !== "returned").reduce((sum, o) => sum + o.total, 0))} tone="red" />
       </div>
       <div className="panel orders-panel">
         <div className="panel-head orders-toolbar">
@@ -1107,7 +1140,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
               </div>}
             </div>
             <div className="filter-tabs">
-              {[["all", "الكل"], ["active", "طلبات نشطة"], ["scheduled", "مجدولة"], ["pending", "تحصيل معلق"], ["delivered", "تم التسليم"]].map(([id, label]) => (
+              {[["all", "الكل"], ["active", "طلبات نشطة"], ["scheduled", "مجدولة"], ["pending", "تحصيل معلق"], ["delivered", "تم التسليم"], ["returned", "رفض الاستلام"]].map(([id, label]) => (
                 <button className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)} key={id}>{label}</button>
               ))}
             </div>
@@ -1126,9 +1159,9 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
                 <strong>#{orderDisplayNumber(order)}</strong>
                 <small>{order.scheduledFor ? `موعد ${shortDate(order.scheduledFor)}` : shortDate(order.createdAt)}</small>
               </span>
-              <span className={`order-live-timer ${order.stage === "delivered" ? "done" : orderTimerTone(order)}`}>
+              <span className={`order-live-timer ${order.stage === "delivered" || order.stage === "returned" ? "done" : orderTimerTone(order)}`}>
                 <Clock3 />
-                <strong>{order.stage === "delivered" ? "مكتمل" : orderTimer(order)}</strong>
+                <strong>{order.stage === "returned" ? "مرتجع" : order.stage === "delivered" ? "مكتمل" : orderTimer(order)}</strong>
               </span>
               <span className="order-customer-cell"><strong>{order.customerName}</strong><small><Phone size={12} /> {order.customerPhone}</small></span>
               <span className="order-items-cell">
@@ -1136,8 +1169,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
                 <small>{order.items.reduce((sum, item) => sum + item.quantity, 0)} وحدة · {order.items.length} صنف</small>
               </span>
               <span className="order-total-cell"><strong>{money(order.total)}</strong><small>شامل التوصيل</small></span>
-              <span className="order-payment-cell"><StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge><small>{paymentLabels[order.paymentMethod]}</small></span>
-              <span className="order-status-cell"><StatusBadge type={order.stage === "delivered" ? "success" : order.stage === "ready" ? "info" : "warning"}>{stageLabels[order.stage]}</StatusBadge><small>{order.driver || "جهة التوصيل غير محددة"}</small></span>
+              <span className="order-payment-cell"><StatusBadge type={order.stage === "returned" ? "neutral" : order.paymentStatus === "paid" ? "success" : "warning"}>{order.stage === "returned" ? (order.paymentStatus === "paid" ? "تم رد المبلغ" : "بدون تحصيل") : order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge><small>{paymentLabels[order.paymentMethod]}</small></span>
+              <span className="order-status-cell"><StatusBadge type={order.stage === "returned" ? "danger" : order.stage === "delivered" ? "success" : order.stage === "ready" ? "info" : "warning"}>{stageLabels[order.stage]}</StatusBadge><small>{order.stage === "returned" ? order.returnReason : order.driver || "جهة التوصيل غير محددة"}</small></span>
               <span className="order-row-arrow"><ChevronLeft /></span>
             </button>
           ))}
@@ -1218,7 +1251,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
           onEditOrder(detailsOrder);
         }}
         onWhatsApp={() => openWhatsApp(detailsOrder)}
-        onCollect={detailsOrder.paymentStatus === "pending" ? () => collect(detailsOrder) : undefined}
+        onCollect={detailsOrder.paymentStatus === "pending" && detailsOrder.stage !== "returned" ? () => collect(detailsOrder) : undefined}
+        onReopen={detailsOrder.stage === "returned" ? () => reopenReturnedOrder(detailsOrder) : undefined}
       />}
       {deleteOrder && <Modal title="تأكيد حذف الطلب" onClose={() => setDeleteOrderId(null)}>
         <div className="delete-order-confirm">
@@ -1242,7 +1276,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
   );
 }
 
-function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, onEdit, onWhatsApp, onUpdateCustomer, onAssignDriver, onChangeStage, onDelete, onCollect }: {
+function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, onEdit, onWhatsApp, onUpdateCustomer, onAssignDriver, onChangeStage, onDelete, onCollect, onReopen }: {
   order: Order;
   drivers: Driver[];
   busyDriverIds: string[];
@@ -1255,6 +1289,7 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
   onChangeStage: (stage: OrderStage) => void;
   onDelete: () => void;
   onCollect?: () => void;
+  onReopen?: () => void;
 }) {
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [customerForm, setCustomerForm] = useState({
@@ -1296,18 +1331,20 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
             <strong>{shortDate(order.createdAt)}</strong>
           </span>
           <div className="order-details-statuses">
-            <span className={`hero-stage-select ${selectedStage}`} title={order.settlementId ? "لا يمكن تغيير حالة طلب تمت تسوية عهدته" : "تعديل حالة الطلب"}>
-              <select value={selectedStage} disabled={Boolean(order.settlementId)} onChange={(event) => setSelectedStage(event.target.value as OrderStage)}>
+            <span className={`hero-stage-select ${selectedStage}`} title={order.stage === "returned" ? "الطلب مغلق بسبب رفض الاستلام" : order.settlementId ? "لا يمكن تغيير حالة طلب تمت تسوية عهدته" : "تعديل حالة الطلب"}>
+              <select value={selectedStage} disabled={Boolean(order.settlementId) || order.stage === "returned"} onChange={(event) => setSelectedStage(event.target.value as OrderStage)}>
                 <option value="preparing">قيد التجهيز</option>
                 <option value="ready">جاهز</option>
                 <option value="delivered">تم التوصيل</option>
+                <option value="returned">رفض الاستلام</option>
               </select>
               <ChevronDown />
             </span>
             {selectedStage !== order.stage && !order.settlementId && <button className="save-hero-stage" onClick={() => onChangeStage(selectedStage)}><Check /> حفظ</button>}
-            <StatusBadge type={order.paymentStatus === "paid" ? "success" : "warning"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge>
+            <StatusBadge type={order.stage === "returned" ? "neutral" : order.paymentStatus === "paid" ? "success" : "warning"}>{order.stage === "returned" ? (order.paymentStatus === "paid" ? "تم رد المبلغ" : "بدون تحصيل") : order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</StatusBadge>
           </div>
         </div>
+        {order.stage === "returned" && <div className="returned-order-reason"><X /><span><strong>العميل رفض الاستلام</strong><small>{order.returnReason || "لم يتم تسجيل سبب"}{order.returnedAt ? ` · ${shortDate(order.returnedAt)}` : ""}</small></span></div>}
 
         <div className="order-details-layout">
           <div className="order-details-main">
@@ -1381,21 +1418,54 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
         </div>
 
         <div className="order-details-actions">
-          <button className="primary-button" onClick={onEdit}><ClipboardCheck /> تعديل داخل نقطة البيع</button>
+          {onReopen && <button className="reopen-order-action" onClick={onReopen}><PackageCheck /> إعادة فتح الطلب</button>}
+          {order.stage !== "returned" && <button className="primary-button" onClick={onEdit}><ClipboardCheck /> تعديل داخل نقطة البيع</button>}
           {onCollect && <button className="collect-button" onClick={onCollect}><Banknote /> تسجيل التحصيل</button>}
           <button className="soft-button whatsapp-detail" onClick={onWhatsApp}><MessageCircle /> إرسال واتساب</button>
           <button className="soft-button" onClick={onPrint}><Printer /> طباعة الفاتورة</button>
-          <button className="delete-order-action" onClick={onDelete}><Trash2 /> حذف الطلب</button>
+          {order.stage !== "returned" && <button className="delete-order-action" onClick={onDelete}><Trash2 /> حذف الطلب</button>}
         </div>
       </div>
     </Modal>
   );
 }
 
-export function KitchenView({ state, update, notify }: ViewProps) {
-  const [scope, setScope] = useState<"all" | "now" | "scheduled">("all");
-  const [kitchenSection, setKitchenSection] = useState<"all" | ProductSection>("all");
-  const [query, setQuery] = useState("");
+function KitchenOrderPreview({ order, sections, onClose }: { order: Order; sections: MenuSection[]; onClose: () => void }) {
+  const totalUnits = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  return (
+    <Modal title={`أصناف الطلب #${orderDisplayNumber(order)}`} onClose={onClose} size="wide">
+      <div className="kitchen-order-preview">
+        <header className="kitchen-preview-hero">
+          <span><small>رقم الطلب</small><strong>#{orderDisplayNumber(order)}</strong></span>
+          <span><small>الأصناف</small><b>{order.items.length} صنف · {totalUnits} وحدة</b></span>
+        </header>
+        <section className={`kitchen-preview-items${order.items.length > 8 ? " many" : ""}`} tabIndex={0} autoFocus>
+          {order.items.map((item) => <div className={`kitchen-preview-item${item.mealId ? " meal" : ""}`} key={`${item.productId}:${item.optionId ?? "base"}`}>
+            <b>{item.quantity}×</b>
+            <span><strong>{item.name}</strong>{item.note && (item.mealId
+              ? <small className="kitchen-preview-meal-components">{item.note.split(" · ").map((component) => <i key={component}>{component}</i>)}</small>
+              : <small>{item.note}</small>)}</span>
+            <em>{item.mealId ? "وجبة" : sections.find((section) => section.id === item.section)?.name ?? "قسم"}</em>
+          </div>)}
+        </section>
+        {order.note && <div className="kitchen-preview-order-note"><strong>ملاحظة الطلب:</strong> {order.note}</div>}
+      </div>
+    </Modal>
+  );
+}
+
+export function KitchenView({ state, update, notify, scope, kitchenSection }: ViewProps & {
+  scope: "all" | "now" | "scheduled";
+  kitchenSection: "all" | ProductSection;
+}) {
+  const [quickOrderNumber, setQuickOrderNumber] = useState("");
+  const [quickResult, setQuickResult] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [previewOrderId, setPreviewOrderId] = useState<string | null>(null);
+  const [duplicateOrderIds, setDuplicateOrderIds] = useState<string[]>([]);
+  const [duplicateOrderIndex, setDuplicateOrderIndex] = useState(0);
+  const [kitchenPage, setKitchenPage] = useState(0);
+  const [kitchenColumns, setKitchenColumns] = useState(3);
+  const kitchenBoardRef = useRef<HTMLDivElement>(null);
   const [clock, setClock] = useState(Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 1000);
@@ -1403,19 +1473,60 @@ export function KitchenView({ state, update, notify }: ViewProps) {
   }, []);
   const itemSection = (item: OrderItem) => item.section ?? state.products.find((product) => product.id === item.productId)?.section;
   const sectionItems = (order: Order) => order.items.filter((item) => kitchenSection === "all" || itemSection(item) === kitchenSection);
-  const normalizedQuery = query.trim().toLocaleLowerCase("ar");
   const activeOrders = state.orders.filter((order) => {
     if (order.stage !== "preparing") return false;
-    const scheduled = order.scheduledFor && new Date(order.scheduledFor).getTime() > clock + 60 * 60 * 1000;
+    const scheduled = order.scheduledFor && dateTimeValue(order.scheduledFor) > clock + 60 * 60 * 1000;
     if (scope === "now" && scheduled) return false;
     if (scope === "scheduled" && !scheduled) return false;
     if (!sectionItems(order).length) return false;
-    return !normalizedQuery
-      || String(orderDisplayNumber(order)).includes(normalizedQuery.replace("#", ""))
-      || String(order.number).includes(normalizedQuery.replace("#", ""))
-      || order.customerName.toLocaleLowerCase("ar").includes(normalizedQuery)
-      || order.items.some((item) => item.name.toLocaleLowerCase("ar").includes(normalizedQuery));
-  }).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    return true;
+  }).sort((a, b) => dateTimeValue(a.createdAt) - dateTimeValue(b.createdAt));
+  const kitchenPageCapacity = Math.max(2, kitchenColumns * 2);
+  const hasExtraKitchenPages = activeOrders.length > kitchenPageCapacity;
+  const kitchenOrdersPerPage = hasExtraKitchenPages ? kitchenPageCapacity - 1 : kitchenPageCapacity;
+  const kitchenPageCount = Math.max(1, Math.ceil(activeOrders.length / kitchenOrdersPerPage));
+  const visibleKitchenOrders = activeOrders.slice(kitchenPage * kitchenOrdersPerPage, (kitchenPage + 1) * kitchenOrdersPerPage);
+  const visibleKitchenOrderIds = new Set(visibleKitchenOrders.map((order) => order.id));
+  const hiddenKitchenOrders = activeOrders.filter((order) => !visibleKitchenOrderIds.has(order.id));
+  const goToNextKitchenPage = () => setKitchenPage((current) => (current + 1) % kitchenPageCount);
+  const goToPreviousKitchenPage = () => setKitchenPage((current) => (current - 1 + kitchenPageCount) % kitchenPageCount);
+  useEffect(() => {
+    const board = kitchenBoardRef.current;
+    if (!board) return;
+    const updateColumns = () => {
+      const width = board.clientWidth;
+      const gap = window.innerHeight <= 800 ? 9 : 12;
+      setKitchenColumns(Math.max(1, Math.floor((width + gap) / (285 + gap))));
+    };
+    updateColumns();
+    const observer = new ResizeObserver(updateColumns);
+    observer.observe(board);
+    window.addEventListener("resize", updateColumns);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateColumns);
+    };
+  }, []);
+  useEffect(() => {
+    setKitchenPage((current) => Math.min(current, kitchenPageCount - 1));
+  }, [kitchenPageCount]);
+  useEffect(() => setKitchenPage(0), [scope, kitchenSection]);
+  useEffect(() => {
+    const navigateKitchenPages = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditable = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+      if (isEditable || previewOrderId || duplicateOrderIds.length || quickOrderNumber || kitchenPageCount <= 1) return;
+      if (event.key === "Alt" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        goToNextKitchenPage();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goToPreviousKitchenPage();
+      }
+    };
+    window.addEventListener("keydown", navigateKitchenPages);
+    return () => window.removeEventListener("keydown", navigateKitchenPages);
+  }, [duplicateOrderIds.length, kitchenPageCount, previewOrderId, quickOrderNumber]);
   const moveKitchenOrder = (order: Order) => {
     update((current) => ({
       ...current,
@@ -1426,81 +1537,230 @@ export function KitchenView({ state, update, notify }: ViewProps) {
     }));
     notify(`اكتمل تحضير الطلب #${orderDisplayNumber(order)} وأصبح جاهزًا للتوصيل`);
   };
-  const elapsed = (order: Order) => Math.max(0, Math.floor((clock - new Date(order.createdAt).getTime()) / 60000));
+  const normalizedQuickNumber = () => quickOrderNumber
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/\D/g, "");
+  const findPreparingOrdersByQuickNumber = () => {
+    const normalizedNumber = normalizedQuickNumber();
+    if (!normalizedNumber) return [];
+    const requestedNumber = Number(normalizedNumber);
+    const preparingOrders = state.orders.filter((order) => order.stage === "preparing");
+    const displayNumberMatches = preparingOrders.filter((item) => orderDisplayNumber(item) === requestedNumber);
+    const matches = displayNumberMatches.length ? displayNumberMatches : preparingOrders.filter((item) => item.number === requestedNumber);
+    return matches.sort((left, right) => dateTimeValue(right.createdAt) - dateTimeValue(left.createdAt));
+  };
+  const showDuplicatePicker = (orders: Order[]) => {
+    setDuplicateOrderIds(orders.map((order) => order.id));
+    setDuplicateOrderIndex(0);
+    setQuickResult(null);
+  };
+  const openOrderFromKeyboard = () => {
+    const normalizedNumber = normalizedQuickNumber();
+    if (!normalizedNumber) return;
+    const orders = findPreparingOrdersByQuickNumber();
+    if (orders.length > 1) {
+      showDuplicatePicker(orders);
+      return;
+    }
+    const order = orders[0];
+    if (!order) {
+      const completed = state.orders.some((item) => item.stage !== "preparing" && (orderDisplayNumber(item) === Number(normalizedNumber) || item.number === Number(normalizedNumber)));
+      setQuickResult({ tone: "error", text: completed ? `الطلب #${Number(normalizedNumber)} انتهى وخرج من المطبخ` : `لا يوجد طلب قيد التجهيز برقم #${Number(normalizedNumber)}` });
+      return;
+    }
+    setPreviewOrderId(order.id);
+    setQuickOrderNumber("");
+    setQuickResult(null);
+  };
+  const completeOrderFromKeyboard = () => {
+    const normalizedNumber = normalizedQuickNumber();
+    if (!normalizedNumber) {
+      setQuickResult({ tone: "error", text: "اكتب رقم الطلب أولًا" });
+      return;
+    }
+    const requestedNumber = Number(normalizedNumber);
+    const orders = findPreparingOrdersByQuickNumber();
+    if (orders.length > 1) {
+      showDuplicatePicker(orders);
+      return;
+    }
+    const order = orders[0];
+    if (!order) {
+      const completed = state.orders.find((item) => item.stage !== "preparing" && (orderDisplayNumber(item) === requestedNumber || item.number === requestedNumber));
+      setQuickResult({
+        tone: "error",
+        text: completed ? `الطلب #${requestedNumber} تم تجهيزه بالفعل` : `لا يوجد طلب قيد التجهيز برقم #${requestedNumber}`
+      });
+      return;
+    }
+    moveKitchenOrder(order);
+    setQuickOrderNumber("");
+    setQuickResult({ tone: "success", text: `تم تجهيز الطلب #${orderDisplayNumber(order)} بنجاح` });
+  };
+  useEffect(() => {
+    const captureOrderNumber = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditable = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+      if (isEditable) return;
+      const isSpace = event.code === "Space" || event.key === " " || event.key === "Spacebar";
+      if (isSpace && previewOrderId) {
+        event.preventDefault();
+        setPreviewOrderId(null);
+        return;
+      }
+      if (previewOrderId) return;
+      if (duplicateOrderIds.length) {
+        const selectedOrder = state.orders.find((order) => order.id === duplicateOrderIds[duplicateOrderIndex]);
+        if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+          event.preventDefault();
+          setDuplicateOrderIndex((current) => (current + 1) % duplicateOrderIds.length);
+        } else if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+          event.preventDefault();
+          setDuplicateOrderIndex((current) => (current - 1 + duplicateOrderIds.length) % duplicateOrderIds.length);
+        } else if (event.key === "Enter" && selectedOrder) {
+          event.preventDefault();
+          moveKitchenOrder(selectedOrder);
+          setDuplicateOrderIds([]);
+          setQuickOrderNumber("");
+          setQuickResult({ tone: "success", text: `تم تجهيز الطلب #${orderDisplayNumber(selectedOrder)} بنجاح` });
+        } else if (isSpace && selectedOrder) {
+          event.preventDefault();
+          setPreviewOrderId(selectedOrder.id);
+          setDuplicateOrderIds([]);
+          setQuickOrderNumber("");
+          setQuickResult(null);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          setDuplicateOrderIds([]);
+          setDuplicateOrderIndex(0);
+        }
+        return;
+      }
+      if (/^[0-9٠-٩]$/.test(event.key)) {
+        event.preventDefault();
+        setQuickOrderNumber((current) => `${current}${event.key}`.slice(-8));
+        setDuplicateOrderIds([]);
+        setQuickResult(null);
+      } else if (event.key === "Backspace" && quickOrderNumber) {
+        event.preventDefault();
+        setQuickOrderNumber((current) => current.slice(0, -1));
+        setQuickResult(null);
+      } else if (event.key === "Enter" && quickOrderNumber) {
+        event.preventDefault();
+        completeOrderFromKeyboard();
+      } else if (isSpace && quickOrderNumber) {
+        event.preventDefault();
+        openOrderFromKeyboard();
+      } else if (event.key === "Escape") {
+        setQuickOrderNumber("");
+        setQuickResult(null);
+      }
+    };
+    window.addEventListener("keydown", captureOrderNumber);
+    return () => window.removeEventListener("keydown", captureOrderNumber);
+  }, [quickOrderNumber, previewOrderId, duplicateOrderIds, duplicateOrderIndex, state.orders, state.cashShifts]);
+  useEffect(() => {
+    if (!quickResult || quickOrderNumber) return;
+    const timer = window.setTimeout(() => setQuickResult(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [quickOrderNumber, quickResult]);
+  const elapsed = (order: Order) => Math.max(0, Math.floor((clock - dateTimeValue(order.createdAt)) / 60000));
   const timerTone = (minutes: number) => minutes >= state.settings.kitchenLateMinutes ? "late" : minutes >= state.settings.kitchenWarningMinutes ? "warning" : "ok";
   const timerText = (order: Order) => {
-    const seconds = Math.max(0, Math.floor((clock - new Date(order.createdAt).getTime()) / 1000));
+    const seconds = Math.max(0, Math.floor((clock - dateTimeValue(order.createdAt)) / 1000));
     return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   };
-  const totalUnits = activeOrders.reduce((sum, order) => sum + sectionItems(order).reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
-  const warningOrders = activeOrders.filter((order) => timerTone(elapsed(order)) === "warning").length;
-  const lateOrders = activeOrders.filter((order) => timerTone(elapsed(order)) === "late").length;
   return (
     <div className="workflow-page kitchen-workflow">
-      <div className="workflow-stats">
-        <MiniStat icon={<ReceiptText />} label="طلبات في المطبخ" value={String(activeOrders.length)} tone="green" />
-        <MiniStat icon={<Utensils />} label="إجمالي الوحدات" value={String(totalUnits)} tone="blue" />
-        <MiniStat icon={<Clock3 />} label="تحتاج انتباه" value={String(warningOrders)} tone="orange" />
-        <MiniStat icon={<Info />} label="طلبات متأخرة" value={String(lateOrders)} tone="red" />
-      </div>
       <div className="panel kitchen-orders-panel">
-        <WorkspaceSectionHeader
-          title="لوحة تشغيل المطبخ"
-          subtitle="طلبات التحضير مرتبة تلقائيًا من الأقدم للأحدث"
-          actions={<span className="workflow-live"><i /> تحديث مباشر</span>}
-        />
-        <div className="workflow-toolbar">
-          <label className="search-box workflow-search"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث برقم الطلب أو العميل أو الصنف..." /></label>
-          <div className="filter-tabs kitchen-scopes">
-            <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>كل الطلبات</button>
-            <button className={scope === "now" ? "active" : ""} onClick={() => setScope("now")}>مطلوب الآن</button>
-            <button className={scope === "scheduled" ? "active" : ""} onClick={() => setScope("scheduled")}>المجدولة</button>
+        {!duplicateOrderIds.length && (quickOrderNumber || quickResult) && <div className={`kitchen-number-overlay ${quickResult?.tone ?? "typing"}`}>
+          {quickOrderNumber && <><small>رقم الطلب</small><strong dir="ltr">#{quickOrderNumber}</strong><span>المسطرة لعرض الأصناف · Enter للتجهيز · Backspace للتعديل · Esc للإلغاء</span></>}
+          {quickResult && <b>{quickResult.text}</b>}
+        </div>}
+        {duplicateOrderIds.length > 1 && <div className="kitchen-duplicate-picker">
+          <header><strong>يوجد أكثر من طلب برقم #{quickOrderNumber}</strong><span>اختر الطلب المطلوب بالتاريخ والوقت</span></header>
+          <div className="kitchen-duplicate-list">
+            {duplicateOrderIds.map((orderId, index) => {
+              const order = state.orders.find((item) => item.id === orderId);
+              if (!order) return null;
+              const currentShift = state.cashShifts.some((shift) => shift.id === order.shiftId && !shift.closedAt);
+              return <div className={index === duplicateOrderIndex ? "selected" : ""} key={order.id}>
+                <b>#{orderDisplayNumber(order)}</b>
+                <span><strong>{shortDate(order.createdAt)}</strong><small>{currentShift ? "الوردية الحالية" : "وردية سابقة"}</small></span>
+                <em>{order.items.length} صنف · {order.items.reduce((sum, item) => sum + item.quantity, 0)} وحدة</em>
+              </div>;
+            })}
           </div>
-          <div className="filter-tabs kitchen-sections">
-            <button className={kitchenSection === "all" ? "active" : ""} onClick={() => setKitchenSection("all")}>الكل</button>
-            {state.sections.map((item) => <button className={kitchenSection === item.id ? "active" : ""} onClick={() => setKitchenSection(item.id)} key={item.id}>{item.name}</button>)}
-            <button className={kitchenSection === MEALS_SECTION ? "active" : ""} onClick={() => setKitchenSection(MEALS_SECTION)}>الوجبات</button>
-          </div>
-        </div>
-        <div className="kitchen-board">
-          {activeOrders.map((order) => (
+          <footer><span>↑ ↓ للتنقل</span><span>المسطرة لعرض الأصناف</span><span>Enter للتجهيز</span><span>Esc للرجوع</span></footer>
+        </div>}
+        <div className="kitchen-board" ref={kitchenBoardRef} style={{ gridTemplateColumns: `repeat(${kitchenColumns}, minmax(0, 1fr))` }}>
+          {visibleKitchenOrders.map((order) => (
             <article className={`kitchen-ticket timed-order ${timerTone(elapsed(order))}`} key={order.id}>
-            <header>
+            <header className="kitchen-ticket-complete-trigger" onDoubleClick={() => moveKitchenOrder(order)}>
               <span><small>طلب</small><strong>#{orderDisplayNumber(order)}</strong></span>
               <span className={`kitchen-timer ${timerTone(elapsed(order))}`}><Clock3 /> {timerText(order)}</span>
             </header>
-            <div className="kitchen-ticket-customer">
-              <strong>{order.customerName}</strong>
-              <small>{order.scheduledFor ? `موعد ${shortDate(order.scheduledFor)}` : shortDate(order.createdAt)}</small>
-            </div>
-            <div className="kitchen-ticket-summary">
-              <span>{sectionItems(order).length} صنف</span>
-              <span>{sectionItems(order).reduce((sum, item) => sum + item.quantity, 0)} وحدة</span>
-              <StatusBadge type="warning">{stageLabels[order.stage]}</StatusBadge>
-            </div>
-            <ul>{sectionItems(order).map((item) => <li key={`${item.productId}:${item.optionId ?? "base"}`}><b>{item.quantity}×</b><span>{item.name}{item.note && <small>{item.note}</small>}</span><em>{item.mealId ? "وجبة" : state.sections.find((section) => section.id === itemSection(item))?.name ?? "قسم"}</em></li>)}</ul>
+            <ul>{sectionItems(order).map((item) => <li className={item.mealId ? "kitchen-meal-item" : undefined} key={`${item.productId}:${item.optionId ?? "base"}`}><b>{item.quantity}×</b><span>{item.name}{item.note && <small>{item.note}</small>}</span><em>{item.mealId ? "وجبة" : state.sections.find((section) => section.id === itemSection(item))?.name ?? "قسم"}</em></li>)}</ul>
             {order.note && <small className="order-note"><Info /> {order.note}</small>}
-            <button className="kitchen-action" onClick={() => moveKitchenOrder(order)}><Check /> تم التحضير — جاهز للتوصيل</button>
             </article>
           ))}
-          {!activeOrders.length && <div className="workflow-empty"><Empty icon={<CookingPot />} title={query ? "لا توجد طلبات مطابقة" : "المطبخ هادئ حاليًا"} text={query ? "جرّب البحث برقم طلب أو اسم آخر" : "طلبات التحضير الجديدة ستظهر هنا تلقائيًا"} /></div>}
+          {hasExtraKitchenPages && <button
+            className="kitchen-overflow-card"
+            style={{ gridColumn: kitchenColumns, gridRow: 2 }}
+            onClick={goToNextKitchenPage}
+            aria-label={`${hiddenKitchenOrders.length} طلب غير ظاهر. اضغط لعرض الصفحة التالية`}
+          >
+            <div className="kitchen-overflow-orders">
+              {hiddenKitchenOrders.map((order) => <span key={order.id}>
+                <strong>#{orderDisplayNumber(order)}</strong>
+                <small><Clock3 /> {timerText(order)}</small>
+              </span>)}
+            </div>
+          </button>}
+          {!activeOrders.length && <div className="workflow-empty"><Empty icon={<CookingPot />} title="المطبخ هادئ حاليًا" text="طلبات التحضير الجديدة ستظهر هنا تلقائيًا" /></div>}
         </div>
       </div>
+      {previewOrderId && state.orders.find((order) => order.id === previewOrderId) && <KitchenOrderPreview
+        order={state.orders.find((order) => order.id === previewOrderId)!}
+        sections={state.sections}
+        onClose={() => setPreviewOrderId(null)}
+      />}
     </div>
   );
 }
 
 export function DeliveryView({ state, update, notify }: ViewProps) {
+  const [activeTab, setActiveTab] = useState<"delivery" | "drivers">("delivery");
   const [addingDriver, setAddingDriver] = useState(false);
+  const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
+  const [deletingDriver, setDeletingDriver] = useState<Driver | null>(null);
   const [driverForm, setDriverForm] = useState({ name: "", phone: "", vehicle: "موتوسيكل" });
   const [settlementDriver, setSettlementDriver] = useState<Driver | null>(null);
   const [settlementOrderId, setSettlementOrderId] = useState<string | null>(null);
   const [selectedDriver, setSelectedDriver] = useState<Driver | null>(null);
+  const [returningOrder, setReturningOrder] = useState<Order | null>(null);
+  const [returnReason, setReturnReason] = useState("");
   const [driverSearch, setDriverSearch] = useState("");
   const [driverScope, setDriverScope] = useState<"all" | "available" | "busy" | "custody">("all");
+  const [deliveryDriverFilter, setDeliveryDriverFilter] = useState("all");
   const unassigned = state.orders.filter((order) => order.stage === "ready" && !order.driverId);
   const activeDrivers = state.drivers.filter((driver) => driver.active);
-  const driverOrders = (driverId: string) => state.orders.filter((order) => order.driverId === driverId && !order.settlementId);
+  const driverOrders = (driverId: string) => state.orders.filter((order) =>
+    order.driverId === driverId
+    && !order.settlementId
+    && (order.stage === "ready" || (order.stage === "delivered" && order.paymentStatus === "pending"))
+  );
+  const activeDeliveryOrders = state.orders.filter((order) =>
+    Boolean(order.driverId)
+    && !order.settlementId
+    && (order.stage === "ready" || (order.stage === "delivered" && order.paymentStatus === "pending"))
+  );
+  const visibleActiveDeliveryOrders = activeDeliveryOrders.filter((order) =>
+    deliveryDriverFilter === "all" || order.driverId === deliveryDriverFilter
+  );
+  const deliveryFilterDrivers = state.drivers.filter((driver) =>
+    activeDeliveryOrders.some((order) => order.driverId === driver.id)
+  );
   const driverCustody = (driverId: string) => driverOrders(driverId)
     .filter((order) => order.paymentStatus === "pending" && order.stage === "delivered")
     .reduce((sum, order) => sum + order.total, 0);
@@ -1516,10 +1776,10 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
     update((current) => ({
       ...current,
       orders: current.orders.map((item) => item.id === order.id ? {
-        ...item, driverId: driver.id, driver: driver.name, stage: "delivered"
+        ...item, driverId: driver.id, driver: driver.name, stage: "ready"
       } : item)
     }));
-    notify(`تم إرسال الطلب #${orderDisplayNumber(order)} مع ${driver.name} وتسجيله تم التوصيل`);
+    notify(`تم إرسال الطلب #${orderDisplayNumber(order)} مع ${driver.name}`);
   };
 
   const markDelivered = (order: Order) => {
@@ -1530,13 +1790,105 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
     notify(`تم توصيل الطلب #${orderDisplayNumber(order)}`);
   };
 
-  const addDriver = () => {
+  const openReturnDecision = (order: Order) => {
+    setReturningOrder(order);
+    setReturnReason("");
+  };
+
+  const returnForReassignment = () => {
+    if (!returningOrder) return;
+    update((current) => ({
+      ...current,
+      orders: current.orders.map((item) => item.id === returningOrder.id ? {
+        ...item, stage: "ready", driverId: undefined, driver: undefined,
+        returnReason: undefined, returnedAt: undefined
+      } : item)
+    }));
+    notify(`عاد الطلب #${orderDisplayNumber(returningOrder)} وأصبح جاهزًا لإعادة الإسناد`);
+    setReturningOrder(null);
+  };
+
+  const markCustomerRefused = () => {
+    if (!returningOrder || !returnReason.trim()) return;
+    const returnedAt = new Date().toISOString();
+    const rejectedOrder = returningOrder;
+    update((current) => {
+      const previousCustomerOrders = current.orders
+        .filter((order) => order.id !== rejectedOrder.id && order.customerId === rejectedOrder.customerId && order.stage !== "returned")
+        .sort((left, right) => dateTimeValue(right.createdAt) - dateTimeValue(left.createdAt));
+      const refundTransaction: CashTransaction | null = rejectedOrder.paymentStatus === "paid" ? {
+        id: uid(), type: "withdrawal", method: rejectedOrder.paymentMethod, amount: rejectedOrder.total,
+        direction: "out", description: `رد قيمة طلب مرفوض #${orderDisplayNumber(rejectedOrder)}`,
+        orderId: rejectedOrder.id, createdAt: returnedAt
+      } : null;
+      return {
+        ...current,
+        orders: current.orders.map((order) => order.id === rejectedOrder.id ? {
+          ...order, stage: "returned", returnReason: returnReason.trim(), returnedAt,
+          paymentRefunded: rejectedOrder.paymentStatus === "paid" || rejectedOrder.paymentRefunded
+        } : order),
+        customers: current.customers.map((customer) => customer.id === rejectedOrder.customerId ? {
+          ...customer,
+          ordersCount: Math.max(0, customer.ordersCount - 1),
+          totalSpent: Math.max(0, customer.totalSpent - rejectedOrder.total),
+          lastOrder: previousCustomerOrders[0]?.createdAt
+        } : customer),
+        cashTransactions: refundTransaction ? [refundTransaction, ...current.cashTransactions] : current.cashTransactions
+      };
+    });
+    notify(`تم تسجيل رفض استلام الطلب #${orderDisplayNumber(rejectedOrder)} وإخراجه من المبيعات`);
+    setReturningOrder(null);
+    setReturnReason("");
+  };
+
+  const saveDriver = () => {
     if (!driverForm.name || !driverForm.phone) return;
+    if (editingDriver) {
+      const name = driverForm.name.trim();
+      const phone = driverForm.phone.trim();
+      const vehicle = driverForm.vehicle.trim();
+      update((current) => ({
+        ...current,
+        drivers: current.drivers.map((driver) => driver.id === editingDriver.id
+          ? { ...driver, name, phone, vehicle }
+          : driver),
+        orders: current.orders.map((order) => order.driverId === editingDriver.id && !order.settlementId
+          ? { ...order, driver: name }
+          : order)
+      }));
+      setEditingDriver(null);
+      setDriverForm({ name: "", phone: "", vehicle: "موتوسيكل" });
+      notify("تم تحديث بيانات المندوب");
+      return;
+    }
     const driver: Driver = { id: uid(), ...driverForm, active: true, createdAt: new Date().toISOString() };
     update((current) => ({ ...current, drivers: [...current.drivers, driver] }));
     setDriverForm({ name: "", phone: "", vehicle: "موتوسيكل" });
     setAddingDriver(false);
     notify("تم إضافة المندوب");
+  };
+
+  const openNewDriver = () => {
+    setEditingDriver(null);
+    setDriverForm({ name: "", phone: "", vehicle: "موتوسيكل" });
+    setAddingDriver(true);
+  };
+
+  const openDriverEditor = (driver: Driver) => {
+    setAddingDriver(false);
+    setEditingDriver(driver);
+    setDriverForm({ name: driver.name, phone: driver.phone, vehicle: driver.vehicle || "موتوسيكل" });
+  };
+
+  const confirmDeleteDriver = () => {
+    if (!deletingDriver || driverOrders(deletingDriver.id).length) return;
+    update((current) => ({
+      ...current,
+      drivers: current.drivers.map((driver) => driver.id === deletingDriver.id ? { ...driver, active: false } : driver)
+    }));
+    if (selectedDriver?.id === deletingDriver.id) setSelectedDriver(null);
+    setDeletingDriver(null);
+    notify("تم حذف المندوب مع الاحتفاظ بسجله السابق");
   };
 
   const settle = (driver: Driver, orders: Order[], expenses: number, amountReceived: number, note: string, paymentMethod: PaymentMethod) => {
@@ -1572,41 +1924,73 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
 
   return (
     <div className="delivery-page">
-      <section className="delivery-hero">
-        <div><span><Bike /></span><div><strong>لوحة التوصيل والمناديب</strong><small>وزّع الطلبات الجاهزة وتابع العهد والتسويات من مكان واحد</small></div></div>
-        <button className="primary-button compact" onClick={() => { setDriverForm({ name: "", phone: "", vehicle: "موتوسيكل" }); setAddingDriver(true); }}><UserPlus /> إضافة مندوب</button>
-      </section>
+      <nav className="delivery-tabs" aria-label="أقسام التوصيل">
+        <button className={activeTab === "delivery" ? "active" : ""} onClick={() => setActiveTab("delivery")}><Truck /><strong>التوصيل</strong><b>{unassigned.length + activeDeliveryOrders.length}</b></button>
+        <button className={activeTab === "drivers" ? "active" : ""} onClick={() => setActiveTab("drivers")}><Bike /><strong>المناديب</strong><b>{activeDrivers.length}</b></button>
+      </nav>
 
-      <div className="stat-strip">
-        <MiniStat icon={<PackageCheck />} label="جاهز للإسناد" value={String(unassigned.length)} tone="orange" />
-        <MiniStat icon={<Bike />} label="تم التوصيل اليوم" value={String(state.orders.filter((order) => order.stage === "delivered" && dateKey(order.createdAt) === todayKey()).length)} tone="blue" />
-        <MiniStat icon={<Banknote />} label="عهدة مع المندوبين" value={money(state.orders.filter((order) => order.driverId && order.paymentStatus === "pending" && !order.settlementId).reduce((sum, order) => sum + order.total, 0))} tone="red" />
-        <MiniStat icon={<ClipboardCheck />} label="تسويات اليوم" value={String(state.driverSettlements.filter((item) => dateKey(item.createdAt) === todayKey()).length)} tone="green" />
-      </div>
-
-      {unassigned.length > 0 && (
-        <div className="panel unassigned-panel delivery-ready-panel">
-          <div className="panel-title"><div><PackageCheck /><span><strong>طلبات جاهزة للتوزيع</strong><small>حدد المندوب ثم أرسل الطلب فورًا للتوصيل</small></span></div><b className="ready-orders-count">{unassigned.length} طلب</b></div>
-          <div className="assignment-list">
-            {unassigned.map((order) => (
-              <div key={order.id}>
-                <span><strong>طلب #{orderDisplayNumber(order)} · {order.customerName}</strong><small><MapPin /> {order.address}</small></span>
-                <span className="assignment-order-total"><small>الإجمالي</small><b>{money(order.total)}</b></span>
-                <div className="assign-buttons">
-                  <select defaultValue="" onChange={(event) => {
-                    const driver = activeDrivers.find((item) => item.id === event.target.value);
-                    if (driver) assign(order, driver);
-                  }}><option value="" disabled>اختار مندوبًا</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name} · {driverOrders(driver.id).length} طلبات</option>)}</select>
-                </div>
-              </div>
-            ))}
-          </div>
+      {activeTab === "delivery" && <>
+        <div className="stat-strip">
+          <MiniStat icon={<PackageCheck />} label="جاهز للإسناد" value={String(unassigned.length)} tone="orange" />
+          <MiniStat icon={<Truck />} label="مع المناديب الآن" value={String(activeDeliveryOrders.filter((order) => order.stage === "ready").length)} tone="green" />
+          <MiniStat icon={<Bike />} label="تم التوصيل اليوم" value={String(state.orders.filter((order) => order.stage === "delivered" && dateKey(order.createdAt) === todayKey()).length)} tone="blue" />
+          <MiniStat icon={<Banknote />} label="بانتظار التحصيل" value={money(activeDeliveryOrders.filter((order) => order.stage === "delivered" && order.paymentStatus === "pending").reduce((sum, order) => sum + order.total, 0))} tone="red" />
         </div>
-      )}
 
-      <section className="delivery-drivers-section">
+        <div className="panel unassigned-panel delivery-ready-panel">
+          <div className="panel-title"><div><PackageCheck /><span><strong>طلبات جاهزة للتوزيع</strong></span></div><b className="ready-orders-count">{unassigned.length} طلب</b></div>
+          {unassigned.length > 0 ? <div className="assignment-list">
+              <div className="delivery-table-head assignment-table-head"><span>رقم الطلب</span><span>العميل</span><span>العنوان</span><span>الإجمالي</span><span>إسناد المندوب</span></div>
+              {unassigned.map((order) => (
+                <article className="assignment-order-row" key={order.id}>
+                  <strong className="delivery-order-number">#{orderDisplayNumber(order)}</strong>
+                  <strong>{order.customerName}</strong>
+                  <span className="delivery-address-cell"><MapPin /> {order.address || "بدون عنوان"}</span>
+                  <b className="assignment-order-total">{money(order.total)}</b>
+                  <div className="assign-buttons">
+                    <select defaultValue="" onChange={(event) => {
+                      const driver = activeDrivers.find((item) => item.id === event.target.value);
+                      if (driver) assign(order, driver);
+                    }}><option value="" disabled>{activeDrivers.length ? "اختار مندوبًا" : "لا يوجد مناديب نشطون"}</option>{activeDrivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name} · {driverOrders(driver.id).length} طلبات</option>)}</select>
+                  </div>
+                </article>
+              ))}
+            </div> : <div className="delivery-inline-empty"><PackageCheck /><span><strong>لا توجد طلبات جاهزة للإسناد</strong><small>سيظهر الطلب هنا بمجرد انتهاء تجهيزه</small></span></div>}
+        </div>
+
+        <section className="delivery-active-section">
+          <div className="delivery-active-head"><span><Truck /></span><strong>الطلبات مع المناديب</strong><label><Bike /><select value={deliveryDriverFilter} onChange={(event) => setDeliveryDriverFilter(event.target.value)}><option value="all">كل المناديب</option>{deliveryFilterDrivers.map((driver) => <option key={driver.id} value={driver.id}>{driver.name}</option>)}</select></label><b>{visibleActiveDeliveryOrders.length} طلب</b></div>
+          <div className="delivery-active-list">
+            <div className="delivery-table-head active-delivery-table-head"><span>رقم الطلب</span><span>العميل</span><span>العنوان</span><span>المندوب</span><span>الإجمالي</span><span>الحالة</span><span>الإجراءات</span></div>
+            {visibleActiveDeliveryOrders.map((order) => {
+              const driver = activeDrivers.find((item) => item.id === order.driverId) ?? state.drivers.find((item) => item.id === order.driverId);
+              return <article key={order.id}>
+                <strong className="delivery-order-number">#{orderDisplayNumber(order)}</strong>
+                <span className="delivery-customer-cell"><strong>{order.customerName}</strong><em><Phone /> {order.customerPhone}</em></span>
+                <span className="delivery-address-cell"><MapPin /> {order.address || "بدون عنوان"}</span>
+                <span className="delivery-driver-cell"><strong>{driver?.name ?? order.driver ?? "غير محدد"}</strong><em>{driver?.phone ?? "—"}</em></span>
+                <strong className="delivery-order-total">{money(order.total)}</strong>
+                <StatusBadge type={order.stage === "ready" ? "info" : "warning"}>{order.stage === "ready" ? "مع المندوب" : "بانتظار التحصيل"}</StatusBadge>
+                <div className="delivery-order-actions">
+                  {order.stage === "ready" ? <><button onClick={() => markDelivered(order)}><Check /> تم التوصيل</button><button className="return-order" onClick={() => openReturnDecision(order)}>رجع للمطعم</button></> : <button onClick={() => { if (driver) { setSettlementOrderId(order.id); setSettlementDriver(driver); } }}><ClipboardCheck /> تسوية الطلب</button>}
+                </div>
+              </article>;
+            })}
+            {!visibleActiveDeliveryOrders.length && <div className="delivery-inline-empty"><Truck /><span><strong>{activeDeliveryOrders.length ? "لا توجد طلبات لهذا المندوب" : "لا توجد طلبات مع المناديب حاليًا"}</strong></span></div>}
+          </div>
+        </section>
+      </>}
+
+      {activeTab === "drivers" && <>
+        <div className="stat-strip delivery-drivers-stats">
+          <MiniStat icon={<Bike />} label="المناديب النشطون" value={String(activeDrivers.length)} tone="green" />
+          <MiniStat icon={<Check />} label="متاح الآن" value={String(activeDrivers.filter((driver) => !driverOrders(driver.id).length).length)} tone="blue" />
+          <MiniStat icon={<Truck />} label="مشغول الآن" value={String(activeDrivers.filter((driver) => driverOrders(driver.id).some((order) => order.stage === "ready")).length)} tone="orange" />
+          <MiniStat icon={<ClipboardCheck />} label="تسويات اليوم" value={String(state.driverSettlements.filter((item) => dateKey(item.createdAt) === todayKey()).length)} tone="red" />
+        </div>
+        <section className="delivery-drivers-section">
         <div className="delivery-drivers-head">
-          <div><strong>فريق التوصيل</strong><small>{visibleDrivers.length} مندوب ظاهر من {activeDrivers.length} نشط</small></div>
+          <div className="delivery-drivers-title"><span><strong>فريق التوصيل</strong><small>{visibleDrivers.length} مندوب ظاهر من {activeDrivers.length} نشط</small></span><button onClick={openNewDriver}><UserPlus /> إضافة مندوب</button></div>
           <label className="search-box"><Search /><input value={driverSearch} onChange={(event) => setDriverSearch(event.target.value)} placeholder="ابحث باسم المندوب أو الهاتف..." /></label>
           <div className="driver-scope-filter"><button className={driverScope === "all" ? "active" : ""} onClick={() => setDriverScope("all")}>الكل</button><button className={driverScope === "available" ? "active" : ""} onClick={() => setDriverScope("available")}>متاح</button><button className={driverScope === "busy" ? "active" : ""} onClick={() => setDriverScope("busy")}>مشغول</button><button className={driverScope === "custody" ? "active warning" : ""} onClick={() => setDriverScope("custody")}>عهدة معلقة</button></div>
         </div>
@@ -1621,24 +2005,20 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
               <header>
                 <span className="driver-avatar"><Bike /></span>
                 <div><strong>{driver.name}</strong><small>{driver.phone} · {driver.vehicle}</small></div>
-                <StatusBadge type={hasReady ? "info" : custody > 0 ? "warning" : "success"}>
-                  {hasReady ? "مشغول" : custody > 0 ? "بانتظار تسوية" : "متاح"}
-                </StatusBadge>
+                <div className="driver-card-status">
+                  <StatusBadge type={hasReady ? "info" : custody > 0 ? "warning" : "success"}>
+                    {hasReady ? "مشغول" : custody > 0 ? "بانتظار تسوية" : "متاح"}
+                  </StatusBadge>
+                  <span className="driver-management-actions">
+                    <button title="تعديل بيانات المندوب" aria-label={`تعديل ${driver.name}`} onClick={() => openDriverEditor(driver)}><Edit3 /></button>
+                    <button className="delete" title="حذف المندوب" aria-label={`حذف ${driver.name}`} onClick={() => setDeletingDriver(driver)}><Trash2 /></button>
+                  </span>
+                </div>
               </header>
               <div className="driver-summary">
                 <span><small>طلبات حالية</small><b>{assigned.length}</b></span>
                 <span><small>عهدة معلقة</small><b>{money(custody)}</b></span>
                 <span><small>تم اليوم</small><b>{state.orders.filter((order) => order.driverId === driver.id && order.stage === "delivered" && dateKey(order.createdAt) === todayKey()).length}</b></span>
-              </div>
-              <div className="driver-orders">
-                {assigned.slice(0, 3).map((order) => (
-                  <div key={order.id}>
-                    <span><strong>#{orderDisplayNumber(order)} · {order.customerName}</strong><small>{money(order.total)} · {stageLabels[order.stage]}</small></span>
-                    {order.stage === "ready" && <button onClick={() => markDelivered(order)}><Check /> تم التوصيل</button>}
-                    {order.stage === "delivered" && order.paymentStatus === "pending" && <StatusBadge type="warning">بانتظار التسوية</StatusBadge>}
-                  </div>
-                ))}
-                {!assigned.length && <p>لا توجد طلبات مع المندوب</p>}
               </div>
               <footer className="driver-card-actions"><button className="driver-profile-button" onClick={() => setSelectedDriver(driver)}><Info /> ملف المندوب</button><button className="settlement-button" disabled={!unsettled.length} onClick={() => { setSettlementOrderId(null); setSettlementDriver(driver); }}><ClipboardCheck /> تسوية {unsettled.length > 0 && `(${unsettled.length})`}</button></footer>
             </article>
@@ -1646,22 +2026,51 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
         })}
         {!visibleDrivers.length && <Empty icon={<Bike />} title="لا توجد نتائج للمناديب" text="غيّر البحث أو الفلتر الحالي" />}
         </div>
-      </section>
+        </section>
+      </>}
 
-      {addingDriver && (
-        <Modal title="إضافة مندوب جديد" onClose={() => setAddingDriver(false)} size="medium">
+      {(addingDriver || editingDriver) && (
+        <Modal title={editingDriver ? "تعديل بيانات المندوب" : "إضافة مندوب جديد"} onClose={() => { setAddingDriver(false); setEditingDriver(null); }} size="medium">
           <div className="driver-editor-modal">
-            <div className="driver-editor-hero"><span><Bike /></span><div><strong>بيانات مندوب التوصيل</strong><small>أضف بيانات التواصل ووسيلة التوصيل ليظهر في قائمة التوزيع فورًا</small></div></div>
+            <div className="driver-editor-hero"><span><Bike /></span><div><strong>بيانات مندوب التوصيل</strong><small>{editingDriver ? "حدّث الاسم ورقم الهاتف ووسيلة التوصيل" : "أضف بيانات التواصل ووسيلة التوصيل ليظهر في قائمة التوزيع فورًا"}</small></div></div>
             <div className="driver-editor-fields">
               <label><span>اسم المندوب <em>*</em></span><div><UserPlus /><input autoFocus value={driverForm.name} onChange={(event) => setDriverForm({ ...driverForm, name: event.target.value })} placeholder="اكتب الاسم بالكامل" /></div></label>
               <label><span>رقم الموبايل <em>*</em></span><div><Phone /><input inputMode="tel" value={driverForm.phone} onChange={(event) => setDriverForm({ ...driverForm, phone: event.target.value })} placeholder="01xxxxxxxxx" /></div></label>
               <label className="full-field"><span>وسيلة التوصيل</span><div><Bike /><input list="driver-vehicle-options" value={driverForm.vehicle} onChange={(event) => setDriverForm({ ...driverForm, vehicle: event.target.value })} placeholder="مثال: موتوسيكل" /><datalist id="driver-vehicle-options"><option value="موتوسيكل" /><option value="عجلة" /><option value="سيارة" /></datalist></div></label>
             </div>
-            <div className="driver-editor-note"><Check /><span>سيتم تفعيل المندوب تلقائيًا وسيظهر ضمن مناديب التوزيع.</span></div>
-            <div className="driver-editor-actions"><button className="soft-button" onClick={() => setAddingDriver(false)}>إلغاء</button><button className="primary-button" disabled={!driverForm.name.trim() || !driverForm.phone.trim()} onClick={addDriver}><Save /> حفظ وإضافة المندوب</button></div>
+            <div className="driver-editor-note"><Check /><span>{editingDriver ? "سيتم تحديث البيانات في الطلبات الحالية مع الحفاظ على السجل السابق." : "سيتم تفعيل المندوب تلقائيًا وسيظهر ضمن مناديب التوزيع."}</span></div>
+            <div className="driver-editor-actions"><button className="soft-button" onClick={() => { setAddingDriver(false); setEditingDriver(null); }}>إلغاء</button><button className="primary-button" disabled={!driverForm.name.trim() || !driverForm.phone.trim()} onClick={saveDriver}><Save /> {editingDriver ? "حفظ التعديلات" : "حفظ وإضافة المندوب"}</button></div>
           </div>
         </Modal>
       )}
+      {deletingDriver && (() => {
+        const openOrders = driverOrders(deletingDriver.id);
+        return <Modal title="تأكيد حذف المندوب" onClose={() => setDeletingDriver(null)} size="medium">
+          <div className="driver-delete-confirm">
+            <span><Trash2 /></span>
+            <strong>حذف {deletingDriver.name}؟</strong>
+            <p>{openOrders.length
+              ? `لا يمكن حذف المندوب لأن لديه ${openOrders.length} طلب أو عهدة معلقة. أعد الطلبات للمطعم أو أنهِ التوصيل والتسوية أولًا.`
+              : "سيختفي المندوب من شاشة التوزيع، مع الاحتفاظ باسمه داخل الطلبات والتسويات السابقة."}</p>
+            <div><button onClick={() => setDeletingDriver(null)}>إلغاء</button><button className="delete" disabled={openOrders.length > 0} onClick={confirmDeleteDriver}><Trash2 /> تأكيد الحذف</button></div>
+          </div>
+        </Modal>;
+      })()}
+      {returningOrder && <Modal title={`معالجة رجوع الطلب #${orderDisplayNumber(returningOrder)}`} onClose={() => { setReturningOrder(null); setReturnReason(""); }} size="medium">
+        <div className="delivery-return-modal">
+          <header><span><Truck /></span><div><strong>الطلب رجع إلى المطعم</strong><small>{returningOrder.customerName} · {returningOrder.driver}</small></div></header>
+          <section className="delivery-return-choice reassign">
+            <div><span><PackageCheck /></span><div><strong>إعادة إسناد الطلب</strong><p>يرجع الطلب لقائمة الطلبات الجاهزة لاختيار مندوب آخر.</p></div></div>
+            <button onClick={returnForReassignment}>إعادة للطلبات الجاهزة</button>
+          </section>
+          <section className="delivery-return-choice refused">
+            <div><span><X /></span><div><strong>العميل رفض الاستلام</strong><p>يُغلق الطلب كمرتجع ولا يُحسب ضمن المبيعات، مع بقاء خصم الخامات.</p></div></div>
+            <label>سبب الرفض <em>*</em><textarea autoFocus value={returnReason} onChange={(event) => setReturnReason(event.target.value)} placeholder="مثال: العميل رفض الاستلام أو تعذر التواصل معه" /></label>
+            {returningOrder.paymentStatus === "paid" && <small className="delivery-refund-note"><Banknote /> سيتم تسجيل رد مبلغ {money(returningOrder.total)} بنفس طريقة الدفع.</small>}
+            <button disabled={!returnReason.trim()} onClick={markCustomerRefused}>تأكيد رفض الاستلام</button>
+          </section>
+        </div>
+      </Modal>}
       {selectedDriver && <DriverProfileModal
         driver={selectedDriver}
         orders={driverOrders(selectedDriver.id)}
@@ -1672,6 +2081,7 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
           setSettlementDriver(selectedDriver);
         }}
         onDelivered={markDelivered}
+        onReturned={(order) => { setSelectedDriver(null); openReturnDecision(order); }}
       />}
       {settlementDriver && (
         <DriverSettlementModal
@@ -1685,12 +2095,13 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
   );
 }
 
-function DriverProfileModal({ driver, orders, onClose, onSettle, onDelivered }: {
+function DriverProfileModal({ driver, orders, onClose, onSettle, onDelivered, onReturned }: {
   driver: Driver;
   orders: Order[];
   onClose: () => void;
   onSettle: (order?: Order) => void;
   onDelivered: (order: Order) => void;
+  onReturned: (order: Order) => void;
 }) {
   const unsettled = orders.filter((order) => order.paymentStatus === "pending" && order.stage === "delivered");
   const custody = unsettled.reduce((sum, order) => sum + order.total, 0);
@@ -1705,7 +2116,7 @@ function DriverProfileModal({ driver, orders, onClose, onSettle, onDelivered }: 
           <span className="driver-order-address">{order.address}</span>
           <b>{money(order.total)}</b>
           <span>{order.stage === "ready" ? <StatusBadge type="info">مع المندوب</StatusBadge> : <StatusBadge type={order.paymentStatus === "pending" ? "warning" : "success"}>{order.paymentStatus === "pending" ? "تحصيل معلق" : "تم التحصيل"}</StatusBadge>}</span>
-          <span className="driver-order-actions">{order.stage === "ready" && <button onClick={() => onDelivered(order)}><Check /> تم التوصيل</button>}{order.stage === "delivered" && order.paymentStatus === "pending" && <button className="settle-single-order" onClick={() => onSettle(order)}><ClipboardCheck /> تسوية الطلب</button>}</span>
+          <span className="driver-order-actions">{order.stage === "ready" && <><button onClick={() => onDelivered(order)}><Check /> تم التوصيل</button><button className="return-order" onClick={() => onReturned(order)}>رفض الاستلام</button></>}{order.stage === "delivered" && order.paymentStatus === "pending" && <button className="settle-single-order" onClick={() => onSettle(order)}><ClipboardCheck /> تسوية الطلب</button>}</span>
         </div>)}{!orders.length && <div className="simple-empty"><Bike /><span>المندوب متاح لاستلام طلبات جديدة</span></div>}</div>
         <footer className="driver-profile-footer"><span><small>إجمالي العهدة المطلوب تسويتها</small><strong>{money(custody)}</strong></span><button className="settlement-button" disabled={!unsettled.length} onClick={() => onSettle()}><ClipboardCheck /> تسوية العهدة {unsettled.length ? `(${unsettled.length})` : ""}</button></footer>
       </section>
@@ -1777,35 +2188,107 @@ export function CashView({ state, update, notify }: ViewProps) {
   const [dailyMethodFilter, setDailyMethodFilter] = useState<"all" | PaymentMethod>("all");
   const [expense, setExpense] = useState(false);
   const [expenseData, setExpenseData] = useState<{ amount: number; description: string; method: PaymentMethod }>({ amount: 0, description: "", method: "cash" });
-  const [selectedDate, setSelectedDate] = useState(todayKey());
+  const [cashDateFilterOpen, setCashDateFilterOpen] = useState(false);
+  const [cashDatePreset, setCashDatePreset] = useState<OrderDatePreset>("today");
+  const [cashDateFrom, setCashDateFrom] = useState<string>(todayKey);
+  const [cashDateTo, setCashDateTo] = useState<string>(todayKey);
+  const [draftCashDatePreset, setDraftCashDatePreset] = useState<OrderDatePreset>("today");
+  const [draftCashDateFrom, setDraftCashDateFrom] = useState<string>(todayKey);
+  const [draftCashDateTo, setDraftCashDateTo] = useState<string>(todayKey);
   const [openingShift, setOpeningShift] = useState(false);
   const [closingShift, setClosingShift] = useState(false);
   const [openingAmount, setOpeningAmount] = useState(0);
   const [closingData, setClosingData] = useState({ actualCash: 0, note: "" });
+  const cashDisplayDate = (value: string) => new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+    day: "numeric", month: "short", year: "numeric"
+  }).format(new Date(`${value}T12:00:00`));
+  const offsetCashDate = (value: string, days: number) => {
+    const date = new Date(`${value}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  };
+  const cashDateLabel = cashDatePreset === "all" ? "كل التواريخ"
+    : cashDatePreset === "today" ? "اليوم"
+      : cashDatePreset === "yesterday" ? "أمس"
+        : cashDatePreset === "last7" ? "آخر 7 أيام"
+          : cashDatePreset === "month" ? "هذا الشهر"
+            : cashDateFrom && cashDateTo ? `${cashDisplayDate(cashDateFrom)} – ${cashDisplayDate(cashDateTo)}`
+              : cashDateFrom ? `من ${cashDisplayDate(cashDateFrom)}` : cashDateTo ? `حتى ${cashDisplayDate(cashDateTo)}` : "فترة مخصصة";
+  const selectCashDatePreset = (preset: Exclude<OrderDatePreset, "all" | "custom">) => {
+    const today = todayKey();
+    let from = today;
+    let to = today;
+    if (preset === "yesterday") from = to = offsetCashDate(today, -1);
+    if (preset === "last7") from = offsetCashDate(today, -6);
+    if (preset === "month") from = `${today.slice(0, 7)}-01`;
+    setCashDatePreset(preset);
+    setCashDateFrom(from);
+    setCashDateTo(to);
+    setDraftCashDatePreset(preset);
+    setDraftCashDateFrom(from);
+    setDraftCashDateTo(to);
+    setCashDateFilterOpen(false);
+  };
+  const toggleCashDateFilter = () => {
+    if (!cashDateFilterOpen) {
+      setDraftCashDatePreset(cashDatePreset);
+      setDraftCashDateFrom(cashDateFrom);
+      setDraftCashDateTo(cashDateTo);
+    }
+    setCashDateFilterOpen((open) => !open);
+  };
+  const applyCashDateFilter = () => {
+    if (draftCashDateFrom && draftCashDateTo && draftCashDateFrom > draftCashDateTo) {
+      notify("تاريخ البداية يجب أن يكون قبل تاريخ النهاية");
+      return;
+    }
+    const hasDate = Boolean(draftCashDateFrom || draftCashDateTo);
+    setCashDatePreset(hasDate ? "custom" : "all");
+    setCashDateFrom(draftCashDateFrom);
+    setCashDateTo(draftCashDateTo);
+    setCashDateFilterOpen(false);
+  };
+  const clearCashDateFilter = () => {
+    setCashDatePreset("all");
+    setCashDateFrom("");
+    setCashDateTo("");
+    setDraftCashDatePreset("all");
+    setDraftCashDateFrom("");
+    setDraftCashDateTo("");
+    setCashDateFilterOpen(false);
+  };
+  const isInCashDateRange = (value: string) => {
+    const key = dateKey(value);
+    return (!cashDateFrom || key >= cashDateFrom) && (!cashDateTo || key <= cashDateTo);
+  };
   const activeShift = state.cashShifts.find((shift) => !shift.closedAt);
   const viewedShift = activeShift ?? state.cashShifts[0];
-  const selectedTransactions = state.cashTransactions.filter((transaction) => dateKey(transaction.createdAt) === selectedDate);
-  const selectedShifts = state.cashShifts.filter((shift) => dateKey(shift.openedAt) === selectedDate);
+  const selectedTransactions = state.cashTransactions.filter((transaction) => isInCashDateRange(transaction.createdAt));
+  const returnedOrderIds = new Set(state.orders.filter((order) => order.stage === "returned").map((order) => order.id));
+  const refundedOriginalPaymentOrderIds = new Set(state.orders.filter((order) => order.paymentRefunded).map((order) => order.id));
+  const selectedShifts = state.cashShifts.filter((shift) => isInCashDateRange(shift.openedAt));
   const selectedOpeningBalance = selectedShifts.reduce((sum, shift) => sum + shift.openingBalance, 0);
   const dailyRevenueTransactions = selectedTransactions.filter((transaction) =>
     transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection")
+    && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId))
+    && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId))
   );
   const dailySalesRevenue = dailyRevenueTransactions.filter((transaction) => transaction.type === "sale").reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyCollections = dailyRevenueTransactions.filter((transaction) => transaction.type === "collection").reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyOperationalExpenses = selectedTransactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyRevenue = dailySalesRevenue + dailyCollections;
   const dailyNet = dailyRevenue - dailyOperationalExpenses;
-  const dailyOrders = state.orders.filter((order) => dateKey(order.createdAt) === selectedDate);
+  const dailyOrders = state.orders.filter((order) => isInCashDateRange(order.createdAt) && order.stage !== "returned");
   const dailyOrderCount = dailyOrders.length;
   const dailyAvgOrder = dailyOrderCount ? dailyOrders.reduce((sum, order) => sum + order.total, 0) / dailyOrderCount : 0;
   const dailyPending = dailyOrders.filter((order) => order.paymentStatus === "pending").reduce((sum, order) => sum + order.total, 0);
   const dailyDiscounts = dailyOrders.reduce((sum, order) => sum + order.discount, 0);
   const dailyDeliveryFees = dailyOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
-  const yesterdayDateKey = (() => { const d = new Date(selectedDate + "T00:00:00"); d.setDate(d.getDate() - 1); return dateKey(d); })();
-  const yesterdayRevenue = state.cashTransactions
-    .filter((transaction) => dateKey(transaction.createdAt) === yesterdayDateKey && transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection"))
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const revenueChangePercent = yesterdayRevenue ? ((dailyRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : null;
+  const comparisonDateKey = cashDateFrom && cashDateFrom === cashDateTo ? offsetCashDate(cashDateFrom, -1) : null;
+  const yesterdayRevenue = comparisonDateKey ? state.cashTransactions
+    .filter((transaction) => dateKey(transaction.createdAt) === comparisonDateKey && transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection") && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId)) && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId)))
+    .reduce((sum, transaction) => sum + transaction.amount, 0) : 0;
+  const revenueChangePercent = comparisonDateKey && yesterdayRevenue ? ((dailyRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : null;
   const dailyMethodRevenue = (method: PaymentMethod) => {
     const incoming = dailyRevenueTransactions.filter((transaction) => transaction.method === method);
     const methodExpenses = selectedTransactions.filter((transaction) => transaction.method === method && transaction.type === "expense");
@@ -1823,7 +2306,7 @@ export function CashView({ state, update, notify }: ViewProps) {
         return time >= openedAt && time <= closedAt;
       });
       const incomeFor = (method: PaymentMethod) => transactions
-        .filter((transaction) => transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection") && transaction.method === method)
+        .filter((transaction) => transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection") && transaction.method === method && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId)) && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId)))
         .reduce((sum, transaction) => sum + transaction.amount, 0);
       const revenue = incomeFor("cash") + incomeFor("instapay") + incomeFor("vodafone");
       const expenses = transactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + transaction.amount, 0);
@@ -1877,7 +2360,9 @@ export function CashView({ state, update, notify }: ViewProps) {
       shiftOpeningBalance: shift.openingBalance,
       shiftOpenedAt: openedAt
     }));
-    setSelectedDate(todayKey());
+    setCashDatePreset("today");
+    setCashDateFrom(todayKey());
+    setCashDateTo(todayKey());
     setOpeningShift(false);
     setOpeningAmount(0);
     notify("تم فتح الوردية بنجاح");
@@ -1915,9 +2400,9 @@ export function CashView({ state, update, notify }: ViewProps) {
       </div>
       <div className="cash-hero">
         <div>
-          <span>{cashTab === "treasury" ? `إجمالي أرصدة يوم ${selectedDate}` : cashTab === "daily" ? `إجمالي إيراد يوم ${selectedDate}` : activeShift ? "إجمالي أموال الوردية الحالية" : "إجمالي أموال آخر وردية"}</span>
+          <span>{cashTab === "treasury" ? `إجمالي أرصدة ${cashDateLabel}` : cashTab === "daily" ? `إجمالي إيراد ${cashDateLabel}` : activeShift ? "إجمالي أموال الوردية الحالية" : "إجمالي أموال آخر وردية"}</span>
           <strong>{money(cashTab === "daily" ? dailyRevenue : totalBalance)}</strong>
-          <small>{cashTab === "treasury" ? "إجمالي النقدي وإنستاباي وفودافون كاش في التاريخ المحدد" : cashTab === "daily" ? `${dailyOrderCount} طلب · ${selectedShifts.length} وردية · ${dailyRevenueTransactions.length} حركة` : viewedShift ? `${activeShift ? "مفتوحة منذ" : "أُغلقت"} ${shortDate(activeShift?.openedAt ?? viewedShift.closedAt ?? viewedShift.openedAt)}` : "لم يتم تسجيل أي وردية بعد"}</small>
+          <small>{cashTab === "treasury" ? "إجمالي النقدي وإنستاباي وفودافون كاش في الفترة المحددة" : cashTab === "daily" ? `${dailyOrderCount} طلب · ${selectedShifts.length} وردية · ${dailyRevenueTransactions.length} حركة` : viewedShift ? `${activeShift ? "مفتوحة منذ" : "أُغلقت"} ${shortDate(activeShift?.openedAt ?? viewedShift.closedAt ?? viewedShift.openedAt)}` : "لم يتم تسجيل أي وردية بعد"}</small>
           {cashTab === "daily" && revenueChangePercent !== null && <span className={`revenue-change ${revenueChangePercent >= 0 ? "up" : "down"}`}>{revenueChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {revenueChangePercent >= 0 ? "+" : ""}{revenueChangePercent.toFixed(1)}% مقارنة بأمس ({money(yesterdayRevenue)})</span>}
         </div>
         <div className="cash-hero-actions">
@@ -1928,11 +2413,45 @@ export function CashView({ state, update, notify }: ViewProps) {
         </div>
       </div>
       {cashTab !== "shift" && <div className="cash-date-filter">
-        <div><CalendarRange /><span><strong>{cashTab === "daily" ? "تاريخ تقرير الإيراد" : "فلترة الخزنة بالتاريخ"}</strong><small>{cashTab === "daily" ? "اختر اليوم المطلوب لتجميع كل وردياته" : "اعرض أرصدة وحركات يوم محدد"}</small></span></div>
-        <div className="cash-date-actions">
-          <button className={selectedDate === todayKey() ? "active" : ""} onClick={() => setSelectedDate(todayKey())}>اليوم</button>
-          <button onClick={() => { const date = new Date(); date.setDate(date.getDate() - 1); setSelectedDate(dateKey(date)); }}>أمس</button>
-          <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+        <div><CalendarRange /><span><strong>{cashTab === "daily" ? "فترة تقرير الإيراد" : "فلترة الخزنة بالتاريخ"}</strong><small>{cashTab === "daily" ? "اختر فترة لتجميع كل وردياتها وحركاتها" : "اعرض الأرصدة والحركات خلال فترة محددة"}</small></span></div>
+        <div className="orders-date-filter-wrap cash-date-range-wrap">
+          <button className={`orders-date-filter-button ${cashDatePreset !== "all" ? "active" : ""}`} onClick={toggleCashDateFilter}>
+            <CalendarRange />
+            <span><strong>{cashDateLabel}</strong></span>
+            <ChevronDown className={cashDateFilterOpen ? "open" : ""} />
+          </button>
+          {cashDateFilterOpen && <div className="orders-date-popover cash-date-popover">
+            <div className="orders-date-quick">
+              {([
+                ["today", "اليوم"],
+                ["yesterday", "أمس"],
+                ["last7", "آخر 7 أيام"],
+                ["month", "هذا الشهر"]
+              ] as const).map(([id, label]) => (
+                <button className={draftCashDatePreset === id ? "active" : ""} key={id} onClick={() => selectCashDatePreset(id)}>{label}</button>
+              ))}
+            </div>
+            <div className="orders-date-divider" />
+            <strong className="orders-custom-date-title">تاريخ مخصص:</strong>
+            <div className="orders-custom-date">
+              <label><span>من:</span><input type="date" value={draftCashDateFrom} onChange={(event) => {
+                const value = event.target.value;
+                setDraftCashDatePreset("custom");
+                setDraftCashDateFrom(value);
+                if (value && draftCashDateTo && value > draftCashDateTo) setDraftCashDateTo(value);
+              }} /></label>
+              <label><span>إلى:</span><input type="date" value={draftCashDateTo} onChange={(event) => {
+                const value = event.target.value;
+                setDraftCashDatePreset("custom");
+                setDraftCashDateTo(value);
+                if (value && draftCashDateFrom && value < draftCashDateFrom) setDraftCashDateFrom(value);
+              }} /></label>
+            </div>
+            <div className="orders-date-actions">
+              <button className="apply" onClick={applyCashDateFilter}>تطبيق</button>
+              <button className="clear" onClick={clearCashDateFilter}>مسح</button>
+            </div>
+          </div>}
         </div>
       </div>}
       {cashTab === "shift" && viewedShift && <div className="cash-shifts-summary">
@@ -1946,13 +2465,13 @@ export function CashView({ state, update, notify }: ViewProps) {
       </div>}
       {cashTab === "shift" && !viewedShift && <div className="shift-empty-state"><Clock3 /><div><strong>لم تبدأ أي وردية بعد</strong><small>افتح أول وردية وحدد الرصيد النقدي الموجود في الدرج.</small></div><button className="primary-button compact" onClick={() => setOpeningShift(true)}><Plus /> فتح وردية</button></div>}
       {cashTab !== "daily" && <><div className="cash-method-cards">
-        <CashMethodCard icon={<Banknote />} label="الخزنة النقدية" hint={cashTab === "shift" ? `رصيد بداية الوردية ${money(displayedOpeningBalance)}` : `رصيد افتتاح اليوم ${money(selectedOpeningBalance)}`} summary={cashSummary} tone="cash" />
-        <CashMethodCard icon={<CreditCard />} label="إنستاباي" hint={cashTab === "shift" ? "تحويلات إنستاباي داخل الوردية" : "التحويلات البنكية في التاريخ المحدد"} summary={instapaySummary} tone="instapay" />
-        <CashMethodCard icon={<Phone />} label="فودافون كاش" hint={cashTab === "shift" ? "تحويلات المحفظة داخل الوردية" : "تحويلات المحفظة في التاريخ المحدد"} summary={vodafoneSummary} tone="vodafone" />
+        <CashMethodCard icon={<Banknote />} label="الخزنة النقدية" hint={cashTab === "shift" ? `رصيد بداية الوردية ${money(displayedOpeningBalance)}` : `رصيد افتتاح الفترة ${money(selectedOpeningBalance)}`} summary={cashSummary} tone="cash" />
+        <CashMethodCard icon={<CreditCard />} label="إنستاباي" hint={cashTab === "shift" ? "تحويلات إنستاباي داخل الوردية" : "التحويلات البنكية في الفترة المحددة"} summary={instapaySummary} tone="instapay" />
+        <CashMethodCard icon={<Phone />} label="فودافون كاش" hint={cashTab === "shift" ? "تحويلات المحفظة داخل الوردية" : "تحويلات المحفظة في الفترة المحددة"} summary={vodafoneSummary} tone="vodafone" />
       </div>
       <div className="panel cash-transactions-panel">
         <div className="panel-title cash-transactions-title">
-          <div><WalletCards /><span><strong>{cashTab === "shift" ? "حركات الوردية" : `سجل حركات ${selectedDate}`}</strong><small>{cashTab === "shift" ? "كل الأموال الداخلة والخارجة منذ فتح الوردية" : "تفاصيل الأموال الداخلة والخارجة موزعة حسب وسيلة الدفع"}</small></span></div>
+          <div><WalletCards /><span><strong>{cashTab === "shift" ? "حركات الوردية" : `سجل حركات ${cashDateLabel}`}</strong><small>{cashTab === "shift" ? "كل الأموال الداخلة والخارجة منذ فتح الوردية" : "تفاصيل الأموال الداخلة والخارجة موزعة حسب وسيلة الدفع"}</small></span></div>
           <div className="transaction-method-filter">
             <button className={transactionMethodFilter === "all" ? "active" : ""} onClick={() => setTransactionMethodFilter("all")}>الكل</button>
             <button className={transactionMethodFilter === "cash" ? "active" : ""} onClick={() => setTransactionMethodFilter("cash")}><Banknote /> نقدي</button>
@@ -1975,12 +2494,12 @@ export function CashView({ state, update, notify }: ViewProps) {
               <b className="transaction-balance">{money(balanceAfter.get(transaction.id) ?? 0)}</b>
             </div>
           ))}
-          {!filteredTransactions.length && <Empty icon={<WalletCards />} title={transactionMethodFilter !== "all" ? "لا توجد حركات بطريقة الدفع المحددة" : cashTab === "shift" ? "لا توجد حركات في الوردية" : "لا توجد حركات في هذا التاريخ"} text={transactionMethodFilter !== "all" ? "اختر طريقة دفع أخرى أو اعرض كل الحركات" : cashTab === "shift" ? "الحركات الجديدة ستظهر هنا بعد بدء البيع أو تسجيل مصروف" : "غيّر التاريخ أو ابدأ تسجيل حركات جديدة"} />}
+          {!filteredTransactions.length && <Empty icon={<WalletCards />} title={transactionMethodFilter !== "all" ? "لا توجد حركات بطريقة الدفع المحددة" : cashTab === "shift" ? "لا توجد حركات في الوردية" : "لا توجد حركات في هذه الفترة"} text={transactionMethodFilter !== "all" ? "اختر طريقة دفع أخرى أو اعرض كل الحركات" : cashTab === "shift" ? "الحركات الجديدة ستظهر هنا بعد بدء البيع أو تسجيل مصروف" : "غيّر الفترة أو ابدأ تسجيل حركات جديدة"} />}
           </div>
         </div>
       </div></>}
       {cashTab === "daily" && <DailyRevenueView
-        date={selectedDate}
+        date={cashDateLabel}
         revenue={dailyRevenue}
         sales={dailySalesRevenue}
         collections={dailyCollections}
@@ -2093,19 +2612,19 @@ function DailyRevenueView({ date, revenue, sales, collections, expenses, net, me
       <MiniStat icon={<Banknote />} label="تحصيل عهد المناديب" value={money(collections)} tone="orange" />
     </div>
     <div className="daily-revenue-kpis">
-      <MiniStat icon={<BarChart3 />} label="صافي اليوم" value={money(net)} tone={net >= 0 ? "green" : "red"} />
+      <MiniStat icon={<BarChart3 />} label="صافي الفترة" value={money(net)} tone={net >= 0 ? "green" : "red"} />
       <MiniStat icon={<ClipboardCheck />} label={`الطلبات (${orderCount})`} value={money(avgOrder) + " متوسط"} tone="blue" />
       <MiniStat icon={<Minus />} label="المصروفات التشغيلية" value={money(expenses)} tone="red" />
     </div>
     <div className="daily-info-strip">
       <span><Clock3 size={15} /><small>معلق مع المناديب</small><b>{money(pending)}</b></span>
-      {discounts > 0 && <span><Calculator size={15} /><small>خصومات اليوم</small><b>{money(discounts)}</b></span>}
+      {discounts > 0 && <span><Calculator size={15} /><small>خصومات الفترة</small><b>{money(discounts)}</b></span>}
       {deliveryFees > 0 && <span><Truck size={15} /><small>رسوم التوصيل</small><b>{money(deliveryFees)}</b></span>}
       {revenueChange !== null && <span className={`revenue-change-inline ${revenueChange >= 0 ? "up" : "down"}`}>{revenueChange >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}<small>مقارنة بأمس</small><b>{revenueChange >= 0 ? "+" : ""}{revenueChange.toFixed(1)}%</b></span>}
     </div>
 
     <section className="daily-method-section">
-      <div className="daily-section-heading"><div><CreditCard /><span><strong>الإيراد حسب طريقة الدفع</strong><small>نسبة ومبلغ كل وسيلة من إجمالي إيراد اليوم</small></span></div><span><small>صافي حركة اليوم</small><b>{money(net)}</b></span></div>
+      <div className="daily-section-heading"><div><CreditCard /><span><strong>الإيراد حسب طريقة الدفع</strong><small>نسبة ومبلغ كل وسيلة من إجمالي إيراد الفترة</small></span></div><span><small>صافي حركة الفترة</small><b>{money(net)}</b></span></div>
       <div className="daily-method-grid">
         <DailyMethodCard icon={<Banknote />} label="نقدي" tone="cash" data={methods.cash} />
         <DailyMethodCard icon={<CreditCard />} label="إنستاباي" tone="instapay" data={methods.instapay} />
@@ -2114,7 +2633,7 @@ function DailyRevenueView({ date, revenue, sales, collections, expenses, net, me
     </section>
 
     <section className="daily-shifts-panel">
-      <div className="daily-section-heading"><div><Clock3 /><span><strong>إيراد كل وردية</strong><small>{shifts.length ? `${shifts.length} وردية مسجلة يوم ${date}` : "لا توجد ورديات في التاريخ المحدد"}</small></span></div><b>{money(totalShiftRevenue)}</b></div>
+      <div className="daily-section-heading"><div><Clock3 /><span><strong>إيراد كل وردية</strong><small>{shifts.length ? `${shifts.length} وردية مسجلة خلال ${date}` : "لا توجد ورديات في الفترة المحددة"}</small></span></div><b>{money(totalShiftRevenue)}</b></div>
       {!!shifts.length && <div className="daily-shifts-table-scroll">
         <div className="daily-shifts-table-head"><span>الوردية</span><span>الفترة</span><span>نقدي</span><span>إنستاباي</span><span>فودافون كاش</span><span>المصروفات</span><span>الإيراد</span><span>الصافي</span></div>
         {shifts.map(({ shift, cash, instapay, vodafone, revenue: sr, expenses: se, net: sn }, index) => {
@@ -2138,12 +2657,12 @@ function DailyRevenueView({ date, revenue, sales, collections, expenses, net, me
         </div>
         {outsideShiftRevenue > 0 && <div className="daily-shift-outside-note"><Info size={14} /><span>يوجد {money(outsideShiftRevenue)} إيراد مسجل خارج نطاق الورديات</span></div>}
       </div>}
-      {!shifts.length && <Empty icon={<Clock3 />} title="لا توجد ورديات في هذا اليوم" text="اختر تاريخًا آخر أو افتح وردية جديدة" />}
+      {!shifts.length && <Empty icon={<Clock3 />} title="لا توجد ورديات في هذه الفترة" text="اختر فترة أخرى أو افتح وردية جديدة" />}
     </section>
 
     <section className="panel daily-revenue-transactions">
       <div className="panel-title cash-transactions-title">
-        <div><ReceiptText /><span><strong>تفاصيل إيرادات اليوم</strong><small>المبيعات والتحصيلات الواردة فقط</small></span></div>
+        <div><ReceiptText /><span><strong>تفاصيل إيرادات الفترة</strong><small>المبيعات والتحصيلات الواردة فقط</small></span></div>
         <div className="transaction-method-filter">
           <button className={methodFilter === "all" ? "active" : ""} onClick={() => onMethodFilter("all")}>الكل</button>
           <button className={methodFilter === "cash" ? "active" : ""} onClick={() => onMethodFilter("cash")}><Banknote /> نقدي</button>
@@ -2167,7 +2686,7 @@ function DailyRevenueView({ date, revenue, sales, collections, expenses, net, me
             <b className="daily-revenue-amount">+ {money(transaction.amount)}</b>
           </div>;
         })}
-        {!filtered.length && <Empty icon={<ReceiptText />} title="لا توجد إيرادات مطابقة" text="غيّر التاريخ أو طريقة الدفع لعرض نتائج أخرى" />}
+        {!filtered.length && <Empty icon={<ReceiptText />} title="لا توجد إيرادات مطابقة" text="غيّر الفترة أو طريقة الدفع لعرض نتائج أخرى" />}
       </div>
     </section>
   </div>;
@@ -2188,11 +2707,11 @@ function DailyMethodCard({ icon, label, tone, data }: {
 }
 
 export function ReportsView({ state }: { state: AppState }) {
-  const orders = state.orders.filter((order) => dateKey(order.createdAt) === todayKey());
+  const orders = state.orders.filter((order) => dateKey(order.createdAt) === todayKey() && order.stage !== "returned");
   const sales = orders.reduce((sum, order) => sum + order.total, 0);
   const collected = orders.filter((order) => order.paymentStatus === "paid").reduce((sum, order) => sum + order.total, 0);
   const pending = sales - collected;
-  const expenses = state.cashTransactions.filter((t) => dateKey(t.createdAt) === todayKey() && t.direction === "out").reduce((sum, t) => sum + t.amount, 0);
+  const expenses = state.cashTransactions.filter((t) => dateKey(t.createdAt) === todayKey() && t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
   const productCost = (productId: string) => state.products.find((product) => product.id === productId)?.cost ?? 0;
   const costOfSales = orders.flatMap((order) => order.items).reduce((sum, item) => sum + (item.cost ?? productCost(item.productId)) * item.quantity, 0);
   const itemRevenue = orders.flatMap((order) => order.items).reduce((sum, item) => sum + item.price * item.quantity, 0);

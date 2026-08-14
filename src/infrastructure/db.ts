@@ -94,6 +94,9 @@ async function initDatabase() {
     "ALTER TABLE orders ADD COLUMN source TEXT DEFAULT 'pos'",
     "ALTER TABLE orders ADD COLUMN shift_number INTEGER",
     "ALTER TABLE orders ADD COLUMN shift_id TEXT",
+    "ALTER TABLE orders ADD COLUMN return_reason TEXT",
+    "ALTER TABLE orders ADD COLUMN returned_at TEXT",
+    "ALTER TABLE orders ADD COLUMN payment_refunded INTEGER DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN delivery_company_id TEXT",
     "ALTER TABLE orders ADD COLUMN delivery_company TEXT"
   ]) {
@@ -169,6 +172,9 @@ export async function loadState(): Promise<AppState> {
     driverId: row.driver_id ? String(row.driver_id) : undefined,
     driver: row.driver ? String(row.driver) : undefined,
     settlementId: row.settlement_id ? String(row.settlement_id) : undefined,
+    returnReason: row.return_reason ? String(row.return_reason) : undefined,
+    returnedAt: row.returned_at ? String(row.returned_at) : undefined,
+    paymentRefunded: Boolean(row.payment_refunded),
     inventoryDeducted: Boolean(row.inventory_deducted),
     source: (row.source ? String(row.source) : "pos") as Order["source"]
   }));
@@ -308,10 +314,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const order of state.orders) {
     await db.execute(
-      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,shift_number,shift_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,shift_number=$23,shift_id=$24`,
-      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.shiftNumber ?? null, order.shiftId ?? null]
+      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,shift_number,shift_id,return_reason,returned_at,payment_refunded)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,shift_number=$23,shift_id=$24,return_reason=$25,returned_at=$26,payment_refunded=$27`,
+      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.shiftNumber ?? null, order.shiftId ?? null, order.returnReason ?? null, order.returnedAt ?? null, order.paymentRefunded ? 1 : 0]
     );
   }
   for (const driver of state.drivers) {

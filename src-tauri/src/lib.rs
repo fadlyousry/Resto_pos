@@ -67,6 +67,27 @@ fn get_machine_id(app: tauri::AppHandle) -> Result<String, String> {
     Ok(format_machine_id(&raw_id))
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceIdentity {
+    machine_id: String,
+    device_name: String,
+    app_version: String,
+}
+
+#[tauri::command]
+fn get_device_identity(app: tauri::AppHandle) -> Result<DeviceIdentity, String> {
+    let machine_id = get_machine_id(app.clone())?;
+    let device_name = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "Resto POS".to_string());
+    Ok(DeviceIdentity {
+        machine_id,
+        device_name,
+        app_version: app.package_info().version.to_string(),
+    })
+}
+
 #[cfg(windows)]
 fn hardware_fingerprint_source() -> Option<String> {
     const CREATE_NO_WINDOW: u32 = 0x08000000;
@@ -91,9 +112,15 @@ $bios = Get-CimInstance -ClassName Win32_BIOS -Property SerialNumber
     let content = String::from_utf8_lossy(&output.stdout);
     let mut parts = Vec::new();
     for line in content.lines() {
-        let Some((label, value)) = line.split_once('=') else { continue };
+        let Some((label, value)) = line.split_once('=') else {
+            continue;
+        };
         if valid_hardware_value(value) {
-            parts.push(format!("{}:{}", label.trim(), value.trim().to_ascii_uppercase()));
+            parts.push(format!(
+                "{}:{}",
+                label.trim(),
+                value.trim().to_ascii_uppercase()
+            ));
         }
     }
     if parts.is_empty() {
@@ -113,7 +140,10 @@ fn valid_hardware_value(value: &str) -> bool {
     if normalized.len() < 4 {
         return false;
     }
-    let compact: String = normalized.chars().filter(|character| character.is_ascii_alphanumeric()).collect();
+    let compact: String = normalized
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect();
     if compact.is_empty()
         || compact.chars().all(|character| character == '0')
         || compact.chars().all(|character| character == 'F')
@@ -150,7 +180,8 @@ fn windows_machine_guid() -> Option<String> {
         return None;
     }
     let content = String::from_utf8_lossy(&output.stdout);
-    content.lines()
+    content
+        .lines()
         .find(|line| line.contains("MachineGuid"))
         .and_then(|line| line.split_whitespace().last())
         .map(str::trim)
@@ -164,7 +195,10 @@ fn windows_machine_guid() -> Option<String> {
 }
 
 fn fallback_machine_seed(app: &tauri::AppHandle) -> Result<String, String> {
-    let directory = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     let path = directory.join("machine-seed.txt");
     if let Ok(existing) = fs::read_to_string(&path) {
         if !existing.trim().is_empty() {
@@ -228,6 +262,7 @@ pub fn run() {
             save_network_config,
             exit_application,
             get_machine_id,
+            get_device_identity,
             list_printers,
             print_receipt,
             print_escpos_receipts,
@@ -243,8 +278,8 @@ pub fn run() {
         .setup(|app| {
             let app_data_directory = app.path().app_data_dir()?;
             if read_network_config(&app_data_directory).host_server {
-                let database_path = storage::initialize(app.handle())
-                    .map_err(std::io::Error::other)?;
+                let database_path =
+                    storage::initialize(app.handle()).map_err(std::io::Error::other)?;
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = server::run(database_path).await {
                         eprintln!("Beitna central server stopped: {error}");

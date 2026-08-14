@@ -5,6 +5,7 @@ import {
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
   ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
   PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2
+  , Monitor
 } from "lucide-react";
 import type {
   AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo
@@ -17,7 +18,9 @@ import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 import { BackupPanel } from "../settings/BackupPanel";
 import { UpdatePanel } from "../settings/UpdatePanel";
 import { InvoiceModal } from "../orders/InvoiceModal";
-import { testServerConnection } from "../../infrastructure/dataClient";
+import {
+  getDeviceRole, setDeviceRole as saveDeviceRole, testServerConnection, type DeviceRole
+} from "../../infrastructure/dataClient";
 import {
   errorMessage, isDesktopRuntime, listDesktopPrinters, printTestReceipt, type PrinterInfo
 } from "../../infrastructure/desktopPrinting";
@@ -627,12 +630,13 @@ export function CustomerRecordsView({ state, update, notify, onEditOrder }: View
         </div>
         {customers.map((customer) => {
           const orders = customerOrders(customer.id);
-          const totalSpent = orders.reduce((sum, order) => sum + order.total, 0);
+          const completedOrders = orders.filter((order) => order.stage !== "returned");
+          const totalSpent = completedOrders.reduce((sum, order) => sum + order.total, 0);
           return <button className="customers-row" key={customer.id} onClick={() => setSelected({ ...customer })}>
             <span className="customer-table-name"><i className="customer-avatar">{customer.name.charAt(0)}</i><strong>{customer.name}</strong></span>
             <span className="customer-table-phone"><Phone /> <b>{customer.phone}</b></span>
             <span className="customer-table-address"><MapPin /> <b>{customer.address}</b></span>
-            <span className="customer-table-orders"><b>{orders.length}</b></span>
+            <span className="customer-table-orders"><b>{completedOrders.length}</b></span>
             <span className="customer-table-spend"><b>{money(totalSpent)}</b></span>
             <span className="customer-table-arrow"><ChevronLeft /></span>
           </button>;
@@ -731,8 +735,9 @@ export function CustomerFile({ customer, state, onClose, onEdit, onDelete, onOrd
   const orders = state.orders
     .filter((order) => order.customerId === customer.id)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const totalSpent = orders.reduce((sum, order) => sum + order.total, 0);
-  const averageOrder = orders.length ? totalSpent / orders.length : 0;
+  const completedOrders = orders.filter((order) => order.stage !== "returned");
+  const totalSpent = completedOrders.reduce((sum, order) => sum + order.total, 0);
+  const averageOrder = completedOrders.length ? totalSpent / completedOrders.length : 0;
   const isDirty = form.name !== customer.name
     || form.phone !== customer.phone
     || form.address !== customer.address
@@ -748,10 +753,10 @@ export function CustomerFile({ customer, state, onClose, onEdit, onDelete, onOrd
           <div><strong>{customer.name}</strong><small><Phone /> {customer.phone}</small><small><MapPin /> {customer.address}</small></div>
         </div>
         <div className="customer-file-stats">
-          <span><small>إجمالي الطلبات</small><b>{orders.length}</b></span>
+          <span><small>إجمالي الطلبات</small><b>{completedOrders.length}</b></span>
           <span><small>إجمالي المشتريات</small><b>{money(totalSpent)}</b></span>
           <span><small>متوسط الطلب</small><b>{money(averageOrder)}</b></span>
-          <span><small>آخر طلب</small><b>{orders[0] ? shortDate(orders[0].createdAt) : "لا يوجد"}</b></span>
+          <span><small>آخر طلب</small><b>{completedOrders[0] ? shortDate(completedOrders[0].createdAt) : "لا يوجد"}</b></span>
         </div>
       </section>
       <div className="customer-profile-editor">
@@ -780,11 +785,11 @@ export function CustomerFile({ customer, state, onClose, onEdit, onDelete, onOrd
           if (event.key === "Enter" || event.key === " ") setViewingOrder(order);
         }}>
           <span><strong>طلب #{orderDisplayNumber(order)}</strong><small>{shortDate(order.createdAt)} · {order.items.length} أصناف</small></span>
-          <span><b>{money(order.total)}</b><small className={order.paymentStatus === "paid" ? "paid" : "pending"}>{order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</small></span>
-          <button type="button" className="customer-history-edit" title="تعديل الطلب داخل نقطة البيع" onClick={(event) => {
+          <span><b>{money(order.total)}</b><small className={order.stage === "returned" ? "pending" : order.paymentStatus === "paid" ? "paid" : "pending"}>{order.stage === "returned" ? "رفض الاستلام" : order.paymentStatus === "paid" ? "تم التحصيل" : "تحصيل معلق"}</small></span>
+          {order.stage !== "returned" && <button type="button" className="customer-history-edit" title="تعديل الطلب داخل نقطة البيع" onClick={(event) => {
             event.stopPropagation();
             onOrder(order);
-          }}><Edit3 /><span>تعديل</span></button>
+          }}><Edit3 /><span>تعديل</span></button>}
         </div>)}
         {!orders.length && <div className="simple-empty"><ReceiptText /><span>لا توجد طلبات للعميل حتى الآن</span></div>}
         </div>
@@ -836,7 +841,7 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
       <div className="customer-order-preview-actions">
         <button type="button" className="soft-button" onClick={onClose}>إغلاق</button>
         <button type="button" className="soft-button customer-preview-print" onClick={() => setInvoiceOpen(true)}><Printer /> طباعة الفاتورة</button>
-        <button type="button" className="primary-button" onClick={onEdit}><Edit3 /> تعديل</button>
+        {order.stage !== "returned" && <button type="button" className="primary-button" onClick={onEdit}><Edit3 /> تعديل</button>}
       </div>
     </div>
   </Modal>
@@ -849,6 +854,7 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
   const [settings, setSettings] = useState({ ...state.settings });
   const [serverAddress, setServerAddress] = useState(network?.serverUrl ?? "http://127.0.0.1:4312");
   const [networkTest, setNetworkTest] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [deviceRole, setDeviceRole] = useState<DeviceRole>(() => getDeviceRole());
   const [licenseInputKey, setLicenseInputKey] = useState("");
   const [licenseCopied, setLicenseCopied] = useState(false);
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
@@ -1036,17 +1042,52 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
           <span><i /> {network?.status === "online" ? "متصل بالسيرفر" : network?.status === "connecting" ? "جاري الاتصال" : network?.status === "local" ? "وضع المتصفح المحلي" : "غير متصل"}</span>
           <strong dir="ltr">{network?.serverUrl}</strong>
         </div>
-        <div className="network-guide">
-          <div><strong>جهاز السيرفر الرئيسي</strong><small>اترك العنوان المحلي كما هو. عنوان توصيل الأجهزة الأخرى:</small><code>{network?.embeddedServer?.networkUrl ?? "سيظهر عنوان الشبكة عند تشغيل نسخة Windows"}</code></div>
-          <div><strong>جهاز الكاشير أو المطبخ الإضافي</strong><small>اكتب عنوان جهاز السيرفر الظاهر هنا، ثم احفظ وأعد الاتصال.</small></div>
+        <div className="connected-devices-panel">
+          <div className="connected-devices-head">
+            <div><strong><Monitor /> الأجهزة المتصلة الآن</strong><small>تتحدث القائمة لحظيًا، ويختفي الجهاز تلقائيًا عند قطع الاتصال</small></div>
+            <span><i /> {network?.connectedDevices.length ?? 0} جهاز متصل</span>
+          </div>
+          <div className="connected-devices-grid">
+            {network?.connectedDevices.length ? network.connectedDevices.map((device) => {
+              const isCurrent = device.machineId === machineId;
+              const roleLabel = device.role === "server" ? "السيرفر الرئيسي"
+                : device.role === "cashier" ? "كاشير"
+                  : device.role === "kitchen" ? "مطبخ"
+                    : device.role === "assembly" ? "تجميع" : "جهاز إضافي";
+              const RoleIcon = device.role === "server" ? Server
+                : device.role === "kitchen" ? CookingPot
+                  : device.role === "assembly" ? Boxes
+                    : device.role === "cashier" ? ShoppingBasket : Monitor;
+              return <div className={`connected-device-card${isCurrent ? " current" : ""}`} key={device.connectionId}>
+                <span className="connected-device-icon"><RoleIcon /></span>
+                <div>
+                  <strong>{device.deviceName}</strong>
+                  <small>{roleLabel}{isCurrent ? " · هذا الجهاز" : ""}</small>
+                </div>
+                <div className="connected-device-meta">
+                  <code dir="ltr">{device.ipAddress}</code>
+                  <span>v{device.appVersion || "—"}</span>
+                </div>
+                <i className="device-online-dot" title="متصل الآن" />
+              </div>;
+            }) : <div className="connected-devices-empty"><Monitor /><strong>لا توجد أجهزة ظاهرة بعد</strong><small>ستظهر الأجهزة بمجرد اتصالها بالسيرفر.</small></div>}
+          </div>
+          {network?.embeddedServer?.networkUrl && <div className="server-network-address"><span>عنوان توصيل الأجهزة الجديدة</span><code>{network.embeddedServer.networkUrl}</code></div>}
         </div>
         <div className="network-address-form">
+          <label>وظيفة هذا الجهاز<select value={deviceRole} onChange={(event) => setDeviceRole(event.target.value as DeviceRole)}>
+            <option value="server">السيرفر الرئيسي</option>
+            <option value="cashier">كاشير</option>
+            <option value="kitchen">مطبخ</option>
+            <option value="assembly">تجميع</option>
+            <option value="terminal">جهاز إضافي</option>
+          </select></label>
           <label>عنوان السيرفر<input dir="ltr" value={serverAddress} onChange={(event) => { setServerAddress(event.target.value); setNetworkTest("idle"); }} placeholder="http://192.168.1.10:4312" /></label>
           <button className="soft-button" disabled={networkTest === "testing"} onClick={() => {
             setNetworkTest("testing");
             testServerConnection(serverAddress).then(() => setNetworkTest("success")).catch(() => setNetworkTest("error"));
           }}><RefreshCw /> {networkTest === "testing" ? "جاري الاختبار..." : "اختبار الاتصال"}</button>
-          <button className="primary-button" onClick={() => network?.changeServerUrl(serverAddress)}><Save /> حفظ وإعادة الاتصال</button>
+          <button className="primary-button" onClick={() => { saveDeviceRole(deviceRole); network?.changeServerUrl(serverAddress); }}><Save /> حفظ وإعادة الاتصال</button>
         </div>
         {networkTest === "success" && <p className="network-test-result success">تم الاتصال بالسيرفر بنجاح، ويمكن حفظ العنوان.</p>}
         {networkTest === "error" && <p className="network-test-result error">تعذر الوصول إلى هذا العنوان. راجع الشبكة وWindows Firewall.</p>}

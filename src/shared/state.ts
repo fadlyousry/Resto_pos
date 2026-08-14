@@ -17,6 +17,7 @@ function cleanCustomer(customer: Customer): Customer {
 }
 
 export function normalizeOrderStage(stage: unknown): OrderStage {
+  if (stage === "returned") return "returned";
   if (stage === "delivered" || stage === "cancelled") return "delivered";
   if (stage === "ready" || stage === "out_for_delivery" || stage === "assembling" || stage === "packing") return "ready";
   return "preparing";
@@ -49,6 +50,9 @@ function cleanOrder(order: Order): Order {
     driverId: order.driverId,
     driver: order.driver,
     settlementId: order.settlementId,
+    returnReason: order.returnReason,
+    returnedAt: order.returnedAt,
+    paymentRefunded: order.paymentRefunded,
     inventoryDeducted: order.inventoryDeducted,
     source: order.source
   };

@@ -4,8 +4,10 @@ import { getStateRevision, loadState, saveState } from "./db";
 import { publishStateSync, subscribeStateSync } from "./stateSync";
 import { normalizeAppState } from "../shared/state";
 import { uid } from "../shared/id";
+import { getMachineId } from "../shared/license";
 
 const SERVER_URL_KEY = "beitna-server-url-v1";
+const DEVICE_ROLE_KEY = "beitna-device-role-v1";
 const DEFAULT_SERVER_URL = "http://127.0.0.1:4312";
 
 export interface VersionedState {
@@ -16,6 +18,26 @@ export interface VersionedState {
 export interface StateUpdateMessage {
   sourceId: string;
   revision: string;
+}
+
+export type DeviceRole = "server" | "cashier" | "kitchen" | "assembly" | "terminal";
+
+export interface ConnectedDevice {
+  connectionId: string;
+  sourceId: string;
+  machineId: string;
+  deviceName: string;
+  role: DeviceRole;
+  ipAddress: string;
+  appVersion: string;
+  connectedAt: number;
+  lastSeen: number;
+}
+
+interface DeviceIdentity {
+  machineId: string;
+  deviceName: string;
+  appVersion: string;
 }
 
 export interface EmbeddedServerInfo {
@@ -47,6 +69,16 @@ export function getServerUrl() {
   const configured = localStorage.getItem(SERVER_URL_KEY)
     ?? DEFAULT_SERVER_URL;
   return normalizeServerUrl(configured);
+}
+
+export function getDeviceRole(): DeviceRole {
+  const saved = localStorage.getItem(DEVICE_ROLE_KEY) as DeviceRole | null;
+  if (saved && ["server", "cashier", "kitchen", "assembly", "terminal"].includes(saved)) return saved;
+  return isLocalServerUrl(getServerUrl()) ? "server" : "terminal";
+}
+
+export function setDeviceRole(role: DeviceRole) {
+  localStorage.setItem(DEVICE_ROLE_KEY, role);
 }
 
 export async function setServerUrl(url: string) {
@@ -124,7 +156,8 @@ export async function saveVersionedState(
 export async function subscribeToStateUpdates(
   sourceId: string,
   onMessage: (message: StateUpdateMessage) => void,
-  onStatus: (status: ConnectionStatus) => void
+  onStatus: (status: ConnectionStatus) => void,
+  onDevices: (devices: ConnectedDevice[]) => void
 ): Promise<() => void> {
   if (!isTauriRuntime()) {
     onStatus("local");
@@ -134,19 +167,28 @@ export async function subscribeToStateUpdates(
   let disposed = false;
   let socket: WebSocket | null = null;
   let reconnectTimer: number | null = null;
+  let presenceTimer: number | null = null;
   let reconnectDelay = 500;
+  const identity = await getDeviceIdentity();
 
   const connect = () => {
     if (disposed) return;
     onStatus("connecting");
-    socket = new WebSocket(toWebSocketUrl(getServerUrl()));
+    socket = new WebSocket(toWebSocketUrl(getServerUrl(), sourceId, identity));
     socket.onopen = () => {
       reconnectDelay = 500;
       onStatus("online");
+      if (presenceTimer !== null) window.clearInterval(presenceTimer);
+      presenceTimer = window.setInterval(() => {
+        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "presence" }));
+      }, 15_000);
     };
     socket.onmessage = (event) => {
       try {
-        const message = JSON.parse(String(event.data)) as StateUpdateMessage & { type?: string };
+        const message = JSON.parse(String(event.data)) as StateUpdateMessage & { type?: string; devices?: ConnectedDevice[] };
+        if ((message.type === "connected" || message.type === "devices.updated") && message.devices) {
+          onDevices(message.devices);
+        }
         const isRemoteUpdate = message.type === "state.updated" && message.sourceId !== sourceId;
         const isReconnectWithNewerState = message.type === "connected" && Boolean(message.revision);
         if (isRemoteUpdate || isReconnectWithNewerState) onMessage(message);
@@ -157,6 +199,9 @@ export async function subscribeToStateUpdates(
     socket.onerror = () => onStatus("offline");
     socket.onclose = () => {
       if (disposed) return;
+      if (presenceTimer !== null) window.clearInterval(presenceTimer);
+      presenceTimer = null;
+      onDevices([]);
       onStatus("offline");
       reconnectTimer = window.setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 10_000);
@@ -167,8 +212,15 @@ export async function subscribeToStateUpdates(
   return () => {
     disposed = true;
     if (reconnectTimer !== null) window.clearTimeout(reconnectTimer);
+    if (presenceTimer !== null) window.clearInterval(presenceTimer);
     socket?.close();
   };
+}
+
+export async function getConnectedDevices(url = getServerUrl()) {
+  const response = await fetch(`${normalizeServerUrl(url)}/api/devices`);
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<ConnectedDevice[]>;
 }
 
 export async function testServerConnection(url = getServerUrl()) {
@@ -239,11 +291,31 @@ function isLocalServerUrl(url: string) {
   }
 }
 
-function toWebSocketUrl(httpUrl: string) {
+async function getDeviceIdentity(): Promise<DeviceIdentity> {
+  if (isTauriRuntime()) {
+    try {
+      return await invoke<DeviceIdentity>("get_device_identity");
+    } catch (error) {
+      console.error("Failed to read device identity", error);
+    }
+  }
+  return {
+    machineId: getMachineId(),
+    deviceName: "Web Browser",
+    appVersion: "web"
+  };
+}
+
+function toWebSocketUrl(httpUrl: string, sourceId: string, identity: DeviceIdentity) {
   const url = new URL(httpUrl);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.pathname = "/ws";
   url.search = "";
+  url.searchParams.set("sourceId", sourceId);
+  url.searchParams.set("machineId", identity.machineId);
+  url.searchParams.set("deviceName", identity.deviceName);
+  url.searchParams.set("role", getDeviceRole());
+  url.searchParams.set("appVersion", identity.appVersion);
   url.hash = "";
   return url.toString();
 }

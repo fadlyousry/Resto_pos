@@ -127,15 +127,23 @@ fn raw_print(printer_name: &str, document_name: &str, bytes: &[u8]) -> Result<()
 
     fn default_printer() -> Result<String, String> {
         let mut length = 0u32;
-        unsafe { let _ = GetDefaultPrinterW(None, &mut length); }
+        unsafe {
+            let _ = GetDefaultPrinterW(None, &mut length);
+        }
         if length == 0 {
             return Err("لا توجد طابعة افتراضية في Windows".into());
         }
         let mut buffer = vec![0u16; length as usize];
         if !unsafe { GetDefaultPrinterW(Some(PWSTR(buffer.as_mut_ptr())), &mut length) }.as_bool() {
-            return Err(format!("تعذر قراءة الطابعة الافتراضية: {}", windows::core::Error::from_win32()));
+            return Err(format!(
+                "تعذر قراءة الطابعة الافتراضية: {}",
+                windows::core::Error::from_win32()
+            ));
         }
-        let end = buffer.iter().position(|value| *value == 0).unwrap_or(buffer.len());
+        let end = buffer
+            .iter()
+            .position(|value| *value == 0)
+            .unwrap_or(buffer.len());
         String::from_utf16(&buffer[..end]).map_err(|error| error.to_string())
     }
 
@@ -160,23 +168,42 @@ fn raw_print(printer_name: &str, document_name: &str, bytes: &[u8]) -> Result<()
     let result = unsafe {
         let job_id = StartDocPrinterW(handle, 1, &document_info);
         if job_id == 0 {
-            Err(format!("تعذر بدء مهمة الطباعة: {}", windows::core::Error::from_win32()))
+            Err(format!(
+                "تعذر بدء مهمة الطباعة: {}",
+                windows::core::Error::from_win32()
+            ))
         } else if !StartPagePrinter(handle).as_bool() {
             let _ = EndDocPrinter(handle);
-            Err(format!("تعذر بدء صفحة الطباعة: {}", windows::core::Error::from_win32()))
+            Err(format!(
+                "تعذر بدء صفحة الطباعة: {}",
+                windows::core::Error::from_win32()
+            ))
         } else {
             let mut written = 0u32;
             let write_ok = WritePrinter(
                 handle,
                 bytes.as_ptr().cast(),
-                bytes.len().try_into().map_err(|_| "حجم الفاتورة كبير جدًا")?,
+                bytes
+                    .len()
+                    .try_into()
+                    .map_err(|_| "حجم الفاتورة كبير جدًا")?,
                 &mut written,
-            ).as_bool();
-            let write_error = if write_ok { None } else { Some(windows::core::Error::from_win32()) };
+            )
+            .as_bool();
+            let write_error = if write_ok {
+                None
+            } else {
+                Some(windows::core::Error::from_win32())
+            };
             let page_ok = EndPagePrinter(handle).as_bool();
             let document_ok = EndDocPrinter(handle).as_bool();
             if !write_ok || written as usize != bytes.len() {
-                Err(format!("فشل إرسال بيانات ESC/POS: {}", write_error.map(|error| error.to_string()).unwrap_or_else(|| "لم تصل كل البيانات".into())))
+                Err(format!(
+                    "فشل إرسال بيانات ESC/POS: {}",
+                    write_error
+                        .map(|error| error.to_string())
+                        .unwrap_or_else(|| "لم تصل كل البيانات".into())
+                ))
             } else if !page_ok || !document_ok {
                 Err("وصلت البيانات لكن تعذر إغلاق مهمة الطباعة".into())
             } else {
