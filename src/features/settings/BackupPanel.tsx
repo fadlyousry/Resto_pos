@@ -1,11 +1,12 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import {
-  ArchiveRestore, CalendarClock, Database, DatabaseBackup, Download, FolderOpen,
-  HardDrive, History, Save, Upload
+  AlertTriangle, ArchiveRestore, CalendarClock, Database, DatabaseBackup, Download, FolderOpen,
+  HardDrive, History, RotateCcw, Save, ShieldCheck, Trash2, Upload
 } from "lucide-react";
 import type { AppState } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { normalizeAppState } from "../../shared/state";
+import { Modal } from "../../shared/ui";
 import {
   canUseDesktopBackups,
   createStateBackup,
@@ -29,6 +30,9 @@ export function BackupPanel({ state, update, notify }: ViewProps) {
   const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [preferences, setPreferences] = useState(defaultPreferences);
   const [working, setWorking] = useState("");
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetOptions, setResetOptions] = useState({ clearCustomers: false, resetStock: false });
 
   useEffect(() => {
     if (!desktopRuntime) return;
@@ -120,6 +124,63 @@ export function BackupPanel({ state, update, notify }: ViewProps) {
       }
     };
     reader.readAsText(file);
+  };
+
+  const resetAllowed = !desktopRuntime || Boolean(storage?.hostServer);
+  const openOperationalReset = () => {
+    if (!resetAllowed) {
+      notify("تصفير بيانات التشغيل متاح من جهاز السيرفر الرئيسي فقط");
+      return;
+    }
+    setResetConfirmation("");
+    setResetOptions({ clearCustomers: false, resetStock: false });
+    setResetOpen(true);
+  };
+
+  const resetOperationalData = async () => {
+    if (resetConfirmation.trim() !== "تصفير") {
+      notify("اكتب كلمة تصفير لتأكيد العملية");
+      return;
+    }
+    setWorking("reset");
+    try {
+      if (desktopRuntime) {
+        await createStateBackup(state, "reset");
+        applyStorageInfo(await getStorageInfo());
+      } else {
+        downloadBackup();
+      }
+      const resetAt = new Date().toISOString();
+      update((current) => ({
+        ...current,
+        orders: [],
+        customers: resetOptions.clearCustomers
+          ? []
+          : current.customers.map((customer) => ({
+            ...customer, ordersCount: 0, totalSpent: 0, lastOrder: undefined
+          })),
+        cashTransactions: [],
+        cashShifts: [],
+        driverSettlements: [],
+        purchaseInvoices: [],
+        stockMovements: [],
+        ingredients: resetOptions.resetStock
+          ? current.ingredients.map((ingredient) => ({ ...ingredient, stockQty: 0 }))
+          : current.ingredients,
+        shiftOpeningBalance: 0,
+        shiftOpenedAt: resetAt,
+        nextOrderNumber: 1001,
+        nextPurchaseInvoiceNumber: 1
+      }));
+      setResetOpen(false);
+      setResetConfirmation("");
+      notify("تم إنشاء نسخة احتياطية وتصفير بيانات التشغيل بنجاح");
+    } catch (error) {
+      console.error(error);
+      notify("تعذر إنشاء النسخة الاحتياطية؛ لم يتم تصفير أي بيانات");
+    } finally {
+      setWorking("");
+    }
   };
 
   return (
@@ -220,8 +281,33 @@ export function BackupPanel({ state, update, notify }: ViewProps) {
             <input type="file" accept=".json,application/json" onChange={restoreBackup} />
           </label>
         </div>
+        <section className="operational-reset-card">
+          <div className="operational-reset-icon"><RotateCcw /></div>
+          <div className="operational-reset-copy">
+            <strong>تصفير بيانات التشغيل</strong>
+            <small>يمسح الطلبات والورديات وحركات الخزن والمشتريات والتسويات، مع الاحتفاظ بالأصناف والإعدادات والترخيص.</small>
+          </div>
+          <span><ShieldCheck /> نسخة احتياطية إجبارية قبل التنفيذ</span>
+          <button className="danger-button" disabled={Boolean(working) || !resetAllowed} onClick={openOperationalReset}><Trash2 /> تصفير البيانات</button>
+        </section>
+        {desktopRuntime && storage && !storage.hostServer && <p className="operational-reset-client-note"><AlertTriangle /> التصفير متاح من جهاز السيرفر الرئيسي فقط حتى لا تتعارض بيانات الأجهزة المتصلة.</p>}
         <p><ArchiveRestore /> يفضّل وضع مجلد البيانات على بارتشن غير C، والنسخ الاحتياطية على قرص أو وحدة تخزين أخرى للحماية من تلف الهارد.</p>
       </div>
+      {resetOpen && <Modal title="تصفير بيانات التشغيل" onClose={() => !working && setResetOpen(false)}>
+        <div className="operational-reset-modal">
+          <div className="operational-reset-warning"><AlertTriangle /><span><strong>هذه العملية لا يمكن التراجع عنها من داخل النظام</strong><small>سيتم أولًا إنشاء نسخة احتياطية كاملة يمكن استرجاعها لاحقًا.</small></span></div>
+          <div className="operational-reset-lists">
+            <div><strong>سيتم مسحه</strong><ul><li>الطلبات وفواتير البيع</li><li>الورديات وحركات وأرصدة الخزن</li><li>فواتير المشتريات وحركات المخزون</li><li>تسويات المناديب وأرقام الفواتير السابقة</li></ul></div>
+            <div><strong>سيظل محفوظًا</strong><ul><li>الأصناف والأسعار والتصنيفات والوجبات</li><li>الوصفات والموردون والمناديب</li><li>الخزن وإعدادات المطعم والطباعة</li><li>الترخيص والنسخ الاحتياطية السابقة</li></ul></div>
+          </div>
+          <div className="operational-reset-options">
+            <label className={resetOptions.clearCustomers ? "active" : ""}><input type="checkbox" checked={resetOptions.clearCustomers} onChange={(event) => setResetOptions({ ...resetOptions, clearCustomers: event.target.checked })} /><span><strong>مسح العملاء أيضًا</strong><small>إذا لم تحدده ستبقى بيانات العملاء وتُصفّر إحصاءاتهم فقط.</small></span></label>
+            <label className={resetOptions.resetStock ? "active" : ""}><input type="checkbox" checked={resetOptions.resetStock} onChange={(event) => setResetOptions({ ...resetOptions, resetStock: event.target.checked })} /><span><strong>تصفير كميات المخزون</strong><small>تظل الخامات والوصفات موجودة وتصبح الكميات الحالية صفرًا.</small></span></label>
+          </div>
+          <label className="operational-reset-confirmation"><span>للتأكيد اكتب كلمة <b>تصفير</b></span><input autoFocus value={resetConfirmation} onChange={(event) => setResetConfirmation(event.target.value)} placeholder="اكتب: تصفير" /></label>
+          <button className="operational-reset-submit" disabled={working === "reset" || resetConfirmation.trim() !== "تصفير"} onClick={() => void resetOperationalData()}><Trash2 /> {working === "reset" ? "جاري إنشاء النسخة والتصفير..." : "إنشاء نسخة وتصفير بيانات التشغيل"}</button>
+        </div>
+      </Modal>}
     </div>
   );
 }

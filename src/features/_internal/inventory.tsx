@@ -10,6 +10,7 @@ import type {
 import type { ViewProps } from "../../shared/contracts";
 import { money, qty, shortDate } from "../../shared/format";
 import { uid } from "../../shared/id";
+import { purchasesTreasuryId } from "../../shared/treasury";
 import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 
 export function InventoryView({ state, update, notify }: ViewProps) {
@@ -112,6 +113,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
       amount: roundedTotalCost,
       direction: "out",
       description: `شراء مخزون — ${stockIngredient.name}`,
+      treasuryId: purchasesTreasuryId(state),
       createdAt
     };
     update((current) => ({

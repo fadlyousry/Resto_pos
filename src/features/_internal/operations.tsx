@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
+  ArrowLeftRight, ArrowUpDown, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
   Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
@@ -17,13 +17,17 @@ import {
   dateKey, dateTimeValue, money, orderDisplayNumber, paymentLabels, shortDate, stageLabels, todayKey
 } from "../../shared/format";
 import { uid } from "../../shared/id";
+import { purchasesTreasuryId, salesTreasuryId, treasuryName, transactionTreasuryId } from "../../shared/treasury";
 import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 
 const MEALS_SECTION = "__meals";
 
 function nextShiftOrderNumber(state: AppState) {
-  const activeShift = state.cashShifts.find((shift) => !shift.closedAt);
+  const defaultTreasuryId = salesTreasuryId(state);
+  const activeShift = state.cashShifts.find((shift) =>
+    !shift.closedAt && (shift.treasuryId ?? defaultTreasuryId) === defaultTreasuryId
+  );
   if (!activeShift) return 1001;
   return state.orders.reduce(
     (highest, order) => order.shiftId === activeShift.id
@@ -52,7 +56,9 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   const [optionProduct, setOptionProduct] = useState<Product | null>(null);
   const [checkout, setCheckout] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
-  const hasOpenShift = state.cashShifts.some((shift) => !shift.closedAt);
+  const hasOpenShift = state.cashShifts.some((shift) =>
+    !shift.closedAt && (shift.treasuryId ?? salesTreasuryId(state)) === salesTreasuryId(state)
+  );
 
   useEffect(() => {
     if (!editingOrder) return;
@@ -184,27 +190,28 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     const newUsage = orderRecipeUsage(cart, state);
     const totalDifference = total - editingOrder.total;
     const paymentTransactions: CashTransaction[] = [];
+    const orderTreasuryId = editingOrder.treasuryId ?? salesTreasuryId(state);
 
     if (editingOrder.paymentStatus === "pending" && details.paymentStatus === "paid") {
       paymentTransactions.push({
         id: uid(), type: "collection", method: details.paymentMethod, amount: total, direction: "in",
-        description: `تحصيل بعد تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, createdAt
+        description: `تحصيل بعد تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
       });
     } else if (editingOrder.paymentStatus === "paid" && details.paymentStatus === "pending") {
       paymentTransactions.push({
         id: uid(), type: "withdrawal", method: editingOrder.paymentMethod, amount: editingOrder.total, direction: "out",
-        description: `عكس تحصيل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, createdAt
+        description: `عكس تحصيل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
       });
     } else if (editingOrder.paymentStatus === "paid" && details.paymentStatus === "paid") {
       if (editingOrder.paymentMethod !== details.paymentMethod) {
         paymentTransactions.push(
           {
             id: uid(), type: "withdrawal", method: editingOrder.paymentMethod, amount: editingOrder.total, direction: "out",
-            description: `عكس طريقة دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, createdAt
+            description: `عكس طريقة دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
           },
           {
             id: uid(), type: "deposit", method: details.paymentMethod, amount: total, direction: "in",
-            description: `إعادة تسجيل دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, createdAt
+            description: `إعادة تسجيل دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
           }
         );
       } else if (totalDifference !== 0) {
@@ -212,7 +219,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           id: uid(), type: totalDifference > 0 ? "deposit" : "withdrawal",
           method: details.paymentMethod, amount: Math.abs(totalDifference),
           direction: totalDifference > 0 ? "in" : "out",
-          description: `فرق تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, createdAt
+          description: `فرق تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
         });
       }
     }
@@ -234,7 +241,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       note: details.note || undefined,
       driverId: details.driverId,
       driver: details.driver,
-      inventoryDeducted: newUsage.size > 0
+      inventoryDeducted: newUsage.size > 0,
+      treasuryId: orderTreasuryId
     };
 
     update((current) => {
@@ -310,7 +318,10 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     const createdAt = new Date().toISOString();
     const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
     const orderId = uid();
-    const activeShift = state.cashShifts.find((shift) => !shift.closedAt)!;
+    const orderTreasuryId = salesTreasuryId(state);
+    const activeShift = state.cashShifts.find((shift) =>
+      !shift.closedAt && (shift.treasuryId ?? orderTreasuryId) === orderTreasuryId
+    )!;
     const shiftNumber = nextShiftOrderNumber(state);
     const consumption = orderRecipeUsage(cart, state);
     const stockMovements = [...consumption.entries()].map(([ingredientId, quantity]) => {
@@ -328,11 +339,11 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       paymentMethod: details.paymentMethod, paymentStatus: details.paymentStatus,
       stage: "preparing", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
       driverId: details.driverId, driver: details.driver,
-      inventoryDeducted: stockMovements.length > 0, source: "pos"
+      inventoryDeducted: stockMovements.length > 0, source: "pos", treasuryId: orderTreasuryId
     };
     const transaction: CashTransaction | null = details.paymentStatus === "paid" ? {
       id: uid(), type: "sale", method: details.paymentMethod, amount: total, direction: "in",
-      description: `فاتورة #${orderDisplayNumber(order)}`, orderId, createdAt
+      description: `فاتورة #${orderDisplayNumber(order)}`, orderId, treasuryId: orderTreasuryId, createdAt
     } : null;
     update((current) => ({
       ...current,
@@ -966,7 +977,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       orders: current.orders.map((item) => item.id === order.id ? { ...item, paymentStatus: "paid" } : item),
       cashTransactions: [{
         id: uid(), type: "collection", method: order.paymentMethod, amount: order.total,
-        direction: "in", description: `تحصيل فاتورة #${orderDisplayNumber(order)}`, orderId: order.id, createdAt
+        direction: "in", description: `تحصيل فاتورة #${orderDisplayNumber(order)}`, orderId: order.id,
+        treasuryId: order.treasuryId ?? salesTreasuryId(current), createdAt
       }, ...current.cashTransactions]
     }));
     notify(`تم تحصيل ${money(order.total)}`);
@@ -1029,6 +1041,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
         direction: "out",
         description: `عكس تحصيل بسبب حذف فاتورة #${orderDisplayNumber(deleteOrder)}`,
         orderId: deleteOrder.id,
+        treasuryId: deleteOrder.treasuryId ?? salesTreasuryId(current),
         createdAt: deletedAt
       } : null;
       const remainingCustomerOrders = current.orders.filter(
@@ -1819,7 +1832,7 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
       const refundTransaction: CashTransaction | null = rejectedOrder.paymentStatus === "paid" ? {
         id: uid(), type: "withdrawal", method: rejectedOrder.paymentMethod, amount: rejectedOrder.total,
         direction: "out", description: `رد قيمة طلب مرفوض #${orderDisplayNumber(rejectedOrder)}`,
-        orderId: rejectedOrder.id, createdAt: returnedAt
+        orderId: rejectedOrder.id, treasuryId: rejectedOrder.treasuryId ?? salesTreasuryId(current), createdAt: returnedAt
       } : null;
       return {
         ...current,
@@ -1903,11 +1916,12 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
     const transactions: CashTransaction[] = [];
     if (amountReceived + expenses > 0) transactions.push({
       id: uid(), type: "collection", method: paymentMethod, amount: amountReceived + expenses, direction: "in",
-      description: `إجمالي تسوية المندوب ${driver.name} — ${orders.length} طلب — ${paymentLabels[paymentMethod]}`, createdAt
+      description: `إجمالي تسوية المندوب ${driver.name} — ${orders.length} طلب — ${paymentLabels[paymentMethod]}`,
+      treasuryId: salesTreasuryId(state), createdAt
     });
     if (expenses > 0) transactions.push({
       id: uid(), type: "expense", method: "cash", amount: expenses, direction: "out",
-      description: `مصروف تسوية المندوب ${driver.name}`, createdAt
+      description: `مصروف تسوية المندوب ${driver.name}`, treasuryId: salesTreasuryId(state), createdAt
     });
     update((current) => ({
       ...current,
@@ -2182,12 +2196,30 @@ function DriverSettlementModal({ driver, orders, onClose, onSettle }: {
   );
 }
 
-export function CashView({ state, update, notify }: ViewProps) {
-  const [cashTab, setCashTab] = useState<"treasury" | "shift" | "daily">("treasury");
+export function CashView({ state, update, notify, cashTab }: ViewProps & { cashTab: "treasury" | "shift" | "daily" }) {
+  const [selectedTreasuryId, setSelectedTreasuryId] = useState<"all" | string>("all");
+  const [treasuryManagerOpen, setTreasuryManagerOpen] = useState(false);
+  const [newTreasuryName, setNewTreasuryName] = useState("");
+  const [treasuryNameDrafts, setTreasuryNameDrafts] = useState<Record<string, string>>({});
   const [transactionMethodFilter, setTransactionMethodFilter] = useState<"all" | PaymentMethod>("all");
+  const [transactionDirectionFilter, setTransactionDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const [directionFilterOpen, setDirectionFilterOpen] = useState(false);
   const [dailyMethodFilter, setDailyMethodFilter] = useState<"all" | PaymentMethod>("all");
   const [expense, setExpense] = useState(false);
-  const [expenseData, setExpenseData] = useState<{ amount: number; description: string; method: PaymentMethod }>({ amount: 0, description: "", method: "cash" });
+  const [expenseData, setExpenseData] = useState<{ amount: number; description: string; method: PaymentMethod; treasuryId: string }>({
+    amount: 0, description: "", method: "cash", treasuryId: purchasesTreasuryId(state)
+  });
+  const [treasuryTransferOpen, setTreasuryTransferOpen] = useState(false);
+  const [treasuryTransfer, setTreasuryTransfer] = useState<{ fromTreasuryId: string; toTreasuryId: string; amount: number; method: PaymentMethod; note: string }>({
+    fromTreasuryId: salesTreasuryId(state), toTreasuryId: purchasesTreasuryId(state), amount: 0, method: "cash", note: ""
+  });
+  const [treasuryDepositOpen, setTreasuryDepositOpen] = useState(false);
+  const [treasuryDeposit, setTreasuryDeposit] = useState<{ treasuryId: string; amount: number; method: PaymentMethod; note: string }>({
+    treasuryId: purchasesTreasuryId(state), amount: 0, method: "cash", note: ""
+  });
+  const [treasuryReportOpen, setTreasuryReportOpen] = useState(false);
+  const [reportTreasuryId, setReportTreasuryId] = useState(purchasesTreasuryId(state));
+  const [treasuryFilterOpen, setTreasuryFilterOpen] = useState(false);
   const [cashDateFilterOpen, setCashDateFilterOpen] = useState(false);
   const [cashDatePreset, setCashDatePreset] = useState<OrderDatePreset>("today");
   const [cashDateFrom, setCashDateFrom] = useState<string>(todayKey);
@@ -2229,13 +2261,38 @@ export function CashView({ state, update, notify }: ViewProps) {
     setDraftCashDateTo(to);
     setCashDateFilterOpen(false);
   };
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (!target.closest(".cash-treasury-filter-wrap") && !target.closest(".cash-date-range-wrap") && !target.closest(".transaction-direction-filter-wrap")) {
+        setTreasuryFilterOpen(false);
+        setCashDateFilterOpen(false);
+        setDirectionFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleDocumentClick);
+    return () => document.removeEventListener("mousedown", handleDocumentClick);
+  }, []);
+  const toggleTreasuryFilter = () => {
+    setCashDateFilterOpen(false);
+    setDirectionFilterOpen(false);
+    setTreasuryFilterOpen((open) => !open);
+  };
   const toggleCashDateFilter = () => {
+    setTreasuryFilterOpen(false);
+    setDirectionFilterOpen(false);
     if (!cashDateFilterOpen) {
       setDraftCashDatePreset(cashDatePreset);
       setDraftCashDateFrom(cashDateFrom);
       setDraftCashDateTo(cashDateTo);
     }
     setCashDateFilterOpen((open) => !open);
+  };
+  const toggleDirectionFilter = () => {
+    setTreasuryFilterOpen(false);
+    setCashDateFilterOpen(false);
+    setDirectionFilterOpen((open) => !open);
   };
   const applyCashDateFilter = () => {
     if (draftCashDateFrom && draftCashDateTo && draftCashDateFrom > draftCashDateTo) {
@@ -2261,12 +2318,27 @@ export function CashView({ state, update, notify }: ViewProps) {
     const key = dateKey(value);
     return (!cashDateFrom || key >= cashDateFrom) && (!cashDateTo || key <= cashDateTo);
   };
-  const activeShift = state.cashShifts.find((shift) => !shift.closedAt);
-  const viewedShift = activeShift ?? state.cashShifts[0];
-  const selectedTransactions = state.cashTransactions.filter((transaction) => isInCashDateRange(transaction.createdAt));
+  const currentSalesTreasuryId = salesTreasuryId(state);
+  const currentPurchasesTreasuryId = purchasesTreasuryId(state);
+  const activeTreasuries = state.treasuries.filter((treasury) => treasury.active);
+  const matchesSelectedTreasury = (treasuryId: string | undefined, fallbackId: string) =>
+    selectedTreasuryId === "all" || (treasuryId ?? fallbackId) === selectedTreasuryId;
+  const activeShift = state.cashShifts.find((shift) =>
+    !shift.closedAt && (shift.treasuryId ?? currentSalesTreasuryId) === currentSalesTreasuryId
+  );
+  const viewedShift = activeShift ?? state.cashShifts.find((shift) =>
+    (shift.treasuryId ?? currentSalesTreasuryId) === currentSalesTreasuryId
+  );
+  const selectedTransactions = state.cashTransactions.filter((transaction) =>
+    isInCashDateRange(transaction.createdAt)
+    && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
+  );
   const returnedOrderIds = new Set(state.orders.filter((order) => order.stage === "returned").map((order) => order.id));
   const refundedOriginalPaymentOrderIds = new Set(state.orders.filter((order) => order.paymentRefunded).map((order) => order.id));
-  const selectedShifts = state.cashShifts.filter((shift) => isInCashDateRange(shift.openedAt));
+  const selectedShifts = state.cashShifts.filter((shift) =>
+    isInCashDateRange(shift.openedAt)
+    && matchesSelectedTreasury(shift.treasuryId, currentSalesTreasuryId)
+  );
   const selectedOpeningBalance = selectedShifts.reduce((sum, shift) => sum + shift.openingBalance, 0);
   const dailyRevenueTransactions = selectedTransactions.filter((transaction) =>
     transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection")
@@ -2278,7 +2350,11 @@ export function CashView({ state, update, notify }: ViewProps) {
   const dailyOperationalExpenses = selectedTransactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyRevenue = dailySalesRevenue + dailyCollections;
   const dailyNet = dailyRevenue - dailyOperationalExpenses;
-  const dailyOrders = state.orders.filter((order) => isInCashDateRange(order.createdAt) && order.stage !== "returned");
+  const dailyOrders = state.orders.filter((order) =>
+    isInCashDateRange(order.createdAt)
+    && order.stage !== "returned"
+    && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
+  );
   const dailyOrderCount = dailyOrders.length;
   const dailyAvgOrder = dailyOrderCount ? dailyOrders.reduce((sum, order) => sum + order.total, 0) / dailyOrderCount : 0;
   const dailyPending = dailyOrders.filter((order) => order.paymentStatus === "pending").reduce((sum, order) => sum + order.total, 0);
@@ -2286,7 +2362,11 @@ export function CashView({ state, update, notify }: ViewProps) {
   const dailyDeliveryFees = dailyOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
   const comparisonDateKey = cashDateFrom && cashDateFrom === cashDateTo ? offsetCashDate(cashDateFrom, -1) : null;
   const yesterdayRevenue = comparisonDateKey ? state.cashTransactions
-    .filter((transaction) => dateKey(transaction.createdAt) === comparisonDateKey && transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection") && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId)) && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId)))
+    .filter((transaction) => dateKey(transaction.createdAt) === comparisonDateKey
+      && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
+      && transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection")
+      && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId))
+      && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId)))
     .reduce((sum, transaction) => sum + transaction.amount, 0) : 0;
   const revenueChangePercent = comparisonDateKey && yesterdayRevenue ? ((dailyRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : null;
   const dailyMethodRevenue = (method: PaymentMethod) => {
@@ -2303,7 +2383,8 @@ export function CashView({ state, update, notify }: ViewProps) {
       const closedAt = shift.closedAt ? new Date(shift.closedAt).getTime() : Number.POSITIVE_INFINITY;
       const transactions = selectedTransactions.filter((transaction) => {
         const time = new Date(transaction.createdAt).getTime();
-        return time >= openedAt && time <= closedAt;
+        return time >= openedAt && time <= closedAt
+          && transactionTreasuryId(state, transaction) === (shift.treasuryId ?? currentSalesTreasuryId);
       });
       const incomeFor = (method: PaymentMethod) => transactions
         .filter((transaction) => transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection") && transaction.method === method && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId)) && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId)))
@@ -2316,25 +2397,80 @@ export function CashView({ state, update, notify }: ViewProps) {
     ? state.cashTransactions.filter((transaction) => {
       const time = new Date(transaction.createdAt).getTime();
       return time >= new Date(viewedShift.openedAt).getTime()
-        && (!viewedShift.closedAt || time <= new Date(viewedShift.closedAt).getTime());
+        && (!viewedShift.closedAt || time <= new Date(viewedShift.closedAt).getTime())
+        && transactionTreasuryId(state, transaction) === (viewedShift.treasuryId ?? currentSalesTreasuryId);
     })
     : [];
   const displayedTransactions = cashTab === "shift" ? shiftTransactions : selectedTransactions;
-  const filteredTransactions = transactionMethodFilter === "all"
-    ? displayedTransactions
-    : displayedTransactions.filter((transaction) => transaction.method === transactionMethodFilter);
+  const displayedIncomingTotal = displayedTransactions
+    .filter((transaction) => transaction.direction === "in")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const displayedOutgoingTotal = displayedTransactions
+    .filter((transaction) => transaction.direction === "out")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const filteredTransactions = displayedTransactions.filter((transaction) => {
+    const matchesMethod = transactionMethodFilter === "all" || transaction.method === transactionMethodFilter;
+    const matchesDirection = transactionDirectionFilter === "all" || transaction.direction === transactionDirectionFilter;
+    return matchesMethod && matchesDirection;
+  });
   const displayedOpeningBalance = cashTab === "shift" ? (viewedShift?.openingBalance ?? 0) : selectedOpeningBalance;
+  const treasuryTransactionsThroughEnd = state.cashTransactions.filter((transaction) =>
+    (!cashDateTo || dateKey(transaction.createdAt) <= cashDateTo)
+    && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
+  );
+  const treasuryIdsForBalance = selectedTreasuryId === "all"
+    ? state.treasuries.map((treasury) => treasury.id)
+    : [selectedTreasuryId];
+  const treasuryOpeningThroughEnd = treasuryIdsForBalance.reduce((sum, treasuryId) => {
+    const firstShift = [...state.cashShifts]
+      .filter((shift) => (shift.treasuryId ?? currentSalesTreasuryId) === treasuryId
+        && (!cashDateTo || dateKey(shift.openedAt) <= cashDateTo))
+      .sort((left, right) => new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime())[0];
+    return sum + (firstShift?.openingBalance ?? 0);
+  }, 0);
   const methodSummary = (method: PaymentMethod) => {
-    const transactions = displayedTransactions.filter((transaction) => transaction.method === method);
+    const sourceTransactions = cashTab === "treasury" ? treasuryTransactionsThroughEnd : displayedTransactions;
+    const transactions = sourceTransactions.filter((transaction) => transaction.method === method);
     const incoming = transactions.filter((transaction) => transaction.direction === "in").reduce((sum, transaction) => sum + transaction.amount, 0);
     const outgoing = transactions.filter((transaction) => transaction.direction === "out").reduce((sum, transaction) => sum + transaction.amount, 0);
-    return { incoming, outgoing, count: transactions.length, balance: incoming - outgoing + (method === "cash" ? displayedOpeningBalance : 0) };
+    const opening = method === "cash"
+      ? cashTab === "treasury" ? treasuryOpeningThroughEnd : displayedOpeningBalance
+      : 0;
+    return { incoming, outgoing, count: transactions.length, balance: incoming - outgoing + opening };
   };
   const cashSummary = methodSummary("cash");
   const instapaySummary = methodSummary("instapay");
   const vodafoneSummary = methodSummary("vodafone");
   const totalBalance = cashSummary.balance + instapaySummary.balance + vodafoneSummary.balance;
+  const periodTreasuryBalance = (treasuryId: string) => {
+    const firstShift = [...state.cashShifts]
+      .filter((shift) => (shift.treasuryId ?? currentSalesTreasuryId) === treasuryId
+        && (!cashDateTo || dateKey(shift.openedAt) <= cashDateTo))
+      .sort((left, right) => new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime())[0];
+    const opening = firstShift?.openingBalance ?? 0;
+    const movement = state.cashTransactions
+      .filter((transaction) => (!cashDateTo || dateKey(transaction.createdAt) <= cashDateTo)
+        && transactionTreasuryId(state, transaction) === treasuryId)
+      .reduce((sum, transaction) => sum + (transaction.direction === "in" ? transaction.amount : -transaction.amount), 0);
+    return opening + movement;
+  };
+  const allTreasuriesPeriodBalance = state.treasuries.reduce((sum, treasury) => sum + periodTreasuryBalance(treasury.id), 0);
+  const selectedTreasury = selectedTreasuryId === "all"
+    ? null
+    : state.treasuries.find((treasury) => treasury.id === selectedTreasuryId) ?? null;
+  const selectedTreasuryLabel = selectedTreasury?.name ?? "كل الخزن";
+  const selectedTreasuryClosingBalance = selectedTreasury
+    ? periodTreasuryBalance(selectedTreasury.id)
+    : allTreasuriesPeriodBalance;
   const orderNumberById = new Map(state.orders.map((order) => [order.id, orderDisplayNumber(order)]));
+  const settlementOrderNumbersByCreatedAt = new Map(state.driverSettlements.map((settlement) => [
+    settlement.createdAt,
+    settlement.orderIds.map((orderId) => orderNumberById.get(orderId)).filter((number) => number !== undefined)
+  ]));
+  const orderNumbersForTransaction = (transaction: CashTransaction) => {
+    const directOrderNumber = transaction.orderId ? orderNumberById.get(transaction.orderId) : undefined;
+    return directOrderNumber !== undefined ? [directOrderNumber] : settlementOrderNumbersByCreatedAt.get(transaction.createdAt) ?? [];
+  };
   const balanceAfter = new Map<string, number>();
   const runningBalance: Record<PaymentMethod, number> = { cash: displayedOpeningBalance, instapay: 0, vodafone: 0 };
   [...displayedTransactions].reverse().forEach((transaction) => {
@@ -2345,6 +2481,122 @@ export function CashView({ state, update, notify }: ViewProps) {
   const transactionTypeLabels: Record<CashTransaction["type"], string> = {
     sale: "إيراد بيع", collection: "تحصيل عهدة", expense: "مصروف", deposit: "إيداع", withdrawal: "سحب"
   };
+  const resolvedReportTreasuryId = state.treasuries.some((treasury) => treasury.id === reportTreasuryId)
+    ? reportTreasuryId
+    : currentPurchasesTreasuryId;
+  const reportTreasury = state.treasuries.find((treasury) => treasury.id === resolvedReportTreasuryId);
+  const reportAllTransactions = state.cashTransactions
+    .filter((transaction) => transactionTreasuryId(state, transaction) === resolvedReportTreasuryId);
+  const reportInitialShift = [...state.cashShifts]
+    .filter((shift) => (shift.treasuryId ?? currentSalesTreasuryId) === resolvedReportTreasuryId
+      && (!cashDateTo || dateKey(shift.openedAt) <= cashDateTo))
+    .sort((left, right) => new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime())[0];
+  const reportBaseOpeningBalance = reportInitialShift?.openingBalance ?? 0;
+  const reportOpeningBalance = reportBaseOpeningBalance + (cashDateFrom
+    ? reportAllTransactions
+      .filter((transaction) => dateKey(transaction.createdAt) < cashDateFrom)
+      .reduce((sum, transaction) => sum + (transaction.direction === "in" ? transaction.amount : -transaction.amount), 0)
+    : 0);
+  const reportPeriodTransactions = reportAllTransactions
+    .filter((transaction) => isInCashDateRange(transaction.createdAt))
+    .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  const reportIncoming = reportPeriodTransactions
+    .filter((transaction) => transaction.direction === "in")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const reportOutgoing = reportPeriodTransactions
+    .filter((transaction) => transaction.direction === "out")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const reportDeposits = reportPeriodTransactions
+    .filter((transaction) => transaction.type === "deposit" && transaction.direction === "in")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const reportSalesAndCollections = reportPeriodTransactions
+    .filter((transaction) => transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection"))
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const reportExpenses = reportPeriodTransactions
+    .filter((transaction) => transaction.type === "expense" && transaction.direction === "out")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const reportWithdrawals = reportPeriodTransactions
+    .filter((transaction) => transaction.type === "withdrawal" && transaction.direction === "out")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const reportClosingBalance = reportOpeningBalance + reportIncoming - reportOutgoing;
+  let reportRunningBalance = reportOpeningBalance;
+  const reportRows = reportPeriodTransactions.map((transaction) => {
+    reportRunningBalance += transaction.direction === "in" ? transaction.amount : -transaction.amount;
+    return { transaction, balance: reportRunningBalance };
+  }).reverse();
+  const reportMethodBalance = (method: PaymentMethod) => {
+    const opening = (method === "cash" ? reportBaseOpeningBalance : 0) + (cashDateFrom
+      ? reportAllTransactions.filter((transaction) => dateKey(transaction.createdAt) < cashDateFrom && transaction.method === method)
+        .reduce((sum, transaction) => sum + (transaction.direction === "in" ? transaction.amount : -transaction.amount), 0)
+      : 0);
+    return opening + reportPeriodTransactions.filter((transaction) => transaction.method === method)
+      .reduce((sum, transaction) => sum + (transaction.direction === "in" ? transaction.amount : -transaction.amount), 0);
+  };
+  const openTreasuryManager = () => {
+    setTreasuryNameDrafts(Object.fromEntries(state.treasuries.map((treasury) => [treasury.id, treasury.name])));
+    setNewTreasuryName("");
+    setTreasuryManagerOpen(true);
+  };
+  const addTreasury = () => {
+    const name = newTreasuryName.trim();
+    if (!name) return;
+    if (state.treasuries.some((treasury) => treasury.name.trim() === name)) {
+      notify("يوجد خزنة بنفس الاسم بالفعل");
+      return;
+    }
+    const treasury = { id: uid(), name, active: true, createdAt: new Date().toISOString() };
+    update((current) => ({ ...current, treasuries: [...current.treasuries, treasury] }));
+    setTreasuryNameDrafts((current) => ({ ...current, [treasury.id]: treasury.name }));
+    setNewTreasuryName("");
+    notify(`تمت إضافة ${name}`);
+  };
+  const saveTreasuryName = (treasuryId: string) => {
+    const name = (treasuryNameDrafts[treasuryId] ?? "").trim();
+    if (!name) return;
+    if (state.treasuries.some((treasury) => treasury.id !== treasuryId && treasury.name.trim() === name)) {
+      notify("يوجد خزنة بنفس الاسم بالفعل");
+      return;
+    }
+    update((current) => ({
+      ...current,
+      treasuries: current.treasuries.map((treasury) => treasury.id === treasuryId ? { ...treasury, name } : treasury)
+    }));
+    notify("تم تحديث اسم الخزنة");
+  };
+  const setDefaultSalesTreasury = (treasuryId: string) => {
+    if (activeShift && treasuryId !== currentSalesTreasuryId) {
+      notify("أغلق الوردية الحالية أولًا قبل تغيير خزنة المبيعات");
+      return;
+    }
+    update((current) => ({ ...current, defaultSalesTreasuryId: treasuryId }));
+    notify("تم تعيين خزنة المبيعات");
+  };
+  const setDefaultPurchasesTreasury = (treasuryId: string) => {
+    update((current) => ({ ...current, defaultPurchasesTreasuryId: treasuryId }));
+    setExpenseData((current) => ({ ...current, treasuryId }));
+    notify("تم تعيين خزنة المشتريات والمصروفات");
+  };
+  const deactivateTreasury = (treasuryId: string) => {
+    const treasury = state.treasuries.find((item) => item.id === treasuryId);
+    if (!treasury || treasuryId === currentSalesTreasuryId || treasuryId === currentPurchasesTreasuryId) {
+      notify("لا يمكن تعطيل خزنة افتراضية");
+      return;
+    }
+    if (!window.confirm(`هل تريد تعطيل ${treasury.name}؟ ستظل حركاتها القديمة محفوظة.`)) return;
+    update((current) => ({
+      ...current,
+      treasuries: current.treasuries.map((item) => item.id === treasuryId ? { ...item, active: false } : item)
+    }));
+    if (selectedTreasuryId === treasuryId) setSelectedTreasuryId("all");
+    notify("تم تعطيل الخزنة مع الاحتفاظ بكل حركاتها");
+  };
+  const reactivateTreasury = (treasuryId: string) => {
+    update((current) => ({
+      ...current,
+      treasuries: current.treasuries.map((item) => item.id === treasuryId ? { ...item, active: true } : item)
+    }));
+    notify("تم تفعيل الخزنة من جديد");
+  };
   const activeShiftTransactions = activeShift ? shiftTransactions : [];
   const expectedClosingCash = activeShift
     ? activeShift.openingBalance + activeShiftTransactions
@@ -2353,7 +2605,9 @@ export function CashView({ state, update, notify }: ViewProps) {
     : 0;
   const openShift = () => {
     const openedAt = new Date().toISOString();
-    const shift = { id: uid(), openedAt, openingBalance: Math.max(0, openingAmount) };
+    const shift = {
+      id: uid(), treasuryId: salesTreasuryId(state), openedAt, openingBalance: Math.max(0, openingAmount)
+    };
     update((current) => ({
       ...current,
       cashShifts: [shift, ...current.cashShifts],
@@ -2383,118 +2637,305 @@ export function CashView({ state, update, notify }: ViewProps) {
     notify("تم إغلاق الوردية وتسجيل نتيجة الجرد");
   };
   const addExpense = () => {
-    if (!activeShift) { notify("افتح وردية أولًا قبل تسجيل المصروف"); return; }
+    if (expenseData.treasuryId === currentSalesTreasuryId && !activeShift) {
+      notify("افتح وردية أولًا قبل الصرف من خزنة المبيعات");
+      return;
+    }
     if (!expenseData.amount || !expenseData.description) return;
     update((current) => ({ ...current, cashTransactions: [{
       id: uid(), type: "expense", method: expenseData.method, amount: expenseData.amount, direction: "out",
-      description: expenseData.description, createdAt: new Date().toISOString()
+      description: expenseData.description, treasuryId: expenseData.treasuryId, createdAt: new Date().toISOString()
     }, ...current.cashTransactions] }));
-    setExpense(false); setExpenseData({ amount: 0, description: "", method: "cash" }); notify("تم تسجيل المصروف");
+    setExpense(false);
+    setExpenseData({ amount: 0, description: "", method: "cash", treasuryId: purchasesTreasuryId(state) });
+    notify("تم تسجيل المصروف");
   };
+  const openTreasuryTransfer = () => {
+    const fromTreasuryId = selectedTreasuryId !== "all" && activeTreasuries.some((treasury) => treasury.id === selectedTreasuryId)
+      ? selectedTreasuryId
+      : currentSalesTreasuryId;
+    const toTreasuryId = activeTreasuries.find((treasury) => treasury.id !== fromTreasuryId)?.id ?? "";
+    setTreasuryTransfer({ fromTreasuryId, toTreasuryId, amount: 0, method: "cash", note: "" });
+    setTreasuryTransferOpen(true);
+  };
+  const submitTreasuryTransfer = () => {
+    const { fromTreasuryId, toTreasuryId, amount, method, note } = treasuryTransfer;
+    if (!fromTreasuryId || !toTreasuryId || fromTreasuryId === toTreasuryId) {
+      notify("اختر خزنتين مختلفتين لإتمام التحويل");
+      return;
+    }
+    if (!amount || amount <= 0) {
+      notify("أدخل قيمة تحويل صحيحة");
+      return;
+    }
+    const fromName = treasuryName(state, fromTreasuryId);
+    const toName = treasuryName(state, toTreasuryId);
+    const createdAt = new Date().toISOString();
+    const transferId = uid();
+    update((current) => ({
+      ...current,
+      cashTransactions: [{
+        id: `${transferId}-out`, type: "withdrawal", method, amount, direction: "out",
+        description: `تحويل إلى ${toName}${note.trim() ? ` — ${note.trim()}` : ""}`,
+        treasuryId: fromTreasuryId, createdAt
+      }, {
+        id: `${transferId}-in`, type: "deposit", method, amount, direction: "in",
+        description: `تحويل من ${fromName}${note.trim() ? ` — ${note.trim()}` : ""}`,
+        treasuryId: toTreasuryId, createdAt
+      }, ...current.cashTransactions]
+    }));
+    setTreasuryTransferOpen(false);
+    notify(`تم تحويل ${money(amount)} من ${fromName} إلى ${toName}`);
+  };
+  const preferredTreasuryId = () => selectedTreasuryId !== "all"
+    && state.treasuries.some((treasury) => treasury.id === selectedTreasuryId)
+    ? selectedTreasuryId
+    : currentPurchasesTreasuryId;
+  const openTreasuryDeposit = () => {
+    setTreasuryDeposit({ treasuryId: preferredTreasuryId(), amount: 0, method: "cash", note: "" });
+    setTreasuryDepositOpen(true);
+  };
+  const submitTreasuryDeposit = () => {
+    const { treasuryId, amount, method, note } = treasuryDeposit;
+    if (!treasuryId || !amount || amount <= 0) {
+      notify("اختر الخزنة وأدخل قيمة صحيحة");
+      return;
+    }
+    const targetName = treasuryName(state, treasuryId);
+    update((current) => ({
+      ...current,
+      cashTransactions: [{
+        id: uid(), type: "deposit", method, amount, direction: "in",
+        description: `إضافة رصيد إلى ${targetName}${note.trim() ? ` — ${note.trim()}` : ""}`,
+        treasuryId, createdAt: new Date().toISOString()
+      }, ...current.cashTransactions]
+    }));
+    setTreasuryDepositOpen(false);
+    notify(`تمت إضافة ${money(amount)} إلى ${targetName}`);
+  };
+  const openTreasuryReport = () => {
+    setReportTreasuryId(preferredTreasuryId());
+    setTreasuryReportOpen(true);
+  };
+  const cashHeroAmount = cashTab === "daily"
+    ? dailyRevenue
+    : cashTab === "treasury" ? selectedTreasuryClosingBalance : totalBalance;
+  const cashHeroTitle = cashTab === "treasury"
+    ? `أرصدة ${selectedTreasuryLabel}`
+    : cashTab === "daily" ? `إيراد ${cashDateLabel}`
+      : activeShift ? "الوردية مفتوحة وتعمل الآن" : viewedShift ? "ملخص آخر وردية" : "ابدأ أول وردية";
+  const cashHeroStats = cashTab === "treasury"
+    ? [
+      { label: "الخزن المسجلة", value: `${state.treasuries.length}` },
+      { label: "إجمالي الوارد", value: money(cashSummary.incoming + instapaySummary.incoming + vodafoneSummary.incoming) },
+      { label: "إجمالي الصادر", value: money(cashSummary.outgoing + instapaySummary.outgoing + vodafoneSummary.outgoing) }
+    ]
+    : cashTab === "daily" ? [
+      { label: "عدد الطلبات", value: `${dailyOrderCount}` },
+      { label: "عدد الورديات", value: `${selectedShifts.length}` },
+      { label: "صافي الإيراد", value: money(dailyNet) }
+    ] : [
+      { label: "رصيد البداية", value: money(displayedOpeningBalance) },
+      { label: "حركات الوردية", value: `${shiftTransactions.length}` },
+      activeShift
+        ? { label: "وقت فتح الوردية", value: new Date(activeShift.openedAt).toLocaleTimeString("ar-EG", { hour: "numeric", minute: "2-digit" }) }
+        : { label: "فرق الجرد", value: money(viewedShift?.difference ?? 0) }
+  ];
   return (
     <div className="cash-page">
-      <div className="cash-view-tabs">
-        <button className={cashTab === "treasury" ? "active" : ""} onClick={() => setCashTab("treasury")}><WalletCards /><span><strong>الخزنة</strong><small>الأرصدة والحركات حسب التاريخ</small></span></button>
-        <button className={cashTab === "shift" ? "active" : ""} onClick={() => setCashTab("shift")}><Clock3 /><span><strong>الوردية</strong><small>متابعة وفتح وإغلاق الوردية</small></span><b className={activeShift ? "open" : "closed"}>{activeShift ? "مفتوحة" : "مغلقة"}</b></button>
-        <button className={cashTab === "daily" ? "active" : ""} onClick={() => setCashTab("daily")}><BarChart3 /><span><strong>الإيراد اليومي</strong><small>تجميع ومقارنة كل ورديات اليوم</small></span></button>
-      </div>
-      <div className="cash-hero">
-        <div>
-          <span>{cashTab === "treasury" ? `إجمالي أرصدة ${cashDateLabel}` : cashTab === "daily" ? `إجمالي إيراد ${cashDateLabel}` : activeShift ? "إجمالي أموال الوردية الحالية" : "إجمالي أموال آخر وردية"}</span>
-          <strong>{money(cashTab === "daily" ? dailyRevenue : totalBalance)}</strong>
-          <small>{cashTab === "treasury" ? "إجمالي النقدي وإنستاباي وفودافون كاش في الفترة المحددة" : cashTab === "daily" ? `${dailyOrderCount} طلب · ${selectedShifts.length} وردية · ${dailyRevenueTransactions.length} حركة` : viewedShift ? `${activeShift ? "مفتوحة منذ" : "أُغلقت"} ${shortDate(activeShift?.openedAt ?? viewedShift.closedAt ?? viewedShift.openedAt)}` : "لم يتم تسجيل أي وردية بعد"}</small>
+      {cashTab !== "shift" && <section className="cash-treasury-toolbar">
+        <div className="cash-treasury-toolbar-filters">
+          <div className="orders-date-filter-wrap cash-treasury-filter-wrap">
+            <button className={`orders-date-filter-button cash-treasury-filter-button ${selectedTreasuryId !== "all" ? "active" : ""}`} onClick={toggleTreasuryFilter}>
+              <WalletCards />
+              <span>
+                <small className="filter-button-subtitle">الخزنة</small>
+                <strong>{selectedTreasuryLabel}</strong>
+              </span>
+              <b className="treasury-filter-balance">{money(selectedTreasuryClosingBalance)}</b>
+              <ChevronDown className={treasuryFilterOpen ? "open" : ""} />
+            </button>
+            {treasuryFilterOpen && <div className="orders-date-popover cash-treasury-popover">
+              <div className="treasury-popover-header">
+                <strong>اختيار الخزنة</strong>
+                <span>{activeTreasuries.length} خزن نشطة</span>
+              </div>
+              <div className="treasury-popover-list">
+                <button
+                  className={`treasury-popover-item ${selectedTreasuryId === "all" ? "active" : ""}`}
+                  onClick={() => { setSelectedTreasuryId("all"); setTreasuryFilterOpen(false); }}
+                >
+                  <div className="treasury-item-info">
+                    <strong>كل الخزن</strong>
+                    <small>{state.treasuries.length} خزنة مسجلة</small>
+                  </div>
+                  <b className="treasury-item-balance">{money(allTreasuriesPeriodBalance)}</b>
+                </button>
+                {activeTreasuries.map((treasury) => {
+                  const balance = periodTreasuryBalance(treasury.id);
+                  return (
+                    <button
+                      className={`treasury-popover-item ${selectedTreasuryId === treasury.id ? "active" : ""}`}
+                      key={treasury.id}
+                      onClick={() => { setSelectedTreasuryId(treasury.id); setTreasuryFilterOpen(false); }}
+                    >
+                      <div className="treasury-item-info">
+                        <strong>{treasury.name}</strong>
+                        <small>
+                          {treasury.id === currentSalesTreasuryId && <i className="badge-sales">مبيعات</i>}
+                          {treasury.id === currentPurchasesTreasuryId && <i className="badge-purchases">مشتريات</i>}
+                          {treasury.id !== currentSalesTreasuryId && treasury.id !== currentPurchasesTreasuryId && <span>إضافية</span>}
+                        </small>
+                      </div>
+                      <b className={`treasury-item-balance ${balance < 0 ? "negative" : ""}`}>{money(balance)}</b>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>}
+          </div>
+          <div className="orders-date-filter-wrap cash-date-range-wrap">
+            <button className={`orders-date-filter-button ${cashDatePreset !== "all" ? "active" : ""}`} onClick={toggleCashDateFilter}>
+              <CalendarRange />
+              <span><strong>{cashDateLabel}</strong></span>
+              <ChevronDown className={cashDateFilterOpen ? "open" : ""} />
+            </button>
+            {cashDateFilterOpen && <div className="orders-date-popover cash-date-popover">
+              <div className="orders-date-quick">
+                {([[
+                  "today", "اليوم"
+                ], [
+                  "yesterday", "أمس"
+                ], [
+                  "last7", "آخر 7 أيام"
+                ], [
+                  "month", "هذا الشهر"
+                ]] as const).map(([id, label]) => (
+                  <button className={draftCashDatePreset === id ? "active" : ""} key={id} onClick={() => selectCashDatePreset(id)}>{label}</button>
+                ))}
+              </div>
+              <div className="orders-date-divider" />
+              <strong className="orders-custom-date-title">تاريخ مخصص:</strong>
+              <div className="orders-custom-date">
+                <label><span>من:</span><input type="date" value={draftCashDateFrom} onChange={(event) => {
+                  const value = event.target.value;
+                  setDraftCashDatePreset("custom");
+                  setDraftCashDateFrom(value);
+                  if (value && draftCashDateTo && value > draftCashDateTo) setDraftCashDateTo(value);
+                }} /></label>
+                <label><span>إلى:</span><input type="date" value={draftCashDateTo} onChange={(event) => {
+                  const value = event.target.value;
+                  setDraftCashDatePreset("custom");
+                  setDraftCashDateTo(value);
+                  if (value && draftCashDateFrom && value < draftCashDateFrom) setDraftCashDateFrom(value);
+                }} /></label>
+              </div>
+              <div className="orders-date-actions">
+                <button className="apply" onClick={applyCashDateFilter}>تطبيق</button>
+                <button className="clear" onClick={clearCashDateFilter}>مسح</button>
+              </div>
+            </div>}
+          </div>
+        </div>
+        <div className="cash-treasury-toolbar-actions">
+          <button className="treasury-manage-button" onClick={openTreasuryManager}><Edit3 /> إدارة الخزن</button>
+        </div>
+      </section>}
+      <div className={`cash-hero ${cashTab}`}>
+        <div className="cash-hero-summary">
+          <div className="cash-hero-heading">
+            <span className="cash-hero-icon">{cashTab === "treasury" ? <WalletCards /> : cashTab === "daily" ? <BarChart3 /> : <Clock3 />}</span>
+            <span className="cash-hero-title"><strong>{cashHeroTitle}</strong></span>
+            {cashTab === "shift" && <b className={`cash-hero-status ${activeShift ? "open" : "closed"}`}>{activeShift ? "مفتوحة" : "مغلقة"}</b>}
+          </div>
+          <div className="cash-hero-amount">
+            <div className="cash-hero-balance"><strong>{money(cashHeroAmount)}</strong><span>ج.م</span></div>
+          </div>
+          <div className="cash-hero-stats">{cashHeroStats.map((stat) => <span key={stat.label}><small>{stat.label}</small><b>{stat.value}</b></span>)}</div>
           {cashTab === "daily" && revenueChangePercent !== null && <span className={`revenue-change ${revenueChangePercent >= 0 ? "up" : "down"}`}>{revenueChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {revenueChangePercent >= 0 ? "+" : ""}{revenueChangePercent.toFixed(1)}% مقارنة بأمس ({money(yesterdayRevenue)})</span>}
         </div>
         <div className="cash-hero-actions">
-          {cashTab !== "daily" && <button className="light-button" disabled={!activeShift} onClick={() => setExpense(true)}><Minus /> تسجيل مصروف</button>}
+          {cashTab === "treasury" && <button className="light-button treasury-balance-button" onClick={openTreasuryDeposit}><Plus /> إضافة رصيد</button>}
+          {cashTab === "treasury" && <button className="light-button" onClick={openTreasuryReport}><ReceiptText /> تقرير الخزنة</button>}
+          {cashTab === "treasury" && activeTreasuries.length > 1 && <button className="light-button" onClick={openTreasuryTransfer}><ArrowLeftRight /> تحويل بين الخزن</button>}
+          {cashTab !== "daily" && <button className="light-button" onClick={() => {
+            setExpenseData((current) => ({ ...current, treasuryId: purchasesTreasuryId(state) }));
+            setExpense(true);
+          }}><Minus /> تسجيل مصروف</button>}
           {cashTab === "shift" && (activeShift
-            ? <button className="light-button close-shift-button" onClick={() => { setClosingData({ actualCash: expectedClosingCash, note: "" }); setClosingShift(true); }}><X /> إغلاق الوردية</button>
+            ? <button className="light-button close-shift-button" onClick={() => { setClosingData({ actualCash: 0, note: "" }); setClosingShift(true); }}><X /> إغلاق الوردية</button>
             : <button className="light-button open-shift-button" onClick={() => setOpeningShift(true)}><Plus /> فتح وردية</button>)}
         </div>
       </div>
-      {cashTab !== "shift" && <div className="cash-date-filter">
-        <div><CalendarRange /><span><strong>{cashTab === "daily" ? "فترة تقرير الإيراد" : "فلترة الخزنة بالتاريخ"}</strong><small>{cashTab === "daily" ? "اختر فترة لتجميع كل وردياتها وحركاتها" : "اعرض الأرصدة والحركات خلال فترة محددة"}</small></span></div>
-        <div className="orders-date-filter-wrap cash-date-range-wrap">
-          <button className={`orders-date-filter-button ${cashDatePreset !== "all" ? "active" : ""}`} onClick={toggleCashDateFilter}>
-            <CalendarRange />
-            <span><strong>{cashDateLabel}</strong></span>
-            <ChevronDown className={cashDateFilterOpen ? "open" : ""} />
-          </button>
-          {cashDateFilterOpen && <div className="orders-date-popover cash-date-popover">
-            <div className="orders-date-quick">
-              {([
-                ["today", "اليوم"],
-                ["yesterday", "أمس"],
-                ["last7", "آخر 7 أيام"],
-                ["month", "هذا الشهر"]
-              ] as const).map(([id, label]) => (
-                <button className={draftCashDatePreset === id ? "active" : ""} key={id} onClick={() => selectCashDatePreset(id)}>{label}</button>
-              ))}
-            </div>
-            <div className="orders-date-divider" />
-            <strong className="orders-custom-date-title">تاريخ مخصص:</strong>
-            <div className="orders-custom-date">
-              <label><span>من:</span><input type="date" value={draftCashDateFrom} onChange={(event) => {
-                const value = event.target.value;
-                setDraftCashDatePreset("custom");
-                setDraftCashDateFrom(value);
-                if (value && draftCashDateTo && value > draftCashDateTo) setDraftCashDateTo(value);
-              }} /></label>
-              <label><span>إلى:</span><input type="date" value={draftCashDateTo} onChange={(event) => {
-                const value = event.target.value;
-                setDraftCashDatePreset("custom");
-                setDraftCashDateTo(value);
-                if (value && draftCashDateFrom && value < draftCashDateFrom) setDraftCashDateFrom(value);
-              }} /></label>
-            </div>
-            <div className="orders-date-actions">
-              <button className="apply" onClick={applyCashDateFilter}>تطبيق</button>
-              <button className="clear" onClick={clearCashDateFilter}>مسح</button>
-            </div>
-          </div>}
-        </div>
-      </div>}
-      {cashTab === "shift" && viewedShift && <div className="cash-shifts-summary">
-        <article>
-          <span className={`cash-shift-status ${viewedShift.closedAt ? "closed" : "open"}`}>{viewedShift.closedAt ? "مغلقة" : "مفتوحة"}</span>
-          <span><small>وقت الفتح</small><b>{shortDate(viewedShift.openedAt)}</b></span>
-          <span><small>رصيد البداية</small><b>{money(viewedShift.openingBalance)}</b></span>
-          <span><small>{viewedShift.closedAt ? "وقت الإغلاق" : "النقدي المتوقع"}</small><b>{viewedShift.closedAt ? shortDate(viewedShift.closedAt) : money(expectedClosingCash)}</b></span>
-          <span><small>فرق الجرد</small><b className={(viewedShift.difference ?? 0) === 0 ? "matched" : "different"}>{viewedShift.closedAt ? money(viewedShift.difference ?? 0) : "—"}</b></span>
-        </article>
-      </div>}
       {cashTab === "shift" && !viewedShift && <div className="shift-empty-state"><Clock3 /><div><strong>لم تبدأ أي وردية بعد</strong><small>افتح أول وردية وحدد الرصيد النقدي الموجود في الدرج.</small></div><button className="primary-button compact" onClick={() => setOpeningShift(true)}><Plus /> فتح وردية</button></div>}
       {cashTab !== "daily" && <><div className="cash-method-cards">
-        <CashMethodCard icon={<Banknote />} label="الخزنة النقدية" hint={cashTab === "shift" ? `رصيد بداية الوردية ${money(displayedOpeningBalance)}` : `رصيد افتتاح الفترة ${money(selectedOpeningBalance)}`} summary={cashSummary} tone="cash" />
-        <CashMethodCard icon={<CreditCard />} label="إنستاباي" hint={cashTab === "shift" ? "تحويلات إنستاباي داخل الوردية" : "التحويلات البنكية في الفترة المحددة"} summary={instapaySummary} tone="instapay" />
-        <CashMethodCard icon={<Phone />} label="فودافون كاش" hint={cashTab === "shift" ? "تحويلات المحفظة داخل الوردية" : "تحويلات المحفظة في الفترة المحددة"} summary={vodafoneSummary} tone="vodafone" />
+        <CashMethodCard icon={<Banknote />} label="الخزنة النقدية" summary={cashSummary} tone="cash" />
+        <CashMethodCard icon={<CreditCard />} label="إنستاباي" summary={instapaySummary} tone="instapay" />
+        <CashMethodCard icon={<Phone />} label="فودافون كاش" summary={vodafoneSummary} tone="vodafone" />
       </div>
       <div className="panel cash-transactions-panel">
         <div className="panel-title cash-transactions-title">
-          <div><WalletCards /><span><strong>{cashTab === "shift" ? "حركات الوردية" : `سجل حركات ${cashDateLabel}`}</strong><small>{cashTab === "shift" ? "كل الأموال الداخلة والخارجة منذ فتح الوردية" : "تفاصيل الأموال الداخلة والخارجة موزعة حسب وسيلة الدفع"}</small></span></div>
-          <div className="transaction-method-filter">
-            <button className={transactionMethodFilter === "all" ? "active" : ""} onClick={() => setTransactionMethodFilter("all")}>الكل</button>
-            <button className={transactionMethodFilter === "cash" ? "active" : ""} onClick={() => setTransactionMethodFilter("cash")}><Banknote /> نقدي</button>
-            <button className={transactionMethodFilter === "instapay" ? "active" : ""} onClick={() => setTransactionMethodFilter("instapay")}><CreditCard /> إنستاباي</button>
-            <button className={transactionMethodFilter === "vodafone" ? "active" : ""} onClick={() => setTransactionMethodFilter("vodafone")}><Phone /> فودافون كاش</button>
+          <div><WalletCards /><span><strong>{cashTab === "shift" ? "حركات الوردية" : `سجل حركات ${cashDateLabel}`}</strong></span></div>
+          <div className="cash-transactions-filters">
+            <div className="orders-date-filter-wrap transaction-direction-filter-wrap">
+              <button
+                className={`orders-date-filter-button transaction-direction-filter-button ${transactionDirectionFilter !== "all" ? "active" : ""}`}
+                onClick={toggleDirectionFilter}
+              >
+                <strong>{transactionDirectionFilter === "all" ? "كل الحركات" : transactionDirectionFilter === "in" ? "الوارد فقط (+)" : "المنصرف فقط (-)"}</strong>
+                <ChevronDown className={directionFilterOpen ? "open" : ""} />
+              </button>
+              {directionFilterOpen && (
+                <div className="orders-date-popover transaction-direction-popover">
+                  <div className="treasury-popover-list">
+                    <button
+                      className={`treasury-popover-item ${transactionDirectionFilter === "all" ? "active" : ""}`}
+                      onClick={() => { setTransactionDirectionFilter("all"); setDirectionFilterOpen(false); }}
+                    >
+                      <strong>كل الحركات</strong>
+                    </button>
+                    <button
+                      className={`treasury-popover-item ${transactionDirectionFilter === "in" ? "active" : ""}`}
+                      onClick={() => { setTransactionDirectionFilter("in"); setDirectionFilterOpen(false); }}
+                    >
+                      <strong>الوارد فقط</strong>
+                    </button>
+                    <button
+                      className={`treasury-popover-item ${transactionDirectionFilter === "out" ? "active" : ""}`}
+                      onClick={() => { setTransactionDirectionFilter("out"); setDirectionFilterOpen(false); }}
+                    >
+                      <strong>المنصرف فقط</strong>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="transaction-method-filter">
+              <button className={transactionMethodFilter === "all" ? "active" : ""} onClick={() => setTransactionMethodFilter("all")}>الكل</button>
+              <button className={transactionMethodFilter === "cash" ? "active" : ""} onClick={() => setTransactionMethodFilter("cash")}><Banknote /> نقدي</button>
+              <button className={transactionMethodFilter === "instapay" ? "active" : ""} onClick={() => setTransactionMethodFilter("instapay")}><CreditCard /> إنستاباي</button>
+              <button className={transactionMethodFilter === "vodafone" ? "active" : ""} onClick={() => setTransactionMethodFilter("vodafone")}><Phone /> فودافون كاش</button>
+            </div>
           </div>
-          <b>{filteredTransactions.length}{transactionMethodFilter !== "all" ? ` من ${displayedTransactions.length}` : ""} حركة</b>
+          <b>{filteredTransactions.length}{transactionMethodFilter !== "all" || transactionDirectionFilter !== "all" ? ` من ${displayedTransactions.length}` : ""} حركة</b>
         </div>
         <div className="cash-transactions-scroll">
-          {!!filteredTransactions.length && <div className="cash-transactions-head"><span>الوقت</span><span>البيان والمرجع</span><span>النوع</span><span>الوسيلة</span><span>الاتجاه</span><span>المبلغ</span><span>الرصيد بعد الحركة</span></div>}
+          {!!filteredTransactions.length && <div className="cash-transactions-head"><span>الوقت</span><span>البيان ورقم الطلب</span><span>الخزنة</span><span>النوع</span><span>الوسيلة</span><span>الاتجاه</span><span>المبلغ</span><span>الرصيد بعد الحركة</span></div>}
           <div className="cash-transactions-table">
-          {filteredTransactions.map((transaction) => (
-            <div className="cash-transaction-row" key={transaction.id}>
+          {filteredTransactions.map((transaction) => {
+            const transactionOrderNumbers = orderNumbersForTransaction(transaction);
+            return <div className="cash-transaction-row" key={transaction.id}>
               <span className="cash-transaction-date">{shortDate(transaction.createdAt)}</span>
-              <span className="cash-transaction-description"><strong>{transaction.description}</strong><small>{transaction.orderId && orderNumberById.has(transaction.orderId) ? `مرجع الطلب #${orderNumberById.get(transaction.orderId)}` : "حركة مسجلة بالنظام"}</small></span>
+              <span className="cash-transaction-description"><strong>{transaction.description}</strong>{transactionOrderNumbers.length > 0 && <small className="cash-transaction-order-number">{transactionOrderNumbers.length === 1 ? "رقم الطلب" : "أرقام الطلبات"} {transactionOrderNumbers.map((number) => `#${number}`).join("، ")}</small>}</span>
+              <span className="cash-transaction-treasury"><WalletCards /><b>{treasuryName(state, transactionTreasuryId(state, transaction))}</b></span>
               <span><b className="transaction-type">{transactionTypeLabels[transaction.type]}</b></span>
               <span><b className={`transaction-method ${transaction.method}`}>{transaction.method === "cash" ? <Banknote /> : transaction.method === "instapay" ? <CreditCard /> : <Phone />}{paymentLabels[transaction.method as PaymentMethod] ?? "نقدي"}</b></span>
               <span><b className={`transaction-direction ${transaction.direction}`}>{transaction.direction === "in" ? "وارد" : "صادر"}</b></span>
               <b className={`transaction-amount ${transaction.direction}`}>{transaction.direction === "in" ? "+" : "-"} {money(transaction.amount)}</b>
               <b className="transaction-balance">{money(balanceAfter.get(transaction.id) ?? 0)}</b>
-            </div>
-          ))}
-          {!filteredTransactions.length && <Empty icon={<WalletCards />} title={transactionMethodFilter !== "all" ? "لا توجد حركات بطريقة الدفع المحددة" : cashTab === "shift" ? "لا توجد حركات في الوردية" : "لا توجد حركات في هذه الفترة"} text={transactionMethodFilter !== "all" ? "اختر طريقة دفع أخرى أو اعرض كل الحركات" : cashTab === "shift" ? "الحركات الجديدة ستظهر هنا بعد بدء البيع أو تسجيل مصروف" : "غيّر الفترة أو ابدأ تسجيل حركات جديدة"} />}
+            </div>;
+          })}
+          {!filteredTransactions.length && <Empty icon={<WalletCards />} title={transactionMethodFilter !== "all" || transactionDirectionFilter !== "all" ? "لا توجد حركات تطابق الفلاتر المحددة" : cashTab === "shift" ? "لا توجد حركات في الوردية" : "لا توجد حركات في هذه الفترة"} text={transactionMethodFilter !== "all" || transactionDirectionFilter !== "all" ? "اختر طريقة دفع أخرى أو اتجاه آخر لعرض الحركات" : cashTab === "shift" ? "الحركات الجديدة ستظهر هنا بعد بدء البيع أو تسجيل مصروف" : "غيّر الفترة أو ابدأ تسجيل حركات جديدة"} />}
           </div>
         </div>
       </div></>}
@@ -2524,15 +2965,124 @@ export function CashView({ state, update, notify }: ViewProps) {
         revenueChange={revenueChangePercent}
         yesterdayRevenue={yesterdayRevenue}
       />}
+      {treasuryManagerOpen && <Modal title="إدارة الخزن المتعددة" onClose={() => setTreasuryManagerOpen(false)} size="wide">
+        <div className="treasury-manager">
+          <div className="treasury-defaults">
+            <div><WalletCards /><span><strong>توجيه الحركات تلقائيًا</strong><small>حدد الخزنة التي تستقبل المبيعات والخزنة التي تُخصم منها المشتريات والمصروفات.</small></span></div>
+            <label><span>خزنة المبيعات والتحصيلات</span><select value={currentSalesTreasuryId} onChange={(event) => setDefaultSalesTreasury(event.target.value)}>{activeTreasuries.map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}</option>)}</select></label>
+            <label><span>خزنة المشتريات والمصروفات</span><select value={currentPurchasesTreasuryId} onChange={(event) => setDefaultPurchasesTreasury(event.target.value)}>{activeTreasuries.map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}</option>)}</select></label>
+          </div>
+          <div className="treasury-create-row">
+            <label><span>اسم الخزنة الجديدة</span><input autoFocus value={newTreasuryName} onChange={(event) => setNewTreasuryName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") addTreasury(); }} placeholder="مثال: خزنة الفرع أو خزنة المصروفات" /></label>
+            <button className="primary-button compact" onClick={addTreasury}><Plus /> إضافة خزنة</button>
+          </div>
+          <div className="treasury-manager-list">
+            {state.treasuries.map((treasury) => {
+              const isDefault = treasury.id === currentSalesTreasuryId || treasury.id === currentPurchasesTreasuryId;
+              return <article className={treasury.active ? "" : "inactive"} key={treasury.id}>
+                <span className="treasury-manager-icon"><WalletCards /></span>
+                <label><span>اسم الخزنة</span><input disabled={!treasury.active} value={treasuryNameDrafts[treasury.id] ?? treasury.name} onChange={(event) => setTreasuryNameDrafts((current) => ({ ...current, [treasury.id]: event.target.value }))} /></label>
+                <div className="treasury-manager-role">
+                  {treasury.id === currentSalesTreasuryId && <b className="sales">افتراضية للمبيعات</b>}
+                  {treasury.id === currentPurchasesTreasuryId && <b className="purchases">افتراضية للمشتريات</b>}
+                  {!isDefault && treasury.active && <small>خزنة إضافية</small>}
+                  {!treasury.active && <b>معطلة</b>}
+                </div>
+                <strong className="treasury-manager-balance">{money(periodTreasuryBalance(treasury.id))}<small>الرصيد حتى {cashDateLabel}</small></strong>
+                <div className="treasury-manager-actions">
+                  {treasury.active && <button title="حفظ الاسم" onClick={() => saveTreasuryName(treasury.id)}><Save /></button>}
+                  {treasury.active && !isDefault && <button className="danger" title="تعطيل الخزنة" onClick={() => deactivateTreasury(treasury.id)}><Trash2 /></button>}
+                  {!treasury.active && <button title="إعادة تفعيل الخزنة" onClick={() => reactivateTreasury(treasury.id)}><Check /></button>}
+                </div>
+              </article>;
+            })}
+          </div>
+          <div className="treasury-manager-note"><Info /> تغيير الخزنة الافتراضية يؤثر على الحركات الجديدة فقط، وتظل كل الحركات القديمة مرتبطة بخزنها الأصلية.</div>
+        </div>
+      </Modal>}
       {expense && <Modal title="تسجيل مصروف" onClose={() => setExpense(false)}><div className="form-stack cash-expense-form">
         <fieldset className="settlement-payment-methods"><legend>الدفع من</legend>
           <button type="button" className={expenseData.method === "cash" ? "active" : ""} onClick={() => setExpenseData({ ...expenseData, method: "cash" })}><Banknote /><span><strong>نقدي</strong></span><i>{expenseData.method === "cash" && <Check />}</i></button>
           <button type="button" className={expenseData.method === "instapay" ? "active" : ""} onClick={() => setExpenseData({ ...expenseData, method: "instapay" })}><CreditCard /><span><strong>إنستاباي</strong></span><i>{expenseData.method === "instapay" && <Check />}</i></button>
           <button type="button" className={expenseData.method === "vodafone" ? "active" : ""} onClick={() => setExpenseData({ ...expenseData, method: "vodafone" })}><Phone /><span><strong>فودافون كاش</strong></span><i>{expenseData.method === "vodafone" && <Check />}</i></button>
         </fieldset>
+        <label>الصرف من الخزنة<select value={expenseData.treasuryId} onChange={(event) => setExpenseData({ ...expenseData, treasuryId: event.target.value })}>{activeTreasuries.map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}</option>)}</select></label>
         <label>قيمة المصروف<input type="number" min="0" value={expenseData.amount || ""} onChange={(e) => setExpenseData({ ...expenseData, amount: Number(e.target.value) })} /></label>
         <label>سبب المصروف<input autoFocus value={expenseData.description} onChange={(e) => setExpenseData({ ...expenseData, description: e.target.value })} placeholder="مثال: شراء تغليف" /></label>
         <button className="primary-button" onClick={addExpense}>تسجيل المصروف</button>
+      </div></Modal>}
+      {treasuryDepositOpen && <Modal title="إضافة رصيد إلى خزنة" onClose={() => setTreasuryDepositOpen(false)}><div className="treasury-deposit-form">
+        <div className="treasury-deposit-hero"><span><Plus /></span><div><strong>تسجيل أموال جديدة بالخزنة</strong><small>استخدمها لتسجيل رأس مال، عهدة أو أي مبلغ تمت إضافته فعليًا.</small></div></div>
+        <label>الخزنة<select value={treasuryDeposit.treasuryId} onChange={(event) => setTreasuryDeposit({ ...treasuryDeposit, treasuryId: event.target.value })}>{activeTreasuries.map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}</option>)}</select></label>
+        <fieldset className="settlement-payment-methods"><legend>وسيلة إضافة الرصيد</legend>
+          <button type="button" className={treasuryDeposit.method === "cash" ? "active" : ""} onClick={() => setTreasuryDeposit({ ...treasuryDeposit, method: "cash" })}><Banknote /><span><strong>نقدي</strong></span><i>{treasuryDeposit.method === "cash" && <Check />}</i></button>
+          <button type="button" className={treasuryDeposit.method === "instapay" ? "active" : ""} onClick={() => setTreasuryDeposit({ ...treasuryDeposit, method: "instapay" })}><CreditCard /><span><strong>إنستاباي</strong></span><i>{treasuryDeposit.method === "instapay" && <Check />}</i></button>
+          <button type="button" className={treasuryDeposit.method === "vodafone" ? "active" : ""} onClick={() => setTreasuryDeposit({ ...treasuryDeposit, method: "vodafone" })}><Phone /><span><strong>فودافون كاش</strong></span><i>{treasuryDeposit.method === "vodafone" && <Check />}</i></button>
+        </fieldset>
+        <label>المبلغ المضاف<input autoFocus type="number" min="0" value={treasuryDeposit.amount || ""} onChange={(event) => setTreasuryDeposit({ ...treasuryDeposit, amount: Number(event.target.value) })} placeholder="مثال: 5000" /></label>
+        <label>سبب الإضافة أو المرجع<input value={treasuryDeposit.note} onChange={(event) => setTreasuryDeposit({ ...treasuryDeposit, note: event.target.value })} placeholder="مثال: رصيد افتتاحي لخزنة المشتريات" /></label>
+        <div className="treasury-transfer-note"><Info /> ستظهر الإضافة كحركة إيداع في تقرير الخزنة، ويمكن متابعة ما صُرف منها والرصيد المتبقي.</div>
+        <button className="primary-button" onClick={submitTreasuryDeposit}><Plus /> إضافة الرصيد الآن</button>
+      </div></Modal>}
+      {treasuryReportOpen && <Modal title={`تقرير ${reportTreasury?.name ?? "الخزنة"}`} onClose={() => setTreasuryReportOpen(false)} size="wide"><div className="treasury-report">
+        <div className="treasury-report-toolbar">
+          <div><ReceiptText /><span><strong>كشف حركة الخزنة</strong><small>{cashDateLabel} · يعرض الرصيد والحركات المسجلة بالتفصيل</small></span></div>
+          <label><span>الخزنة</span><select value={resolvedReportTreasuryId} onChange={(event) => setReportTreasuryId(event.target.value)}>{state.treasuries.map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}{treasury.active ? "" : " (معطلة)"}</option>)}</select></label>
+        </div>
+        <div className="treasury-report-summary">
+          <article><small>الرصيد قبل الفترة</small><strong>{money(reportOpeningBalance)}</strong><span>الموجود قبل {cashDateLabel}</span></article>
+          <article className="incoming"><small>إجمالي الأموال المضافة</small><strong>+ {money(reportIncoming)}</strong><span>{reportPeriodTransactions.filter((transaction) => transaction.direction === "in").length} حركة واردة</span></article>
+          <article className="outgoing"><small>إجمالي المنصرف</small><strong>- {money(reportOutgoing)}</strong><span>{reportPeriodTransactions.filter((transaction) => transaction.direction === "out").length} حركة صادرة</span></article>
+          <article className="closing"><small>الرصيد المتبقي</small><strong>{money(reportClosingBalance)}</strong><span>حتى نهاية {cashDateLabel}</span></article>
+        </div>
+        <div className="treasury-report-breakdown">
+          <span><small>إضافات وتحويلات واردة</small><b>{money(reportDeposits)}</b></span>
+          <span><small>مبيعات وتحصيلات</small><b>{money(reportSalesAndCollections)}</b></span>
+          <span><small>مشتريات ومصروفات</small><b className="out">{money(reportExpenses)}</b></span>
+          <span><small>مسحوبات وتحويلات صادرة</small><b className="out">{money(reportWithdrawals)}</b></span>
+        </div>
+        <div className="treasury-report-methods">
+          <span><Banknote /><small>نقدي</small><b>{money(reportMethodBalance("cash"))}</b></span>
+          <span><CreditCard /><small>إنستاباي</small><b>{money(reportMethodBalance("instapay"))}</b></span>
+          <span><Phone /><small>فودافون كاش</small><b>{money(reportMethodBalance("vodafone"))}</b></span>
+        </div>
+        <div className="treasury-report-ledger">
+          <div className="treasury-report-head"><span>التاريخ</span><span>البيان</span><span>النوع</span><span>الوسيلة</span><span>وارد</span><span>صادر</span><span>الرصيد</span></div>
+          <div className="treasury-report-rows">
+            {reportRows.map(({ transaction, balance }) => <div className="treasury-report-row" key={transaction.id}>
+              <span>{shortDate(transaction.createdAt)}</span>
+              <span><strong>{transaction.description}</strong><small>{transaction.orderId && orderNumberById.has(transaction.orderId) ? `طلب #${orderNumberById.get(transaction.orderId)}` : "حركة خزنة"}</small></span>
+              <b>{transactionTypeLabels[transaction.type]}</b>
+              <b>{paymentLabels[transaction.method as PaymentMethod] ?? "نقدي"}</b>
+              <strong className="in">{transaction.direction === "in" ? money(transaction.amount) : "—"}</strong>
+              <strong className="out">{transaction.direction === "out" ? money(transaction.amount) : "—"}</strong>
+              <strong className={balance < 0 ? "negative" : ""}>{money(balance)}</strong>
+            </div>)}
+            {!reportRows.length && <Empty icon={<ReceiptText />} title="لا توجد حركات في هذه الفترة" text="غيّر فترة التقرير أو أضف رصيدًا للخزنة لتظهر الحركة هنا." />}
+          </div>
+        </div>
+      </div></Modal>}
+      {treasuryTransferOpen && <Modal title="تحويل بين الخزن" onClose={() => setTreasuryTransferOpen(false)}><div className="treasury-transfer-form">
+        <div className="treasury-transfer-route">
+          <label><span>من خزنة</span><select value={treasuryTransfer.fromTreasuryId} onChange={(event) => {
+            const fromTreasuryId = event.target.value;
+            const toTreasuryId = treasuryTransfer.toTreasuryId === fromTreasuryId
+              ? activeTreasuries.find((treasury) => treasury.id !== fromTreasuryId)?.id ?? ""
+              : treasuryTransfer.toTreasuryId;
+            setTreasuryTransfer({ ...treasuryTransfer, fromTreasuryId, toTreasuryId });
+          }}>{activeTreasuries.map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}</option>)}</select></label>
+          <ArrowLeftRight />
+          <label><span>إلى خزنة</span><select value={treasuryTransfer.toTreasuryId} onChange={(event) => setTreasuryTransfer({ ...treasuryTransfer, toTreasuryId: event.target.value })}>{activeTreasuries.filter((treasury) => treasury.id !== treasuryTransfer.fromTreasuryId).map((treasury) => <option value={treasury.id} key={treasury.id}>{treasury.name}</option>)}</select></label>
+        </div>
+        <fieldset className="settlement-payment-methods"><legend>وسيلة التحويل</legend>
+          <button type="button" className={treasuryTransfer.method === "cash" ? "active" : ""} onClick={() => setTreasuryTransfer({ ...treasuryTransfer, method: "cash" })}><Banknote /><span><strong>نقدي</strong></span><i>{treasuryTransfer.method === "cash" && <Check />}</i></button>
+          <button type="button" className={treasuryTransfer.method === "instapay" ? "active" : ""} onClick={() => setTreasuryTransfer({ ...treasuryTransfer, method: "instapay" })}><CreditCard /><span><strong>إنستاباي</strong></span><i>{treasuryTransfer.method === "instapay" && <Check />}</i></button>
+          <button type="button" className={treasuryTransfer.method === "vodafone" ? "active" : ""} onClick={() => setTreasuryTransfer({ ...treasuryTransfer, method: "vodafone" })}><Phone /><span><strong>فودافون كاش</strong></span><i>{treasuryTransfer.method === "vodafone" && <Check />}</i></button>
+        </fieldset>
+        <label>قيمة التحويل<input autoFocus type="number" min="0" value={treasuryTransfer.amount || ""} onChange={(event) => setTreasuryTransfer({ ...treasuryTransfer, amount: Number(event.target.value) })} /></label>
+        <label>ملاحظة اختيارية<input value={treasuryTransfer.note} onChange={(event) => setTreasuryTransfer({ ...treasuryTransfer, note: event.target.value })} placeholder="مثال: تمويل مشتريات اليوم" /></label>
+        <div className="treasury-transfer-note"><Info /> يُسجل النظام حركة سحب من الخزنة الأولى وإيداعًا مساويًا في الخزنة الثانية، لذلك يظل إجمالي أموال المنشأة ثابتًا.</div>
+        <button className="primary-button" onClick={submitTreasuryTransfer}><ArrowLeftRight /> تأكيد التحويل</button>
       </div></Modal>}
       {openingShift && <Modal title="فتح وردية جديدة" onClose={() => setOpeningShift(false)}><div className="shift-operation-modal">
         <div className="shift-operation-hero open"><span><Plus /></span><div><strong>بدء يوم عمل جديد</strong><small>سجّل المبلغ النقدي الموجود فعليًا في درج الكاشير قبل أول عملية بيع.</small></div></div>
@@ -2542,7 +3092,7 @@ export function CashView({ state, update, notify }: ViewProps) {
       </div></Modal>}
       {closingShift && activeShift && <Modal title="إغلاق الوردية" onClose={() => setClosingShift(false)}><div className="shift-operation-modal">
         <div className="shift-operation-hero close"><span><WalletCards /></span><div><strong>جرد وإغلاق الوردية</strong><small>عدّ النقدي الموجود فعليًا في الدرج ثم أدخل قيمته للمقارنة مع رصيد النظام.</small></div></div>
-        <div className="shift-closing-summary"><span><small>رصيد البداية</small><b>{money(activeShift.openingBalance)}</b></span><span><small>النقدي المتوقع</small><b>{money(expectedClosingCash)}</b></span></div>
+        <div className="shift-closing-summary"><span><small>رصيد بداية الوردية</small><b>{money(activeShift.openingBalance)}</b></span></div>
         <label>النقدي الفعلي في الدرج<input autoFocus type="number" min="0" value={closingData.actualCash || ""} onChange={(event) => setClosingData({ ...closingData, actualCash: Number(event.target.value) })} /></label>
         <div className={`shift-difference ${closingData.actualCash - expectedClosingCash === 0 ? "matched" : ""}`}><span>فرق الجرد</span><strong>{money(closingData.actualCash - expectedClosingCash)}</strong></div>
         <label>ملاحظات الإغلاق<textarea value={closingData.note} onChange={(event) => setClosingData({ ...closingData, note: event.target.value })} placeholder="سبب العجز أو الزيادة إن وجد" /></label>
@@ -2552,16 +3102,15 @@ export function CashView({ state, update, notify }: ViewProps) {
   );
 }
 
-function CashMethodCard({ icon, label, hint, summary, tone }: {
+function CashMethodCard({ icon, label, summary, tone }: {
   icon: ReactNode;
   label: string;
-  hint: string;
   summary: { incoming: number; outgoing: number; count: number; balance: number };
   tone: "cash" | "instapay" | "vodafone";
 }) {
   return <article className={`cash-method-card ${tone}`}>
-    <header><span>{icon}</span><div><strong>{label}</strong><small>{hint}</small></div></header>
-    <div className="cash-method-balance"><small>الرصيد الحالي</small><strong>{money(summary.balance)}</strong></div>
+    <header><span>{icon}</span><div><strong>{label}</strong></div></header>
+    <div className="cash-method-balance"><strong>{money(summary.balance)}</strong></div>
     <footer><span><small>وارد</small><b>+ {money(summary.incoming)}</b></span><span><small>صادر</small><b>- {money(summary.outgoing)}</b></span><span><small>الحركات</small><b>{summary.count}</b></span></footer>
   </article>;
 }

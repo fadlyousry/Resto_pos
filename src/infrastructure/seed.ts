@@ -1,4 +1,7 @@
 import type { AppState, MenuSection, Product, ProductCategory } from "../domain/types";
+import {
+  createDefaultTreasuries, DEFAULT_PURCHASES_TREASURY_ID, DEFAULT_SALES_TREASURY_ID
+} from "../shared/treasury";
 
 const initialShiftOpenedAt = new Date().toISOString();
 
@@ -83,7 +86,10 @@ export const initialState: AppState = {
   ],
   stockMovements: [],
   cashTransactions: [],
-  cashShifts: [{ id: "initial-shift", openedAt: initialShiftOpenedAt, openingBalance: 500 }],
+  cashShifts: [{ id: "initial-shift", treasuryId: DEFAULT_SALES_TREASURY_ID, openedAt: initialShiftOpenedAt, openingBalance: 500 }],
+  treasuries: createDefaultTreasuries(),
+  defaultSalesTreasuryId: DEFAULT_SALES_TREASURY_ID,
+  defaultPurchasesTreasuryId: DEFAULT_PURCHASES_TREASURY_ID,
   suppliers: [],
   purchaseInvoices: [],
   shiftOpeningBalance: 500,

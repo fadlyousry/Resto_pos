@@ -2,10 +2,14 @@ import Database from "@tauri-apps/plugin-sql";
 import { initialState } from "./seed";
 import type {
   AppState, CashShift, CashTransaction, Customer, Driver, DriverSettlement, Ingredient,
-  Order, Product, ProductCategory, PurchaseInvoice, RecipeItem, StockMovement, Supplier
+  Order, Product, ProductCategory, PurchaseInvoice, RecipeItem, StockMovement, Supplier, Treasury
 } from "../domain/types";
 import { normalizeAppState, normalizeOrderStage } from "../shared/state";
 import { uid } from "../shared/id";
+import {
+  createDefaultTreasuries, DEFAULT_PURCHASES_TREASURY_ID, DEFAULT_SALES_TREASURY_ID,
+  purchasesTreasuryId, salesTreasuryId, transactionTreasuryId
+} from "../shared/treasury";
 
 const STORAGE_KEY = "beitna-pos-state-v1";
 const STATE_REVISION_KEY = "beitna-pos-state-revision-v1";
@@ -98,7 +102,11 @@ async function initDatabase() {
     "ALTER TABLE orders ADD COLUMN returned_at TEXT",
     "ALTER TABLE orders ADD COLUMN payment_refunded INTEGER DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN delivery_company_id TEXT",
-    "ALTER TABLE orders ADD COLUMN delivery_company TEXT"
+    "ALTER TABLE orders ADD COLUMN delivery_company TEXT",
+    "ALTER TABLE orders ADD COLUMN treasury_id TEXT",
+    "ALTER TABLE cash_transactions ADD COLUMN treasury_id TEXT",
+    "ALTER TABLE cash_shifts ADD COLUMN treasury_id TEXT",
+    "ALTER TABLE purchase_invoices ADD COLUMN treasury_id TEXT"
   ]) {
     try { await database.execute(migration); } catch { /* column already exists */ }
   }
@@ -148,6 +156,16 @@ export async function loadState(): Promise<AppState> {
   const purchaseInvoicesRaw = await db.select<Array<Record<string, unknown>>>("SELECT * FROM purchase_invoices ORDER BY created_at DESC");
   const settings = await db.select<Array<{ key: string; value: string }>>("SELECT key, value FROM app_settings");
   const setting = Object.fromEntries(settings.map((row) => [row.key, row.value]));
+  const treasuries: Treasury[] = setting.treasuries
+    ? JSON.parse(setting.treasuries)
+    : createDefaultTreasuries();
+  const treasuryDefaults = {
+    treasuries,
+    defaultSalesTreasuryId: setting.defaultSalesTreasuryId ?? DEFAULT_SALES_TREASURY_ID,
+    defaultPurchasesTreasuryId: setting.defaultPurchasesTreasuryId ?? DEFAULT_PURCHASES_TREASURY_ID
+  };
+  const resolvedSalesTreasuryId = salesTreasuryId(treasuryDefaults);
+  const resolvedPurchasesTreasuryId = purchasesTreasuryId(treasuryDefaults);
 
   const customers: Customer[] = customersRaw.map((row) => ({
     id: String(row.id), name: String(row.name), phone: String(row.phone),
@@ -176,16 +194,24 @@ export async function loadState(): Promise<AppState> {
     returnedAt: row.returned_at ? String(row.returned_at) : undefined,
     paymentRefunded: Boolean(row.payment_refunded),
     inventoryDeducted: Boolean(row.inventory_deducted),
-    source: (row.source ? String(row.source) : "pos") as Order["source"]
+    source: (row.source ? String(row.source) : "pos") as Order["source"],
+    treasuryId: row.treasury_id ? String(row.treasury_id) : resolvedSalesTreasuryId
   }));
   const cashTransactions: CashTransaction[] = cashRaw.map((row) => ({
     id: String(row.id), type: row.type as CashTransaction["type"],
     method: row.method as CashTransaction["method"], amount: Number(row.amount),
     direction: row.direction as CashTransaction["direction"], description: String(row.description),
-    orderId: row.order_id ? String(row.order_id) : undefined, createdAt: String(row.created_at)
+    orderId: row.order_id ? String(row.order_id) : undefined,
+    treasuryId: row.treasury_id ? String(row.treasury_id) : transactionTreasuryId(treasuryDefaults, {
+      type: row.type as CashTransaction["type"],
+      orderId: row.order_id ? String(row.order_id) : undefined,
+      description: String(row.description)
+    }),
+    createdAt: String(row.created_at)
   }));
   const cashShifts: CashShift[] = shiftsRaw.map((row) => ({
-    id: String(row.id), openedAt: String(row.opened_at), openingBalance: Number(row.opening_balance),
+    id: String(row.id), treasuryId: row.treasury_id ? String(row.treasury_id) : resolvedSalesTreasuryId,
+    openedAt: String(row.opened_at), openingBalance: Number(row.opening_balance),
     closedAt: row.closed_at ? String(row.closed_at) : undefined,
     expectedCash: row.expected_cash == null ? undefined : Number(row.expected_cash),
     actualCash: row.actual_cash == null ? undefined : Number(row.actual_cash),
@@ -236,6 +262,7 @@ export async function loadState(): Promise<AppState> {
     subtotal: Number(row.subtotal), discount: Number(row.discount), total: Number(row.total),
     paymentMethod: row.payment_method as PurchaseInvoice["paymentMethod"],
     paymentStatus: row.payment_status as PurchaseInvoice["paymentStatus"],
+    treasuryId: row.treasury_id ? String(row.treasury_id) : resolvedPurchasesTreasuryId,
     note: row.note ? String(row.note) : undefined, createdAt: String(row.created_at)
   }));
 
@@ -256,9 +283,13 @@ export async function loadState(): Promise<AppState> {
     cashTransactions,
     cashShifts: cashShifts.length ? cashShifts : [{
       id: "legacy-shift",
+      treasuryId: resolvedSalesTreasuryId,
       openedAt: setting.shiftOpenedAt ?? new Date().toISOString(),
       openingBalance: Number(setting.shiftOpeningBalance ?? 500)
     }],
+    treasuries,
+    defaultSalesTreasuryId: resolvedSalesTreasuryId,
+    defaultPurchasesTreasuryId: resolvedPurchasesTreasuryId,
     shiftOpeningBalance: Number(setting.shiftOpeningBalance ?? 500),
     shiftOpenedAt: setting.shiftOpenedAt ?? new Date().toISOString(),
     nextOrderNumber: Number(setting.nextOrderNumber ?? 1001),
@@ -288,6 +319,19 @@ export async function saveState(state: AppState): Promise<string> {
   }
 
   const db = await initDatabase();
+  // Empty operational collections are intentional during a protected data reset.
+  // Clear their persisted rows before the regular upsert pass so old data cannot reappear.
+  for (const [table, isEmpty] of [
+    ["orders", state.orders.length === 0],
+    ["customers", state.customers.length === 0],
+    ["cash_transactions", state.cashTransactions.length === 0],
+    ["cash_shifts", state.cashShifts.length === 0],
+    ["driver_settlements", state.driverSettlements.length === 0],
+    ["purchase_invoices", state.purchaseInvoices.length === 0],
+    ["stock_movements", state.stockMovements.length === 0]
+  ] as const) {
+    if (isEmpty) await db.execute(`DELETE FROM ${table}`);
+  }
   for (const product of state.products) {
     await db.execute(
       `INSERT INTO products (id,name,category,section,unit,price,cost,available,accent,options_json,image_data_url)
@@ -314,10 +358,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const order of state.orders) {
     await db.execute(
-      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,shift_number,shift_id,return_reason,returned_at,payment_refunded)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
-       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,shift_number=$23,shift_id=$24,return_reason=$25,returned_at=$26,payment_refunded=$27`,
-      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.shiftNumber ?? null, order.shiftId ?? null, order.returnReason ?? null, order.returnedAt ?? null, order.paymentRefunded ? 1 : 0]
+      `INSERT INTO orders (id,number,customer_id,customer_name,customer_phone,address,items_json,subtotal,delivery_fee,discount,total,payment_method,payment_status,stage,created_at,scheduled_for,note,driver,driver_id,settlement_id,inventory_deducted,source,shift_number,shift_id,return_reason,returned_at,payment_refunded,treasury_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+       ON CONFLICT(id) DO UPDATE SET customer_name=$4,customer_phone=$5,address=$6,items_json=$7,subtotal=$8,delivery_fee=$9,discount=$10,total=$11,payment_method=$12,payment_status=$13,stage=$14,scheduled_for=$16,note=$17,driver=$18,driver_id=$19,settlement_id=$20,inventory_deducted=$21,source=$22,shift_number=$23,shift_id=$24,return_reason=$25,returned_at=$26,payment_refunded=$27,treasury_id=$28`,
+      [order.id, order.number, order.customerId, order.customerName, order.customerPhone, order.address, JSON.stringify(order.items), order.subtotal, order.deliveryFee, order.discount, order.total, order.paymentMethod, order.paymentStatus, order.stage, order.createdAt, order.scheduledFor ?? null, order.note ?? null, order.driver ?? null, order.driverId ?? null, order.settlementId ?? null, order.inventoryDeducted ? 1 : 0, order.source ?? "pos", order.shiftNumber ?? null, order.shiftId ?? null, order.returnReason ?? null, order.returnedAt ?? null, order.paymentRefunded ? 1 : 0, order.treasuryId ?? state.defaultSalesTreasuryId]
     );
   }
   for (const driver of state.drivers) {
@@ -362,10 +406,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const transaction of state.cashTransactions) {
     await db.execute(
-      `INSERT INTO cash_transactions (id,type,method,amount,direction,description,order_id,created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT(id) DO NOTHING`,
-      [transaction.id, transaction.type, transaction.method, transaction.amount, transaction.direction, transaction.description, transaction.orderId ?? null, transaction.createdAt]
+      `INSERT INTO cash_transactions (id,type,method,amount,direction,description,order_id,created_at,treasury_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT(id) DO UPDATE SET treasury_id=$9`,
+      [transaction.id, transaction.type, transaction.method, transaction.amount, transaction.direction, transaction.description, transaction.orderId ?? null, transaction.createdAt, transactionTreasuryId(state, transaction)]
     );
   }
   for (const supplier of state.suppliers) {
@@ -378,18 +422,18 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const invoice of state.purchaseInvoices) {
     await db.execute(
-      `INSERT INTO purchase_invoices (id,number,supplier_id,supplier_name,items_json,subtotal,discount,total,payment_method,payment_status,note,created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       ON CONFLICT(id) DO NOTHING`,
-      [invoice.id, invoice.number, invoice.supplierId, invoice.supplierName, JSON.stringify(invoice.items), invoice.subtotal, invoice.discount, invoice.total, invoice.paymentMethod, invoice.paymentStatus, invoice.note ?? null, invoice.createdAt]
+      `INSERT INTO purchase_invoices (id,number,supplier_id,supplier_name,items_json,subtotal,discount,total,payment_method,payment_status,note,created_at,treasury_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       ON CONFLICT(id) DO UPDATE SET treasury_id=$13`,
+      [invoice.id, invoice.number, invoice.supplierId, invoice.supplierName, JSON.stringify(invoice.items), invoice.subtotal, invoice.discount, invoice.total, invoice.paymentMethod, invoice.paymentStatus, invoice.note ?? null, invoice.createdAt, invoice.treasuryId ?? state.defaultPurchasesTreasuryId]
     );
   }
   for (const shift of state.cashShifts) {
     await db.execute(
-      `INSERT INTO cash_shifts (id,opened_at,opening_balance,closed_at,expected_cash,actual_cash,difference,note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT(id) DO UPDATE SET closed_at=$4,expected_cash=$5,actual_cash=$6,difference=$7,note=$8`,
-      [shift.id, shift.openedAt, shift.openingBalance, shift.closedAt ?? null, shift.expectedCash ?? null, shift.actualCash ?? null, shift.difference ?? null, shift.note ?? null]
+      `INSERT INTO cash_shifts (id,opened_at,opening_balance,closed_at,expected_cash,actual_cash,difference,note,treasury_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT(id) DO UPDATE SET closed_at=$4,expected_cash=$5,actual_cash=$6,difference=$7,note=$8,treasury_id=$9`,
+      [shift.id, shift.openedAt, shift.openingBalance, shift.closedAt ?? null, shift.expectedCash ?? null, shift.actualCash ?? null, shift.difference ?? null, shift.note ?? null, shift.treasuryId ?? state.defaultSalesTreasuryId]
     );
   }
   for (const [key, value] of Object.entries({
@@ -401,6 +445,9 @@ export async function saveState(state: AppState): Promise<string> {
     menuMeals: JSON.stringify(state.meals),
     appLicense: JSON.stringify(state.license),
     restaurantSettings: JSON.stringify(state.settings),
+    treasuries: JSON.stringify(state.treasuries),
+    defaultSalesTreasuryId: state.defaultSalesTreasuryId,
+    defaultPurchasesTreasuryId: state.defaultPurchasesTreasuryId,
     stateRevision: revision
   })) {
     await db.execute(

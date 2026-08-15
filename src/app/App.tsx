@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Clock3, CookingPot, Moon, PanelRightClose, PanelRightOpen, RefreshCw, Server, Sun } from "lucide-react";
+import { BarChart3, Check, Clock3, CookingPot, Moon, PanelRightClose, PanelRightOpen, RefreshCw, Server, Sun, WalletCards } from "lucide-react";
 import { CashView } from "../features/cash";
 import { ProductCatalogView } from "../features/catalog";
 import { CustomerRecordsView } from "../features/customers";
@@ -30,6 +30,7 @@ export default function App() {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [kitchenScope, setKitchenScope] = useState<"all" | "now" | "scheduled">("all");
   const [kitchenSection, setKitchenSection] = useState<"all" | ProductSection>("all");
+  const [cashTab, setCashTab] = useState<"treasury" | "shift" | "daily">("shift");
   const [kitchenFocusMode, setKitchenFocusMode] = useState(false);
   const [kitchenDarkTheme, setKitchenDarkTheme] = useState(() => localStorage.getItem("resto-kitchen-dark-theme") === "true");
   const [editReturnView, setEditReturnView] = useState<AppView>("orders");
@@ -189,11 +190,16 @@ export default function App() {
       </aside>
 
       <main className="main">
-        <header className={`topbar${view === "kitchen" ? " kitchen-topbar" : ""}`}>
+        <header className={`topbar${view === "kitchen" ? " kitchen-topbar" : ""}${view === "cash" ? " cash-topbar" : ""}`}>
           <div className="topbar-title">
             <h1>{navigationItems.find((item) => item.id === view)?.label}</h1>
             <p>{currentArabicDate()}</p>
           </div>
+          {view === "cash" && <div className="topbar-cash-tabs">
+            <button className={cashTab === "treasury" ? "active" : ""} onClick={() => setCashTab("treasury")}><WalletCards /><strong>الخزنة</strong></button>
+            <button className={cashTab === "shift" ? "active" : ""} onClick={() => setCashTab("shift")}><Clock3 /><strong>الوردية</strong>{state.cashShifts.some((shift) => !shift.closedAt) && <b>مفتوحة</b>}</button>
+            <button className={cashTab === "daily" ? "active" : ""} onClick={() => setCashTab("daily")}><BarChart3 /><strong>الإيراد اليومي</strong></button>
+          </div>}
           {view === "kitchen" && <div className="topbar-kitchen-filters">
             <div className="topbar-filter-group kitchen-scope-filters">
               <button className={kitchenScope === "all" ? "active" : ""} onClick={() => setKitchenScope("all")}>كل الطلبات</button>
@@ -210,7 +216,7 @@ export default function App() {
             {view === "kitchen" && <button className="kitchen-theme-toggle" onClick={toggleKitchenTheme} aria-label={kitchenDarkTheme ? "تفعيل الوضع الفاتح" : "تفعيل الوضع الداكن"} title={kitchenDarkTheme ? "الوضع الفاتح" : "الوضع الداكن"}>
               {kitchenDarkTheme ? <Sun /> : <Moon />}
             </button>}
-            {view !== "kitchen" && pendingCount > 0 && (
+            {view !== "kitchen" && view !== "cash" && pendingCount > 0 && (
               <button className="pending-pill" onClick={() => setView("orders")}>
                 <Clock3 size={17} /> {pendingCount} تحصيل معلق
               </button>
@@ -228,7 +234,7 @@ export default function App() {
           {view === "customers" && <CustomerRecordsView {...viewProps} onEditOrder={editOrderInPos} />}
           {view === "products" && <ProductCatalogView {...viewProps} />}
           {view === "inventory" && <InventoryView {...viewProps} />}
-          {view === "cash" && <CashView {...viewProps} />}
+          {view === "cash" && <CashView {...viewProps} cashTab={cashTab} />}
           {view === "reports" && <ReportsView state={state} />}
           {view === "settings" && <SettingsView {...viewProps} />}
         </section>

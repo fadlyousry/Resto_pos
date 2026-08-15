@@ -51,6 +51,6 @@ export async function saveBackupPreferences(preferences: BackupPreferences) {
   return info;
 }
 
-export async function createStateBackup(state: AppState, reason: "manual" | "startup" | "interval" | "close") {
+export async function createStateBackup(state: AppState, reason: "manual" | "startup" | "interval" | "close" | "reset") {
   return invoke<BackupResult>("create_state_backup", { state, reason });
 }

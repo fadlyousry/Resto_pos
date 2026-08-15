@@ -1,4 +1,8 @@
 import type { AppState, CashShift, Customer, MenuSection, Order, OrderStage } from "../domain/types";
+import {
+  createDefaultTreasuries, DEFAULT_PURCHASES_TREASURY_ID, DEFAULT_SALES_TREASURY_ID,
+  purchasesTreasuryId, salesTreasuryId, transactionTreasuryId
+} from "./treasury";
 
 const isArray = <T,>(value: T[] | undefined): value is T[] => Array.isArray(value);
 
@@ -54,7 +58,8 @@ function cleanOrder(order: Order): Order {
     returnedAt: order.returnedAt,
     paymentRefunded: order.paymentRefunded,
     inventoryDeducted: order.inventoryDeducted,
-    source: order.source
+    source: order.source,
+    treasuryId: order.treasuryId
   };
 }
 
@@ -94,15 +99,30 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     : isArray(fallback.sections) && fallback.sections.length
       ? fallback.sections
       : derivedSections;
-  const cashShifts = isArray(parsed.cashShifts)
+  const treasuries = isArray(parsed.treasuries) && parsed.treasuries.length
+    ? parsed.treasuries
+    : createDefaultTreasuries();
+  const treasuryDefaults = {
+    treasuries,
+    defaultSalesTreasuryId: typeof parsed.defaultSalesTreasuryId === "string"
+      ? parsed.defaultSalesTreasuryId
+      : DEFAULT_SALES_TREASURY_ID,
+    defaultPurchasesTreasuryId: typeof parsed.defaultPurchasesTreasuryId === "string"
+      ? parsed.defaultPurchasesTreasuryId
+      : DEFAULT_PURCHASES_TREASURY_ID
+  };
+  const resolvedSalesTreasuryId = salesTreasuryId(treasuryDefaults);
+  const resolvedPurchasesTreasuryId = purchasesTreasuryId(treasuryDefaults);
+  const cashShifts = (isArray(parsed.cashShifts)
     ? parsed.cashShifts
     : [{
       id: "legacy-shift",
       openedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
       openingBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance
-    }];
+    }]).map((shift) => ({ ...shift, treasuryId: shift.treasuryId ?? resolvedSalesTreasuryId }));
   const orders = attachLegacyOrdersToShifts(
-    isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders,
+    (isArray(parsed.orders) ? parsed.orders.map(cleanOrder) : fallback.orders)
+      .map((order) => ({ ...order, treasuryId: order.treasuryId ?? resolvedSalesTreasuryId })),
     cashShifts
   );
   return {
@@ -117,10 +137,18 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     ingredients: isArray(parsed.ingredients) ? parsed.ingredients : fallback.ingredients,
     recipes: isArray(parsed.recipes) ? parsed.recipes : fallback.recipes,
     stockMovements: isArray(parsed.stockMovements) ? parsed.stockMovements : fallback.stockMovements,
-    cashTransactions: isArray(parsed.cashTransactions) ? parsed.cashTransactions : fallback.cashTransactions,
+    cashTransactions: (isArray(parsed.cashTransactions) ? parsed.cashTransactions : fallback.cashTransactions)
+      .map((transaction) => ({
+        ...transaction,
+        treasuryId: transactionTreasuryId(treasuryDefaults, transaction)
+      })),
     cashShifts,
+    treasuries,
+    defaultSalesTreasuryId: resolvedSalesTreasuryId,
+    defaultPurchasesTreasuryId: resolvedPurchasesTreasuryId,
     suppliers: isArray(parsed.suppliers) ? parsed.suppliers : fallback.suppliers,
-    purchaseInvoices: isArray(parsed.purchaseInvoices) ? parsed.purchaseInvoices : fallback.purchaseInvoices,
+    purchaseInvoices: (isArray(parsed.purchaseInvoices) ? parsed.purchaseInvoices : fallback.purchaseInvoices)
+      .map((invoice) => ({ ...invoice, treasuryId: invoice.treasuryId ?? resolvedPurchasesTreasuryId })),
     shiftOpeningBalance: typeof parsed.shiftOpeningBalance === "number" ? parsed.shiftOpeningBalance : fallback.shiftOpeningBalance,
     shiftOpenedAt: typeof parsed.shiftOpenedAt === "string" ? parsed.shiftOpenedAt : fallback.shiftOpenedAt,
     nextOrderNumber: typeof parsed.nextOrderNumber === "number" ? parsed.nextOrderNumber : fallback.nextOrderNumber,

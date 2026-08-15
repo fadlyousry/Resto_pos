@@ -11,6 +11,7 @@ import type {
 import type { ViewProps } from "../../shared/contracts";
 import { money, qty } from "../../shared/format";
 import { uid } from "../../shared/id";
+import { purchasesTreasuryId } from "../../shared/treasury";
 import { Empty, Modal } from "../../shared/ui";
 
 interface PurchaseCartItem {
@@ -39,6 +40,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
   const [discount, setDiscount] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("paid");
+  const [purchaseTreasuryId, setPurchaseTreasuryId] = useState(() => purchasesTreasuryId(state));
   const [note, setNote] = useState("");
 
   // Filter ingredients
@@ -160,6 +162,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
       total: grandTotal,
       paymentMethod,
       paymentStatus,
+      treasuryId: purchaseTreasuryId,
       note: note.trim() || undefined,
       createdAt
     };
@@ -184,6 +187,7 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
       amount: grandTotal,
       direction: "out",
       description: `فاتورة مشتريات #${invoiceNumber} — ${invoiceSupplierName}`,
+      treasuryId: purchaseTreasuryId,
       createdAt
     } : null;
 
@@ -473,6 +477,16 @@ export function PurchasePosView({ state, update, notify }: ViewProps) {
               </select>
             </label>
           </div>
+
+          <label className="purchase-treasury-field">
+            <span>الدفع من الخزنة</span>
+            <select value={purchaseTreasuryId} onChange={(event) => setPurchaseTreasuryId(event.target.value)}>
+              {state.treasuries.filter((treasury) => treasury.active).map((treasury) => (
+                <option value={treasury.id} key={treasury.id}>{treasury.name}</option>
+              ))}
+            </select>
+            <small>{paymentStatus === "paid" ? "سيتم خصم قيمة الفاتورة من الخزنة المحددة" : "لن تُخصم القيمة حتى تسجيل السداد"}</small>
+          </label>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
             <label style={{ fontSize: "10px", display: "flex", flexDirection: "column", gap: "3px" }}>

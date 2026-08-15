@@ -112,6 +112,7 @@ export interface Order {
   paymentRefunded?: boolean;
   inventoryDeducted?: boolean;
   source?: "pos" | "online";
+  treasuryId?: string;
 }
 
 export type LicenseType = "trial" | "subscription" | "lifetime";
@@ -204,11 +205,20 @@ export interface CashTransaction {
   direction: "in" | "out";
   description: string;
   orderId?: string;
+  treasuryId?: string;
+  createdAt: string;
+}
+
+export interface Treasury {
+  id: string;
+  name: string;
+  active: boolean;
   createdAt: string;
 }
 
 export interface CashShift {
   id: string;
+  treasuryId?: string;
   openedAt: string;
   openingBalance: number;
   closedAt?: string;
@@ -246,6 +256,7 @@ export interface PurchaseInvoice {
   total: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  treasuryId?: string;
   note?: string;
   createdAt: string;
 }
@@ -264,6 +275,9 @@ export interface AppState {
   stockMovements: StockMovement[];
   cashTransactions: CashTransaction[];
   cashShifts: CashShift[];
+  treasuries: Treasury[];
+  defaultSalesTreasuryId: string;
+  defaultPurchasesTreasuryId: string;
   suppliers: Supplier[];
   purchaseInvoices: PurchaseInvoice[];
   shiftOpeningBalance: number;

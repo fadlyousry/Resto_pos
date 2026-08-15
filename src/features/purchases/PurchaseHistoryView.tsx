@@ -6,6 +6,7 @@ import {
 import type { PurchaseInvoice } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { dateKey, money, shortDate, todayKey } from "../../shared/format";
+import { treasuryName } from "../../shared/treasury";
 import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
 
 function weekAgoKey() {
@@ -163,7 +164,7 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
             </span>
             <span className="inv-date">{shortDate(inv.createdAt)}</span>
             <span>{inv.items.length} خامات/مكونات</span>
-            <span>{inv.paymentMethod === "cash" ? "نقدي" : inv.paymentMethod === "instapay" ? "إنستاباي" : "فودافون كاش"}</span>
+            <span className="purchase-payment-treasury"><b>{inv.paymentMethod === "cash" ? "نقدي" : inv.paymentMethod === "instapay" ? "إنستاباي" : "فودافون كاش"}</b><small>{treasuryName(state, inv.treasuryId)}</small></span>
             <span className="inv-total">
               <strong>{money(inv.total)} ج.م</strong>
             </span>
@@ -222,6 +223,7 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
                     ? "إنستاباي"
                     : "فودافون كاش"}
                 </strong>
+                <small>{treasuryName(state, viewingInvoice.treasuryId)}</small>
               </div>
               <div>
                 <small>حالة الدفع</small>
