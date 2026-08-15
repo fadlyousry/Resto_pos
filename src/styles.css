@@ -706,12 +706,12 @@ svg { flex: 0 0 auto; }
   color: inherit;
   text-align: right;
 }
-button.orders-row { cursor: pointer; font: inherit; transition: background .16s ease, box-shadow .16s ease; }
-button.orders-row:hover { position: relative; z-index: 1; background: #f7faf8; box-shadow: inset -3px 0 var(--green-700); }
-button.orders-row.stage-preparing { background: #fff8ec; box-shadow: none; }
-button.orders-row.stage-preparing:hover { background: #fff3df; box-shadow: none; }
-button.orders-row.stage-ready { background: #eef8f2; box-shadow: inset -4px 0 #5e9a76; }
-button.orders-row.stage-ready:hover { background: #e4f4ea; box-shadow: inset -5px 0 #43845f; }
+button.orders-row { cursor: pointer; font: inherit; transition: background .16s ease; }
+button.orders-row:hover { position: relative; z-index: 1; background: #f7faf8; }
+button.orders-row.stage-preparing { background: #fff8ec; }
+button.orders-row.stage-preparing:hover { background: #fff3df; }
+button.orders-row.stage-ready { background: #eef8f2; }
+button.orders-row.stage-ready:hover { background: #e4f4ea; }
 button.orders-row.stage-delivered { background: #fff; }
 .orders-row > span { min-width: 0; display: grid; gap: 5px; justify-items: start; }
 .orders-row small { color: var(--muted); font-size: 9px; }
@@ -2611,53 +2611,69 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .treasury-deposit-form > label input:focus,
 .treasury-deposit-form > label select:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px #376b5514; }
 
-.treasury-report { display: grid; gap: 12px; }
-.treasury-report-toolbar { min-height: 63px; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; border: 1px solid #d4e0da; border-radius: 11px; background: #f5f8f6; }
-.treasury-report-toolbar > div { display: flex; align-items: center; gap: 9px; }
-.treasury-report-toolbar > div > svg { width: 34px; height: 34px; padding: 7px; border-radius: 9px; background: var(--green-800); color: #fff; }
+.modal:has(> .modal-body > .treasury-report) {
+  width: min(1080px, 95vw);
+  max-height: 94vh;
+}
+.modal:has(> .modal-body > .treasury-report) > header {
+  padding: 18px 24px;
+}
+.modal:has(> .modal-body > .treasury-report) > header h2 {
+  font-size: 20px;
+  font-weight: 800;
+  color: #17241e;
+}
+.modal:has(> .modal-body > .treasury-report) > .modal-body {
+  padding: 20px 24px;
+}
+
+.treasury-report { display: grid; gap: 14px; }
+.treasury-report-toolbar { min-height: 68px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border: 1px solid #d4e0da; border-radius: 12px; background: #f5f8f6; }
+.treasury-report-toolbar > div { display: flex; align-items: center; gap: 11px; }
+.treasury-report-toolbar > div > svg { width: 38px; height: 38px; padding: 8px; border-radius: 10px; background: var(--green-800); color: #fff; flex-shrink: 0; }
 .treasury-report-toolbar > div > span { display: grid; gap: 3px; }
-.treasury-report-toolbar strong { color: #14281e; font-size: 13px; }
-.treasury-report-toolbar small { color: #607068; font-size: 9px; font-weight: 600; }
-.treasury-report-toolbar label { min-width: 230px; display: grid; gap: 4px; color: #42564c; font-size: 9px; font-weight: 800; }
-.treasury-report-toolbar select { min-height: 36px; padding: 5px 9px; border: 1px solid #bfd0c7; border-radius: 8px; background: #fff; color: #13271d; font: 800 10px Cairo, sans-serif; }
-.treasury-report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
-.treasury-report-summary article { min-height: 92px; display: grid; align-content: center; gap: 5px; padding: 11px 12px; border: 1px solid #dce4df; border-radius: 11px; background: #fff; }
-.treasury-report-summary article.incoming { border-color: #c9e4d4; background: #f1faf5; }
-.treasury-report-summary article.outgoing { border-color: #efd2ce; background: #fff5f3; }
-.treasury-report-summary article.closing { border-color: #b9d4c6; background: var(--green-800); }
-.treasury-report-summary small { color: #617067; font-size: 9px; font-weight: 700; }
-.treasury-report-summary strong { color: #17271f; font-size: 18px; direction: ltr; text-align: right; }
-.treasury-report-summary article.incoming strong { color: #267149; }
-.treasury-report-summary article.outgoing strong { color: #ac4c43; }
-.treasury-report-summary span { color: #7a867f; font-size: 8px; font-weight: 600; }
+.treasury-report-toolbar strong { color: #14281e; font-size: 15px; font-weight: 800; }
+.treasury-report-toolbar small { color: #53645a; font-size: 11.5px; font-weight: 600; }
+.treasury-report-toolbar label { min-width: 250px; display: grid; gap: 5px; color: #324439; font-size: 12px; font-weight: 800; }
+.treasury-report-toolbar select { min-height: 42px; padding: 6px 12px; border: 1px solid #bfd0c7; border-radius: 9px; background: #fff; color: #13271d; font: 700 13px Cairo, sans-serif; }
+.treasury-report-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.treasury-report-summary article { min-height: 100px; display: grid; align-content: center; gap: 6px; padding: 12px 16px; border: 1px solid #dce4df; border-radius: 12px; background: #fff; }
+.treasury-report-summary article.incoming { border-color: #bce1cd; background: #f0faf4; }
+.treasury-report-summary article.outgoing { border-color: #f0d0cb; background: #fff5f3; }
+.treasury-report-summary article.closing { border-color: #173628; background: var(--green-800); }
+.treasury-report-summary small { color: #4e5e54; font-size: 12px; font-weight: 700; }
+.treasury-report-summary strong { color: #17271f; font-size: 22px; font-weight: 800; direction: ltr; text-align: right; }
+.treasury-report-summary article.incoming strong { color: #1d6e41; }
+.treasury-report-summary article.outgoing strong { color: #b24337; }
+.treasury-report-summary span { color: #697870; font-size: 11px; font-weight: 600; }
 .treasury-report-summary article.closing small,
-.treasury-report-summary article.closing span { color: #c5d9cf; }
-.treasury-report-summary article.closing strong { color: #fff; }
-.treasury-report-breakdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.treasury-report-breakdown > span { min-height: 49px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid #e0e6e2; border-radius: 9px; background: #fafcfb; }
-.treasury-report-breakdown small { color: #53635a; font-size: 8px; font-weight: 700; }
-.treasury-report-breakdown b { color: #26704a; font-size: 11px; direction: ltr; }
-.treasury-report-breakdown b.out { color: #a94a42; }
-.treasury-report-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.treasury-report-methods > span { min-height: 42px; display: grid; grid-template-columns: 25px 1fr auto; align-items: center; gap: 7px; padding: 7px 10px; border: 1px solid #d9e1dc; border-radius: 9px; background: #fff; }
-.treasury-report-methods svg { width: 17px; color: #3a7257; }
-.treasury-report-methods small { color: #5c6b63; font-size: 9px; font-weight: 700; }
-.treasury-report-methods b { color: #18291f; font-size: 11px; direction: ltr; }
-.treasury-report-ledger { overflow: hidden; border: 1px solid #d8e0db; border-radius: 11px; background: #fff; }
+.treasury-report-summary article.closing span { color: #d0e4da; font-size: 11.5px; }
+.treasury-report-summary article.closing strong { color: #fff; font-size: 24px; }
+.treasury-report-breakdown { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.treasury-report-breakdown > span { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 1px solid #dfe5e1; border-radius: 10px; background: #fafcfb; }
+.treasury-report-breakdown small { color: #44544b; font-size: 11.5px; font-weight: 700; }
+.treasury-report-breakdown b { color: #1d6e41; font-size: 13.5px; font-weight: 800; direction: ltr; }
+.treasury-report-breakdown b.out { color: #b24337; }
+.treasury-report-methods { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.treasury-report-methods > span { min-height: 48px; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid #d9e1dc; border-radius: 10px; background: #fff; }
+.treasury-report-methods svg { width: 19px; color: #2e6c4e; }
+.treasury-report-methods small { color: #44544a; font-size: 12px; font-weight: 700; }
+.treasury-report-methods b { color: #15271d; font-size: 13.5px; font-weight: 800; direction: ltr; }
+.treasury-report-ledger { overflow: hidden; border: 1px solid #d8e0db; border-radius: 13px; background: #fff; }
 .treasury-report-head,
-.treasury-report-row { min-width: 920px; display: grid; grid-template-columns: 120px minmax(240px, 1fr) 90px 90px 90px 90px 110px; align-items: center; gap: 8px; padding: 0 12px; }
-.treasury-report-head { min-height: 38px; border-bottom: 1px solid #d8e0db; background: #edf3f0; color: #42534a; font-size: 8px; font-weight: 800; }
-.treasury-report-rows { max-height: 310px; overflow: auto; }
-.treasury-report-row { min-height: 59px; border-bottom: 1px solid #edf0ee; color: #334139; font-size: 9px; }
+.treasury-report-row { min-width: 940px; display: grid; grid-template-columns: 140px minmax(240px, 1.4fr) 110px 110px 110px 110px 120px; align-items: center; gap: 10px; padding: 0 16px; }
+.treasury-report-head { min-height: 44px; border-bottom: 1px solid #d8e0db; background: #eef3f0; color: #3d4f45; font-size: 11.5px; font-weight: 800; }
+.treasury-report-rows { max-height: 340px; overflow: auto; }
+.treasury-report-row { min-height: 64px; border-bottom: 1px solid #edf0ee; color: #2b3a32; font-size: 12px; }
 .treasury-report-row:nth-child(even) { background: #fafcfb; }
 .treasury-report-row > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
-.treasury-report-row > span:nth-child(2) strong { overflow: hidden; color: #132019; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.treasury-report-row > span:nth-child(2) small { color: #77837c; font-size: 8px; }
-.treasury-report-row > b { color: #45574d; font-size: 8px; }
-.treasury-report-row > strong { color: #17261e; font-size: 10px; direction: ltr; text-align: right; }
-.treasury-report-row > strong.in { color: #27724b; }
+.treasury-report-row > span:nth-child(2) strong { overflow: hidden; color: #14221a; font-size: 13.5px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.treasury-report-row > span:nth-child(2) small { color: #6b7972; font-size: 11px; font-weight: 600; }
+.treasury-report-row > b { color: #35473d; font-size: 12px; font-weight: 700; }
+.treasury-report-row > strong { color: #17261e; font-size: 13px; font-weight: 700; direction: ltr; text-align: right; }
+.treasury-report-row > strong.in { color: #1e7044; font-size: 13.5px; font-weight: 800; }
 .treasury-report-row > strong.out,
-.treasury-report-row > strong.negative { color: #aa4a42; }
+.treasury-report-row > strong.negative { color: #b44537; font-size: 13.5px; font-weight: 800; }
 
 .purchase-treasury-field { display: grid; gap: 4px; margin-bottom: 8px; padding: 8px 9px; border: 1px solid #bfdae9; border-radius: 8px; background: #f1f8fc; font-size: 10px; font-weight: 800; }
 .purchase-treasury-field > span { color: #1f526d; }
@@ -2837,17 +2853,32 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .recipe-ingredients label > div { display: flex; align-items: center; }
 .recipe-ingredients input { width: 75px; height: 34px; border: 1px solid var(--line); border-radius: 7px 0 0 7px; padding: 6px; outline: 0; }
 .recipe-ingredients em { height: 34px; min-width: 38px; padding: 0 6px; border: 1px solid var(--line); border-left: 0; border-radius: 0 7px 7px 0; background: #f4f4ef; display: grid; place-items: center; color: var(--muted); font-size: 7px; font-style: normal; }
-.stock-movements { padding: 3px 18px 14px; }
-.stock-movements > div:not(.empty-state) { min-height: 61px; display: grid; grid-template-columns: 38px 1fr .4fr .6fr; gap: 10px; align-items: center; border-bottom: 1px solid var(--line); }
-.movement-icon { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 9px; background: #e8f3eb; color: #477b5d; }
-.movement-icon.consume, .movement-icon.waste { background: #fff0e4; color: #b06938; }
-.movement-icon svg { width: 17px; }
-.stock-movements > div > span:nth-child(2) { display: grid; gap: 4px; }
-.stock-movements strong { font-size: 9px; }
-.stock-movements small { color: var(--muted); font-size: 7px; }
-.stock-movements b { font-size: 10px; }
-.purchase-total { padding: 11px; border-radius: 9px; background: #f3f5f1; display: flex; align-items: center; justify-content: space-between; font-size: 9px; }
-.purchase-total strong { color: var(--green-700); font-size: 14px; }
+/* ═══════════ Stock Movements Table ═══════════ */
+.stock-movements-table { overflow-x: auto; padding: 0; background: #fff; }
+.stock-movement-row { min-width: 960px; min-height: 64px; display: grid; grid-template-columns: minmax(180px, 1.3fr) 110px minmax(180px, 1.4fr) 140px 120px 110px 120px; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid #edf1ee; font-size: 12.5px; transition: background .16s ease; }
+.stock-movement-head { min-height: 44px; font-weight: 800; color: #4b5851; font-size: 11px; background: #f3f5f2; border-bottom: 1px solid var(--line); }
+.stock-movement-row:not(.stock-movement-head):hover { background: #fbfdfb; }
+.movement-ingredient-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.movement-type-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; flex-shrink: 0; }
+.movement-type-icon svg { width: 18px; }
+.movement-type-icon.purchase { background: #eaf5ee; color: #2e7d53; }
+.movement-type-icon.consume { background: #fff3e6; color: #c46d29; }
+.movement-type-icon.waste { background: #feebe8; color: #ba4938; }
+.movement-type-icon.adjustment { background: #eaf1f7; color: #3b6d94; }
+.movement-ingredient-name strong { font-size: 13.5px; font-weight: 800; color: #17231e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movement-badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 9px; border-radius: 7px; font-size: 11px; font-style: normal; font-weight: 800; width: fit-content; }
+.movement-badge.purchase { border: 1px solid #bce2cb; background: #eaf7ee; color: #236c46; }
+.movement-badge.consume { border: 1px solid #f6d2b4; background: #fef6ee; color: #af5c1b; }
+.movement-badge.waste { border: 1px solid #f6c0b9; background: #fff1ee; color: #b44534; }
+.movement-badge.adjustment { border: 1px solid #bed6e9; background: #f0f6fb; color: #2d638c; }
+.movement-description { color: #536259; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.movement-date { color: #55645b; font-size: 12px; font-weight: 600; }
+.movement-qty { font-size: 14px; font-weight: 800; direction: ltr; display: inline-flex; align-items: baseline; gap: 3px; }
+.movement-qty.in { color: #236c46; }
+.movement-qty.out { color: #c04938; }
+.movement-qty small { font-size: 11px; font-weight: 700; color: #6f7e75; }
+.movement-unit-cost { color: #33443a; font-size: 13px; font-weight: 700; }
+.movement-total-val strong { color: #164f33; font-size: 14px; font-weight: 800; }
 
 .inventory-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
 .inventory-tabs > button { min-height: 66px; display: flex; align-items: center; gap: 10px; padding: 10px 13px; border: 1px solid #dce2dd; border-radius: 11px; background: #fff; color: #45524b; font-family: inherit; text-align: right; cursor: pointer; transition: .16s ease; }
@@ -2871,7 +2902,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .inventory-stock-panel { overflow: hidden; }
 .inventory-stock-panel .inventory-table { padding: 0; overflow-x: auto; }
 .inventory-stock-panel .inventory-row { min-width: 960px; min-height: 68px; display: grid; grid-template-columns: minmax(180px, 1.4fr) minmax(130px, 1fr) minmax(90px, .75fr) minmax(90px, .75fr) minmax(100px, .85fr) 130px; align-items: center; gap: 14px; padding: 0 18px; border-bottom: 1px solid #e9ece8; background: #fff; color: #17231e; font-size: 13px; transition: .16s ease; }
-.inventory-stock-panel .inventory-row:hover { background: #fbfdfb; box-shadow: inset -3px 0 var(--green-700); }
+.inventory-stock-panel .inventory-row:hover { background: #fbfdfb; }
 .inventory-stock-panel .inventory-row.low { background: #fff8f4; }
 .inventory-stock-panel .inventory-head { min-height: 44px; margin: 0; border-bottom: 1px solid var(--line); background: #f3f5f2; color: #4e5b54; font-size: 11px; font-weight: 800; }
 .inventory-stock-panel .inventory-head .inventory-actions-heading { text-align: center; }
@@ -2899,7 +2930,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .recipe-products > .recipe-product-list { max-height: 500px; padding: 5px 9px 12px; display: grid; gap: 6px; }
 .recipe-products > .recipe-product-list button { min-height: 62px; display: grid; grid-template-columns: 38px 1fr 18px; gap: 9px; border: 1.5px solid #9ca3af; border-radius: 10px; background: #fff; font-family: inherit; cursor: pointer; transition: .15s ease; }
 .recipe-products > .recipe-product-list button:hover { border-color: #111827; background: #f0fdf4; }
-.recipe-products > .recipe-product-list button.active { border-color: #16a34a; background: #f0fdf4; box-shadow: inset -4px 0 #16a34a; }
+.recipe-products > .recipe-product-list button.active { border-color: #16a34a; background: #f0fdf4; }
 .recipe-product-list button > i { width: 38px; height: 38px; display: grid; place-items: center; overflow: hidden; border-radius: 9px; background: #dcfce7; color: #111827; }
 .recipe-product-list button > i img { width: 100%; height: 100%; object-fit: cover; }
 .recipe-product-list button > i svg { width: 18px; }
@@ -2914,7 +2945,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .recipe-cost-banner strong { color: #fef08a; font-size: 18px; font-weight: 900; }
 .recipe-ingredients { gap: 9px; max-height: 480px; }
 .recipe-ingredients label { min-height: 64px; padding: 10px 11px; border: 1.5px solid #9ca3af; border-radius: 10px; background: #fff; transition: .16s ease; }
-.recipe-ingredients label.used { border-color: #16a34a; background: #f0fdf4; box-shadow: inset -4px 0 #16a34a; }
+.recipe-ingredients label.used { border-color: #16a34a; background: #f0fdf4; }
 .recipe-ingredients strong { color: #111827; font-size: 13px; font-weight: 800; }
 .recipe-ingredients small { color: #374151; font-size: 10px; font-weight: 700; line-height: 1.5; }
 .recipe-ingredients input { width: 85px; height: 38px; color: #111827; font-family: inherit; font-size: 13px; font-weight: 800; direction: ltr; border: 1.5px solid #6b7280; border-radius: 7px 0 0 7px; background: #fff; }
@@ -3321,35 +3352,26 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .support-footer-hours svg { color: var(--orange); }
 
 /* ═══════════ Purchase Invoices ═══════════ */
-.purchase-stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
-.purchase-stat { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 12px; background: var(--bg-soft); }
-.purchase-stat svg { color: var(--muted); flex-shrink: 0; }
-.purchase-stat div { display: flex; flex-direction: column; gap: 2px; }
-.purchase-stat small { font-size: 10px; color: var(--muted); }
-.purchase-stat strong { font-size: 15px; color: var(--text); }
-.purchase-stat.total { background: linear-gradient(135deg, #eff6ff, #dbeafe); }
-.purchase-stat.total svg { color: #3b82f6; }
-.purchase-stat.total strong { color: #1d4ed8; }
-.purchase-stat.success { background: linear-gradient(135deg, #ecfdf5, #d1fae5); }
-.purchase-stat.success svg { color: #10b981; }
-.purchase-stat.success strong { color: #047857; }
-.purchase-stat.warning { background: linear-gradient(135deg, #fffbeb, #fef3c7); }
-.purchase-stat.warning svg { color: #f59e0b; }
-.purchase-stat.warning strong { color: #b45309; }
-
-.purchase-invoice-table { padding: 0 16px 16px; }
-.purchase-invoice-row { display: grid; grid-template-columns: 60px 1.5fr 1.3fr 1fr 0.9fr 1fr 0.9fr 90px; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: 11px; }
-.purchase-invoice-head { font-weight: 600; color: var(--muted); font-size: 10px; text-transform: uppercase; background: var(--bg-soft); border-radius: 10px; border-bottom: none; }
-.purchase-invoice-row:not(.purchase-invoice-head):hover { background: var(--bg-soft); }
-.inv-number { font-weight: 700; color: var(--accent); font-size: 12px; }
-.inv-supplier { display: flex; align-items: center; gap: 8px; }
-.inv-supplier svg { color: var(--muted); width: 16px; height: 16px; flex-shrink: 0; }
-.inv-supplier strong { font-weight: 600; }
-.inv-date { color: var(--muted); font-size: 10px; }
-.inv-total strong { color: var(--text); font-size: 12px; }
-.purchase-status { display: inline-block; padding: 3px 10px; border-radius: 8px; font-size: 10px; font-style: normal; font-weight: 600; }
-.purchase-status.paid { background: #d1fae5; color: #047857; }
-.purchase-status.pending { background: #fef3c7; color: #b45309; }
+.purchase-invoices-panel { display: grid; gap: 16px; }
+.purchase-invoices-panel .stat-strip { margin-bottom: 0; }
+.purchase-invoice-table { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; box-shadow: 0 4px 14px #26362e08; }
+.purchase-invoice-row { min-width: 930px; display: grid; grid-template-columns: 80px 1.4fr 1.3fr 1.1fr 1.1fr 1.2fr 1fr 96px; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid #edf1ee; font-size: 12px; transition: background .16s ease; }
+.purchase-invoice-head { min-height: 44px; font-weight: 800; color: #4b5851; font-size: 11px; background: #f3f5f2; border-bottom: 1px solid var(--line); border-radius: 0; }
+.purchase-invoice-row:not(.purchase-invoice-head):hover { background: #fbfdfb; }
+.inv-number { font-weight: 800; color: #214334; font-size: 13px; background: #eaf1ed; padding: 4px 9px; border-radius: 7px; text-align: center; width: fit-content; }
+.inv-supplier { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.inv-supplier > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; background: #f0f4f1; color: var(--green-700); flex-shrink: 0; }
+.inv-supplier > span svg { width: 17px; }
+.inv-supplier strong { font-weight: 800; font-size: 13.5px; color: #17231e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inv-date { color: #515f57; font-size: 12px; font-weight: 600; }
+.inv-items-count { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 7px; background: #f3f6f4; color: #3d5045; font-size: 11.5px; font-weight: 700; width: fit-content; }
+.purchase-payment-treasury { display: grid; gap: 2px; }
+.purchase-payment-treasury b { color: #17231e; font-size: 13px; font-weight: 700; }
+.purchase-payment-treasury small { color: #6f7e75; font-size: 10.5px; font-weight: 600; }
+.inv-total strong { color: #1a5c3b; font-size: 14.5px; font-weight: 800; }
+.purchase-status { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 7px; font-size: 11px; font-style: normal; font-weight: 800; width: fit-content; }
+.purchase-status.paid { border: 1px solid #b7dfc8; background: #eaf6ee; color: #236c46; }
+.purchase-status.pending { border: 1px solid #eed0a5; background: #fef8ee; color: #a1641f; }
 
 /* Invoice Form */
 .purchase-invoice-form { display: flex; flex-direction: column; gap: 0; }

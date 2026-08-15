@@ -7,7 +7,7 @@ import type { PurchaseInvoice } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { dateKey, money, shortDate, todayKey } from "../../shared/format";
 import { treasuryName } from "../../shared/treasury";
-import { Empty, Modal, WorkspaceSectionHeader } from "../../shared/ui";
+import { Empty, MiniStat, Modal } from "../../shared/ui";
 
 function weekAgoKey() {
   const d = new Date(); d.setDate(d.getDate() - 7);
@@ -23,22 +23,11 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
   const [dateScope, setDateScope] = useState<"today" | "week" | "month" | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "pending">("all");
   const [viewingInvoice, setViewingInvoice] = useState<PurchaseInvoice | null>(null);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<PurchaseInvoice | null>(null);
 
   const today = todayKey();
   const weekAgo = weekAgoKey();
   const monthStart = monthStartKey();
-
-  const handleDeleteInvoice = (invoice: PurchaseInvoice) => {
-    if (!window.confirm(`هل أنت تأكد من حذف فاتورة المشتريات #${invoice.number}؟`)) return;
-    update((current) => ({
-      ...current,
-      purchaseInvoices: current.purchaseInvoices.filter((inv) => inv.id !== invoice.id)
-    }));
-    if (viewingInvoice?.id === invoice.id) {
-      setViewingInvoice(null);
-    }
-    notify(`تم حذف فاتورة المشتريات #${invoice.number} بنجاح`);
-  };
 
   const invoices = state.purchaseInvoices.filter((inv) => {
     const dk = dateKey(inv.createdAt);
@@ -66,42 +55,12 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
 
   return (
     <div className="panel purchase-invoices-panel" style={{ background: "transparent", border: 0 }}>
-      {/* Workspace Header */}
-      <WorkspaceSectionHeader
-        title="المشتريات السابقة"
-        subtitle={`عرض وتتبع ${totals.count} فاتورة مشتريات مسجلة`}
-      />
-
       {/* Stats Bar */}
-      <div className="purchase-stats-bar" style={{ background: "#fff", borderRadius: "14px", border: "1px solid var(--line)", marginBottom: "18px" }}>
-        <div className="purchase-stat">
-          <FileText />
-          <div>
-            <small>إجمالي الفواتير</small>
-            <strong>{totals.count} فاتورة</strong>
-          </div>
-        </div>
-        <div className="purchase-stat total">
-          <ShoppingBasket />
-          <div>
-            <small>إجمالي المشتريات</small>
-            <strong>{money(totals.totalAmount)} ج.م</strong>
-          </div>
-        </div>
-        <div className="purchase-stat success">
-          <Boxes />
-          <div>
-            <small>الفواتير المدفوعة</small>
-            <strong>{totals.paidCount} فاتورة</strong>
-          </div>
-        </div>
-        <div className="purchase-stat warning">
-          <AlertTriangle />
-          <div>
-            <small>معلقة / آجل ({totals.pendingCount})</small>
-            <strong>{money(totals.pendingAmount)} ج.م</strong>
-          </div>
-        </div>
+      <div className="stat-strip">
+        <MiniStat icon={<FileText />} label="إجمالي الفواتير" value={`${totals.count} فاتورة`} tone="blue" />
+        <MiniStat icon={<ShoppingBasket />} label="إجمالي المشتريات" value={`${money(totals.totalAmount)} ج.م`} tone="green" />
+        <MiniStat icon={<Boxes />} label="الفواتير المدفوعة" value={`${totals.paidCount} فاتورة`} tone="green" />
+        <MiniStat icon={<AlertTriangle />} label={`معلقة / آجل (${totals.pendingCount})`} value={`${money(totals.pendingAmount)} ج.م`} tone={totals.pendingAmount > 0 ? "orange" : "blue"} />
       </div>
 
       {/* Filters Toolbar */}
@@ -144,7 +103,7 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
       </div>
 
       {/* Invoices List Table */}
-      <div className="purchase-invoice-table" style={{ background: "#fff", border: "1px solid var(--line)", borderRadius: "14px" }}>
+      <div className="purchase-invoice-table">
         <div className="purchase-invoice-row purchase-invoice-head">
           <span>#</span>
           <span>المورد</span>
@@ -153,39 +112,37 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
           <span>طريقة الدفع</span>
           <span>الإجمالي</span>
           <span>حالة الدفع</span>
-          <span style={{ textAlign: "center" }}>التفاصيل والإجراءات</span>
+          <span style={{ textAlign: "center" }}>الإجراءات</span>
         </div>
         {invoices.map((inv) => (
           <div className="purchase-invoice-row" key={inv.id}>
             <span className="inv-number">#{inv.number}</span>
             <span className="inv-supplier">
-              <Truck />
+              <span><Truck /></span>
               <strong>{inv.supplierName}</strong>
             </span>
             <span className="inv-date">{shortDate(inv.createdAt)}</span>
-            <span>{inv.items.length} خامات/مكونات</span>
-            <span className="purchase-payment-treasury"><b>{inv.paymentMethod === "cash" ? "نقدي" : inv.paymentMethod === "instapay" ? "إنستاباي" : "فودافون كاش"}</b><small>{treasuryName(state, inv.treasuryId)}</small></span>
+            <span className="inv-items-count"><Boxes size={13} /> {inv.items.length} خامات</span>
+            <span className="purchase-payment-treasury">
+              <b>{inv.paymentMethod === "cash" ? "نقدي" : inv.paymentMethod === "instapay" ? "إنستاباي" : "فودافون كاش"}</b>
+              <small>{treasuryName(state, inv.treasuryId)}</small>
+            </span>
             <span className="inv-total">
               <strong>{money(inv.total)} ج.م</strong>
             </span>
             <span>
               <em className={`purchase-status ${inv.paymentStatus}`}>
-                {inv.paymentStatus === "paid" ? "مدفوعة" : "معلقة"}
+                {inv.paymentStatus === "paid" ? "مدفوعة" : "معلقة / آجل"}
               </em>
             </span>
-            <span style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
-              <button className="soft-button compact" onClick={() => setViewingInvoice(inv)}>
-                <Eye size={14} /> عرض
+            <div className="product-row-actions" style={{ width: "auto", justifyContent: "center" }}>
+              <button className="product-icon-action edit" type="button" title="عرض تفاصيل الفاتورة" aria-label={`عرض فاتورة #${inv.number}`} onClick={() => setViewingInvoice(inv)}>
+                <Eye />
               </button>
-              <button
-                type="button"
-                title="حذف الفاتورة"
-                style={{ border: 0, background: "#fff1ee", color: "#b66052", padding: "6px 8px", borderRadius: "7px", cursor: "pointer", display: "grid", placeItems: "center" }}
-                onClick={() => handleDeleteInvoice(inv)}
-              >
-                <Trash2 size={14} />
+              <button className="product-icon-action delete" type="button" title="حذف الفاتورة" aria-label={`حذف فاتورة #${inv.number}`} onClick={() => setInvoiceToDelete(inv)}>
+                <Trash2 />
               </button>
-            </span>
+            </div>
           </div>
         ))}
         {!invoices.length && (
@@ -278,17 +235,35 @@ export function PurchaseHistoryView({ state, update, notify }: ViewProps) {
                 <small>ملاحظات:</small> {viewingInvoice.note}
               </div>
             )}
+          </div>
+        </Modal>
+      )}
 
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
-              <button
-                type="button"
-                className="soft-button danger"
-                style={{ color: "#b66052", border: "1px solid #fecaca", background: "#fff1ee", display: "flex", alignItems: "center", gap: "5px" }}
-                onClick={() => handleDeleteInvoice(viewingInvoice)}
-              >
-                <Trash2 size={15} /> حذف هذه الفاتورة
-              </button>
+      {/* MODAL: CONFIRM DELETE INVOICE */}
+      {invoiceToDelete && (
+        <Modal title="تأكيد حذف فاتورة المشتريات" onClose={() => setInvoiceToDelete(null)}>
+          <div className="delete-order-confirm">
+            <span className="delete-order-icon"><Trash2 /></span>
+            <strong>هل تريد حذف فاتورة المشتريات #{invoiceToDelete.number}؟</strong>
+            <p>سيتم حذف الفاتورة نهائيًا من سجل المشتريات.</p>
+            <div>
+              <span>المورد <b>{invoiceToDelete.supplierName}</b></span>
+              <span>تاريخ الفاتورة <b>{shortDate(invoiceToDelete.createdAt)}</b></span>
+              <span>طريقة الدفع <b>{invoiceToDelete.paymentMethod === "cash" ? "نقدي" : invoiceToDelete.paymentMethod === "instapay" ? "إنستاباي" : "فودافون كاش"}</b></span>
+              <span>إجمالي الفاتورة <b>{money(invoiceToDelete.total)} ج.م</b></span>
             </div>
+            <footer>
+              <button type="button" className="soft-button" onClick={() => setInvoiceToDelete(null)}>إلغاء</button>
+              <button type="button" className="delete-order-button" onClick={() => {
+                update((current) => ({
+                  ...current,
+                  purchaseInvoices: current.purchaseInvoices.filter((inv) => inv.id !== invoiceToDelete.id)
+                }));
+                if (viewingInvoice?.id === invoiceToDelete.id) setViewingInvoice(null);
+                setInvoiceToDelete(null);
+                notify(`تم حذف فاتورة المشتريات #${invoiceToDelete.number} بنجاح`);
+              }}>تأكيد الحذف</button>
+            </footer>
           </div>
         </Modal>
       )}

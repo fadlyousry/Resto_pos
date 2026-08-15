@@ -24,6 +24,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
   const [recipeSearch, setRecipeSearch] = useState("");
   const [recipeSection, setRecipeSection] = useState<"all" | "cooked" | "fresh">("all");
   const [movementSearch, setMovementSearch] = useState("");
+  const [movementTypeFilter, setMovementTypeFilter] = useState<"all" | "purchase" | "consume" | "adjustment">("all");
   const [ingredientAttempted, setIngredientAttempted] = useState(false);
   const [selectedProductId, setSelectedProductId] = useState(state.products[0]?.id ?? "");
   const [ingredientForm, setIngredientForm] = useState({ name: "", unit: "كجم", stockQty: 0, minStock: 0, unitCost: 0 });
@@ -48,10 +49,11 @@ export function InventoryView({ state, update, notify }: ViewProps) {
     (recipeSection === "all" || product.section === recipeSection)
     && product.name.includes(recipeSearch.trim())
   );
-  const visibleMovements = state.stockMovements.filter((movement) =>
-    movement.ingredientName.includes(movementSearch.trim())
-    || movement.description.includes(movementSearch.trim())
-  ).slice(0, 50);
+  const visibleMovements = state.stockMovements.filter((movement) => {
+    if (movementTypeFilter !== "all" && movement.type !== movementTypeFilter) return false;
+    if (movementSearch.trim() && !movement.ingredientName.includes(movementSearch.trim()) && !movement.description.includes(movementSearch.trim())) return false;
+    return true;
+  });
   const selectedProduct = state.products.find((product) => product.id === selectedProductId);
   const recipeCost = state.ingredients.reduce((sum, ingredient) => sum + (recipeDraft[ingredient.id] ?? 0) * ingredient.unitCost, 0);
 
@@ -272,18 +274,71 @@ export function InventoryView({ state, update, notify }: ViewProps) {
       )}
 
       {tab === "movements" && (
-        <div className="panel">
-          {inventorySectionHeader("سجل حركات المخزون", `${visibleMovements.length} حركة ظاهرة`, <label className="search-box inventory-header-search"><Search /><input value={movementSearch} onChange={(event) => setMovementSearch(event.target.value)} placeholder="ابحث باسم المكون أو البيان..." /></label>)}
-          <div className="stock-movements">
-            {visibleMovements.map((movement) => (
-              <div key={movement.id}>
-                <span className={`movement-icon ${movement.type}`}><History /></span>
-                <span><strong>{movement.ingredientName}</strong><small>{movement.description} · {shortDate(movement.createdAt)}</small></span>
-                <b>{movement.type === "consume" || movement.type === "waste" ? "-" : "+"}{movement.quantity.toLocaleString("en-US")}</b>
-                <span>{money(movement.quantity * movement.unitCost)}</span>
-              </div>
-            ))}
-            {!visibleMovements.length && <Empty icon={<History />} title="لا توجد حركات مطابقة" text="أول شراء أو طلب سيظهر هنا" />}
+        <div className="panel inventory-stock-panel">
+          {inventorySectionHeader("سجل حركات المخزون", `${visibleMovements.length} حركة ظاهرة من إجمالي ${state.stockMovements.length}`)}
+          <div className="inventory-toolbar">
+            <label className="search-box">
+              <Search />
+              <input
+                value={movementSearch}
+                onChange={(event) => setMovementSearch(event.target.value)}
+                placeholder="ابحث باسم المكون أو البيان..."
+              />
+            </label>
+            <div className="filter-tabs">
+              <button className={movementTypeFilter === "all" ? "active" : ""} onClick={() => setMovementTypeFilter("all")}>الكل</button>
+              <button className={movementTypeFilter === "purchase" ? "active" : ""} onClick={() => setMovementTypeFilter("purchase")}>مشتريات وتوريد</button>
+              <button className={movementTypeFilter === "consume" ? "active" : ""} onClick={() => setMovementTypeFilter("consume")}>استهلاك طلبات</button>
+              <button className={movementTypeFilter === "adjustment" ? "active" : ""} onClick={() => setMovementTypeFilter("adjustment")}>تسويات وأرصدة</button>
+            </div>
+            <span>{visibleMovements.length} حركة</span>
+          </div>
+          <div className="stock-movements-table">
+            <div className="stock-movement-row stock-movement-head">
+              <span>المكون</span>
+              <span>نوع الحركة</span>
+              <span>البيان والتفاصيل</span>
+              <span>التاريخ والوقت</span>
+              <span>كمية الحركة</span>
+              <span>تكلفة الوحدة</span>
+              <span>إجمالي القيمة</span>
+            </div>
+            {visibleMovements.map((movement) => {
+              const isOut = movement.type === "consume" || movement.type === "waste";
+              const targetIngredient = state.ingredients.find((item) => item.id === movement.ingredientId);
+              const unit = targetIngredient?.unit ?? "وحدة";
+              return (
+                <div className="stock-movement-row" key={movement.id}>
+                  <div className="movement-ingredient-name">
+                    <span className={`movement-type-icon ${movement.type}`}>
+                      {movement.type === "purchase" ? <PackagePlus /> : movement.type === "consume" ? <ShoppingBasket /> : movement.type === "waste" ? <AlertTriangle /> : <History />}
+                    </span>
+                    <strong>{movement.ingredientName}</strong>
+                  </div>
+                  <span>
+                    <em className={`movement-badge ${movement.type}`}>
+                      {movement.type === "purchase" ? "شراء وتوريد" : movement.type === "consume" ? "استهلاك طلب" : movement.type === "waste" ? "هالك / تالف" : "تسوية رصيد"}
+                    </em>
+                  </span>
+                  <span className="movement-description" title={movement.description}>
+                    {movement.description || "—"}
+                  </span>
+                  <span className="movement-date">
+                    {shortDate(movement.createdAt)}
+                  </span>
+                  <span className={`movement-qty ${isOut ? "out" : "in"}`}>
+                    {isOut ? "−" : "+"}{movement.quantity.toLocaleString("en-US")} <small>{unit}</small>
+                  </span>
+                  <span className="movement-unit-cost">
+                    {money(movement.unitCost)} ج.م
+                  </span>
+                  <span className="movement-total-val">
+                    <strong>{money(movement.quantity * movement.unitCost)} ج.م</strong>
+                  </span>
+                </div>
+              );
+            })}
+            {!visibleMovements.length && <Empty icon={<History />} title="لا توجد حركات مخزون مطابقة" text="أول حركة شراء أو استهلاك ستظهر هنا فورًا" />}
           </div>
         </div>
       )}
