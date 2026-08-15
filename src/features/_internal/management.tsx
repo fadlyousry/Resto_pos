@@ -183,14 +183,24 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
         <span className="meals-business-hint"><ShoppingBasket /><span><strong>سعر مستقل للوجبة</strong><small>المكونات تُخصم تلقائيًا من المخزون عند البيع</small></span></span>
       </div>
       <div className="meal-management-table">
-        <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span>التعديل</span><span>متاحة</span></div>
+        <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span className="meal-actions-heading">الإجراءات</span></div>
         {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
           <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong><small>{meal.components.length} صنف داخل الوجبة</small></div></div>
           <div className="meal-admin-components">{meal.components.map((component) => <span key={component.productId}><b>{component.quantity}×</b> {component.name}</span>)}</div>
           <span className="meal-standalone-price"><small>منفردة</small><b>{money(mealStandaloneTotal(meal))}</b></span>
           <span className="meal-selling-price"><small>سعر الوجبة</small><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</span>
-          <button className="product-edit-button" onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })) }); setMealsOpen(true); }}><Edit3 /><span>تعديل</span></button>
-          <button className={meal.available ? "product-availability active" : "product-availability"} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}><i /><span>{meal.available ? "متاحة" : "متوقفة"}</span></button>
+          <div className="product-row-actions">
+            <button className="product-icon-action edit" type="button" title="تعديل الوجبة" aria-label={`تعديل وجبة ${meal.name}`} onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })) }); setMealsOpen(true); }}><Edit3 /></button>
+            <button className={meal.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={meal.available ? "إيقاف الوجبة" : "إتاحة الوجبة"} aria-label={meal.available ? `إيقاف وجبة ${meal.name}` : `إتاحة وجبة ${meal.name}`} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}>{meal.available ? <CheckCircle2 /> : <Minus />}</button>
+            <button className="product-icon-action delete" type="button" title="حذف الوجبة" aria-label={`حذف وجبة ${meal.name}`} onClick={() => {
+              if (!window.confirm(`هل أنت متأكد من حذف الوجبة "${meal.name}"؟`)) return;
+              update((current) => ({
+                ...current,
+                meals: current.meals.filter((item) => item.id !== meal.id)
+              }));
+              notify(`تم حذف الوجبة ${meal.name}`);
+            }}><Trash2 /></button>
+          </div>
         </div>)}
         {!visibleMeals.length && <Empty icon={<ShoppingBasket />} title={search ? "لا توجد وجبات مطابقة" : "لا توجد وجبات حتى الآن"} text={search ? "جرّب اسمًا آخر أو ابحث باسم أحد المكونات" : "اضغط إضافة وجبة وابدأ بتكوينها من الأصناف"} />}
       </div>
@@ -593,7 +603,19 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
         </div>;
       })}{!filteredProducts.length && <div className="meal-picker-empty"><Search /><strong>لا توجد أصناف مطابقة</strong><small>غيّر القسم أو التصنيف أو كلمة البحث</small></div>}</div>
       <div className="meal-editor-summary"><span><small>مجموع أسعار الأصناف منفردة</small><b>{money(componentTotal)}</b></span><span><small>سعر الوجبة</small><b>{money(draft.price)}</b></span><span className={componentTotal > draft.price ? "saving" : ""}><small>فرق السعر للعميل</small><b>{componentTotal > draft.price ? `توفير ${money(componentTotal - draft.price)}` : money(draft.price - componentTotal)}</b></span></div>
-      <footer className="meal-editor-actions"><button className="soft-button" onClick={onClose}>إلغاء</button><button className="primary-button" disabled={!draft.name.trim() || draft.price < 0 || !draft.components.length} onClick={save}><Save /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}</button></footer>
+      <footer className="meal-editor-actions">
+        {initialMeal && <button type="button" className="danger-button" style={{ marginInlineEnd: "auto" }} onClick={() => {
+          if (!window.confirm(`هل أنت متأكد من حذف الوجبة "${initialMeal.name}"؟`)) return;
+          update((current) => ({
+            ...current,
+            meals: current.meals.filter((item) => item.id !== initialMeal.id)
+          }));
+          notify(`تم حذف الوجبة ${initialMeal.name}`);
+          onClose();
+        }}><Trash2 /> حذف الوجبة</button>}
+        <button className="soft-button" onClick={onClose}>إلغاء</button>
+        <button className="primary-button" disabled={!draft.name.trim() || draft.price < 0 || !draft.components.length} onClick={save}><Save /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}</button>
+      </footer>
     </div>
   </Modal>;
 }

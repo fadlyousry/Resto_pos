@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeftRight, ArrowUpDown, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
+  ArrowLeftRight, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
   Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
@@ -2402,12 +2402,6 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     })
     : [];
   const displayedTransactions = cashTab === "shift" ? shiftTransactions : selectedTransactions;
-  const displayedIncomingTotal = displayedTransactions
-    .filter((transaction) => transaction.direction === "in")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
-  const displayedOutgoingTotal = displayedTransactions
-    .filter((transaction) => transaction.direction === "out")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
   const filteredTransactions = displayedTransactions.filter((transaction) => {
     const matchesMethod = transactionMethodFilter === "all" || transaction.method === transactionMethodFilter;
     const matchesDirection = transactionDirectionFilter === "all" || transaction.direction === transactionDirectionFilter;
