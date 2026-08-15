@@ -535,7 +535,7 @@ function kitchenReceipt(order: Order, settings: AppState["settings"]): ReceiptDo
 
 function brandBlocks(settings: AppState["settings"]): ReceiptBlock[] {
   return [
-    ...(settings.logoDataUrl ? [imageBlock(settings.logoDataUrl, 70, 70)] : []),
+    ...(settings.logoDataUrl ? [imageBlock(settings.logoDataUrl, 110, 110)] : []),
     text(settings.restaurantName, { align: "center", size: 13, bold: true }),
     ...(settings.subtitle ? [text(settings.subtitle, { align: "center", size: 8.5 })] : []),
     ...(settings.phone ? [text(settings.phone, { align: "center", size: 7, rtl: false })] : []),

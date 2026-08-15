@@ -1403,7 +1403,7 @@ button.orders-row.stage-delivered { background: #fff; }
 .receipt-paper { width: min(100%, 320px); box-sizing: border-box; margin: 0 auto; padding: 14px; color: #111512; background: #fff; border: 1px solid #d8dfdb; border-top: 4px solid #17231e; border-radius: 10px; box-shadow: 0 14px 34px #17231e12; font-variant-numeric: tabular-nums; }
 .receipt-paper > header { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 2px 0 11px; text-align: center; }
 .receipt-paper > header svg { width: 27px; height: 27px; color: #17231e; stroke-width: 1.7; }
-.receipt-logo { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
+.receipt-logo { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; }
 .receipt-paper h2 { margin: 0; font-size: 17px; line-height: 1.2; letter-spacing: -.2px; }
 .receipt-paper header p, .receipt-paper p { margin: 0; font-size: 7px; }
 .receipt-brand-contact { display: flex; justify-content: center; gap: 3px 8px; flex-wrap: wrap; color: #66716b; font-size: 7px; }
