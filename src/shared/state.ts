@@ -67,7 +67,7 @@ function attachLegacyOrdersToShifts(orders: Order[], shifts: CashShift[]) {
   const counters = new Map<string, number>();
   for (const order of orders) {
     if (order.shiftId && order.shiftNumber) {
-      counters.set(order.shiftId, Math.max(counters.get(order.shiftId) ?? 1000, order.shiftNumber));
+      counters.set(order.shiftId, Math.max(counters.get(order.shiftId) ?? 100, order.shiftNumber));
     }
   }
   return [...orders]
@@ -81,7 +81,7 @@ function attachLegacyOrdersToShifts(orders: Order[], shifts: CashShift[]) {
         return createdAt >= openedAt && createdAt <= closedAt;
       });
       if (!shift) return order;
-      const shiftNumber = (counters.get(shift.id) ?? 1000) + 1;
+      const shiftNumber = (counters.get(shift.id) ?? 100) + 1;
       counters.set(shift.id, shiftNumber);
       return { ...order, shiftId: shift.id, shiftNumber };
     })

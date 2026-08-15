@@ -18,6 +18,7 @@ export function InventoryView({ state, update, notify }: ViewProps) {
   const [stockIngredient, setStockIngredient] = useState<Ingredient | null>(null);
   const [addingIngredient, setAddingIngredient] = useState(false);
   const [editingIngredientId, setEditingIngredientId] = useState("");
+  const [ingredientToDelete, setIngredientToDelete] = useState<Ingredient | null>(null);
   const [stockSearch, setStockSearch] = useState("");
   const [stockScope, setStockScope] = useState<"all" | "low">("all");
   const [recipeSearch, setRecipeSearch] = useState("");
@@ -186,9 +187,9 @@ export function InventoryView({ state, update, notify }: ViewProps) {
   return (
     <div className="inventory-page">
       <div className="inventory-tabs">
-        <button className={tab === "stock" ? "active" : ""} onClick={() => setTab("stock")}><Boxes /><span><strong>أرصدة المخزون</strong><small>الكميات وحد الطلب</small></span></button>
-        <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Calculator /><span><strong>الوصفات والتكلفة</strong><small>مكونات وتكلفة الأصناف</small></span></button>
-        <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}><History /><span><strong>حركات المخزون</strong><small>شراء واستهلاك وتسوية</small></span></button>
+        <button className={tab === "stock" ? "active" : ""} onClick={() => setTab("stock")}><Boxes /><span><strong>أرصدة المخزون</strong></span></button>
+        <button className={tab === "recipes" ? "active" : ""} onClick={() => setTab("recipes")}><Calculator /><span><strong>الوصفات والتكلفة</strong></span></button>
+        <button className={tab === "movements" ? "active" : ""} onClick={() => setTab("movements")}><History /><span><strong>حركات المخزون</strong></span></button>
       </div>
 
       {tab === "stock" && (
@@ -200,30 +201,27 @@ export function InventoryView({ state, update, notify }: ViewProps) {
             <span>{visibleIngredients.length} مكون</span>
           </div>
           <div className="inventory-table">
-            <div className="inventory-row inventory-head"><span>المكون</span><span>الرصيد الحالي</span><span>حد الطلب</span><span>تكلفة الوحدة</span><span>قيمة الرصيد</span><span>الإجراءات</span></div>
+            <div className="inventory-row inventory-head"><span>المكون</span><span>الرصيد الحالي</span><span>حد الطلب</span><span>تكلفة الوحدة</span><span>قيمة الرصيد</span><span className="inventory-actions-heading">الإجراءات</span></div>
             {visibleIngredients.map((ingredient) => {
               const percent = Math.min(100, Math.max(4, (ingredient.stockQty / Math.max(ingredient.minStock * 3, 1)) * 100));
               const isLow = ingredient.stockQty <= ingredient.minStock;
               return (
                 <div className={`inventory-row ${isLow ? "low" : ""}`} key={ingredient.id}>
-                  <span className="inventory-name-cell"><i><Scale /></i><span><strong>{ingredient.name}</strong><small>{isLow ? "يحتاج إعادة طلب" : "الرصيد مطمئن"}</small></span></span>
+                  <span className="inventory-name-cell"><i><Scale /></i><span><strong>{ingredient.name}</strong></span></span>
                   <span className="inventory-stock-cell"><b>{qty(ingredient.stockQty)} <small>{ingredient.unit}</small></b><div className="stock-bar"><i style={{ width: `${percent}%` }} /></div></span>
-                  <span>{qty(ingredient.minStock)} {ingredient.unit}</span>
-                  <span>{money(ingredient.unitCost)}</span>
-                  <span><strong>{money(ingredient.stockQty * ingredient.unitCost)}</strong></span>
-                  <span className="inventory-row-actions"><button className="stock-add-button" onClick={() => openAddStockModal(ingredient)}><PackagePlus /> إضافة رصيد</button><button className="stock-edit-button" onClick={() => {
-                    setEditingIngredientId(ingredient.id);
-                    setIngredientAttempted(false);
-                    setIngredientForm({ name: ingredient.name, unit: ingredient.unit, stockQty: ingredient.stockQty, minStock: ingredient.minStock, unitCost: ingredient.unitCost });
-                    setAddingIngredient(true);
-                  }}><Edit3 /></button><button type="button" style={{ border: 0, background: "#fff1ee", color: "#b66052", width: "32px", height: "32px", borderRadius: "8px", display: "grid", placeItems: "center", cursor: "pointer" }} title="حذف المكون" onClick={() => {
-                    if (!window.confirm(`هل أنت تأكد من حذف المكون "${ingredient.name}"؟`)) return;
-                    update((current) => ({
-                      ...current,
-                      ingredients: current.ingredients.filter((item) => item.id !== ingredient.id)
-                    }));
-                    notify(`تم حذف المكون ${ingredient.name}`);
-                  }}><Trash2 size={15} /></button></span>
+                  <span className="inventory-min-stock">{qty(ingredient.minStock)} {ingredient.unit}</span>
+                  <span className="inventory-unit-cost">{money(ingredient.unitCost)}</span>
+                  <span className="inventory-stock-value"><strong>{money(ingredient.stockQty * ingredient.unitCost)}</strong></span>
+                  <div className="product-row-actions">
+                    <button className="product-icon-action edit" type="button" title="تعديل المكون" aria-label={`تعديل مكون ${ingredient.name}`} onClick={() => {
+                      setEditingIngredientId(ingredient.id);
+                      setIngredientAttempted(false);
+                      setIngredientForm({ name: ingredient.name, unit: ingredient.unit, stockQty: ingredient.stockQty, minStock: ingredient.minStock, unitCost: ingredient.unitCost });
+                      setAddingIngredient(true);
+                    }}><Edit3 /></button>
+                    <button className="product-icon-action add-stock active" type="button" title="إضافة رصيد" aria-label={`إضافة رصيد ${ingredient.name}`} onClick={() => openAddStockModal(ingredient)}><PackagePlus /></button>
+                    <button className="product-icon-action delete" type="button" title="حذف المكون" aria-label={`حذف مكون ${ingredient.name}`} onClick={() => setIngredientToDelete(ingredient)}><Trash2 /></button>
+                  </div>
                 </div>
               );
             })}
@@ -464,19 +462,49 @@ export function InventoryView({ state, update, notify }: ViewProps) {
       {addingIngredient && (
         <Modal title={editingIngredientId ? "تعديل المكون" : "إضافة مكون جديد"} onClose={() => { setAddingIngredient(false); setEditingIngredientId(""); setIngredientAttempted(false); }} size="medium">
           <div className="ingredient-editor-modal">
-            <div className="inventory-modal-hero"><span>{editingIngredientId ? <Edit3 /> : <Scale />}</span><div><strong>{editingIngredientId ? "تحديث بيانات المكون" : "بيانات المكون الجديد"}</strong><small>حدد وحدة القياس والتكلفة وحد إعادة الطلب بدقة</small></div></div>
             <div className="ingredient-editor-fields">
               <label className={`full-field ${ingredientAttempted && ingredientForm.name.trim().length < 2 ? "invalid" : ""}`}><span>اسم المكون <em>*</em></span><div><Boxes /><input autoFocus value={ingredientForm.name} onChange={(event) => setIngredientForm({ ...ingredientForm, name: event.target.value })} placeholder="مثال: أرز مصري، زيت، فراخ..." /></div>{ingredientAttempted && ingredientForm.name.trim().length < 2 && <small>اكتب اسم المكون بوضوح</small>}{ingredientAttempted && state.ingredients.some((item) => item.id !== editingIngredientId && item.name.trim() === ingredientForm.name.trim()) && <small>هذا المكون مسجل بالفعل</small>}</label>
-              <label><span>وحدة القياس <em>*</em></span><div><Scale /><input list="ingredient-unit-options" value={ingredientForm.unit} onChange={(event) => setIngredientForm({ ...ingredientForm, unit: event.target.value })} placeholder="اختر أو اكتب الوحدة" /><datalist id="ingredient-unit-options"><option value="كجم" /><option value="جرام" /><option value="لتر" /><option value="مل" /><option value="قطعة" /><option value="عبوة" /><option value="صينية" /></datalist></div><small>الوحدة التي يتم بها الشراء والخصم</small></label>
-              <label><span>تكلفة الوحدة</span><div><Calculator /><input type="number" min="0" step="0.01" value={ingredientForm.unitCost || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, unitCost: Number(event.target.value) })} placeholder="0" /></div><small>متوسط تكلفة {ingredientForm.unit || "الوحدة"}</small></label>
-              <label><span>{editingIngredientId ? "الرصيد الحالي" : "الرصيد الافتتاحي"}</span><div><Boxes /><input type="number" min="0" step="0.01" disabled={Boolean(editingIngredientId)} value={ingredientForm.stockQty || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, stockQty: Number(event.target.value) })} placeholder="0" /></div><small>{editingIngredientId ? "يُعدّل من زر إضافة رصيد لضمان تسجيل الحركة" : "الكمية الموجودة حاليًا في المخزن"}</small></label>
-              <label><span>حد إعادة الطلب</span><div><AlertTriangle /><input type="number" min="0" step="0.01" value={ingredientForm.minStock || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, minStock: Number(event.target.value) })} placeholder="0" /></div><small>يظهر تنبيه عندما يصل الرصيد لهذا الحد</small></label>
+              <label><span>وحدة القياس <em>*</em></span><div><Scale /><input list="ingredient-unit-options" value={ingredientForm.unit} onChange={(event) => setIngredientForm({ ...ingredientForm, unit: event.target.value })} placeholder="اختر أو اكتب الوحدة" /><datalist id="ingredient-unit-options"><option value="كجم" /><option value="جرام" /><option value="لتر" /><option value="مل" /><option value="قطعة" /><option value="عبوة" /><option value="صينية" /></datalist></div></label>
+              <label><span>تكلفة الوحدة</span><div><Calculator /><input type="number" min="0" step="0.01" value={ingredientForm.unitCost || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, unitCost: Number(event.target.value) })} placeholder="0" /></div></label>
+              <label><span>{editingIngredientId ? "الرصيد الحالي" : "الرصيد الافتتاحي"}</span><div><Boxes /><input type="number" min="0" step="0.01" disabled={Boolean(editingIngredientId)} value={ingredientForm.stockQty || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, stockQty: Number(event.target.value) })} placeholder="0" /></div></label>
+              <label><span>حد إعادة الطلب</span><div><AlertTriangle /><input type="number" min="0" step="0.01" value={ingredientForm.minStock || ""} onChange={(event) => setIngredientForm({ ...ingredientForm, minStock: Number(event.target.value) })} placeholder="0" /></div></label>
             </div>
             <div className="ingredient-editor-note"><AlertTriangle /><span><strong>حد الطلب مهم لاستمرارية التشغيل</strong><small>اضبطه على أقل كمية آمنة قبل الحاجة لشراء مكون جديد.</small></span></div>
             <div className="ingredient-editor-actions">
               <button className="soft-button" onClick={() => { setAddingIngredient(false); setEditingIngredientId(""); setIngredientAttempted(false); }}>إلغاء</button>
               <button className="primary-button" onClick={saveIngredient}><Save /> {editingIngredientId ? "حفظ التعديلات" : "إضافة المكون"}</button>
             </div>
+          </div>
+        </Modal>
+      )}
+      {ingredientToDelete && (
+        <Modal title="تأكيد حذف المكون" onClose={() => setIngredientToDelete(null)}>
+          <div className="delete-order-confirm">
+            <span className="delete-order-icon"><Trash2 /></span>
+            <strong>هل تريد حذف المكون «{ingredientToDelete.name}»؟</strong>
+            <p>سيتم حذف المكون نهائيًا من أرصدة المخزون وقوائم الوصفات والمشتريات.</p>
+            <div>
+              <span>الرصيد الحالي <b>{qty(ingredientToDelete.stockQty)} {ingredientToDelete.unit}</b></span>
+              <span>تكلفة الوحدة <b>{money(ingredientToDelete.unitCost)} ج.م / {ingredientToDelete.unit}</b></span>
+              <span>إجمالي قيمة الرصيد <b>{money(ingredientToDelete.stockQty * ingredientToDelete.unitCost)} ج.م</b></span>
+              <span>حد إعادة الطلب <b>{qty(ingredientToDelete.minStock)} {ingredientToDelete.unit}</b></span>
+            </div>
+            <footer>
+              <button type="button" className="soft-button" onClick={() => setIngredientToDelete(null)}>إلغاء</button>
+              <button type="button" className="delete-order-button" onClick={() => {
+                update((current) => ({
+                  ...current,
+                  ingredients: current.ingredients.filter((item) => item.id !== ingredientToDelete.id),
+                  recipes: current.recipes.filter((item) => item.ingredientId !== ingredientToDelete.id)
+                }));
+                if (editingIngredientId === ingredientToDelete.id) {
+                  setAddingIngredient(false);
+                  setEditingIngredientId("");
+                }
+                notify(`تم حذف المكون ${ingredientToDelete.name}`);
+                setIngredientToDelete(null);
+              }}><Trash2 /> تأكيد حذف المكون</button>
+            </footer>
           </div>
         </Modal>
       )}

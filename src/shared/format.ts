@@ -11,8 +11,6 @@ export const qty = (value: number) => {
   return rounded.toLocaleString("en-US", { maximumFractionDigits: 3 });
 };
 
-export const RESTAURANT_TIME_ZONE = "Africa/Cairo";
-
 const sqliteUtcDatePattern = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
 const localDateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
 
@@ -27,8 +25,8 @@ export const appDate = (value: string | Date) => {
 
 export const dateTimeValue = (value: string | Date) => appDate(value).getTime();
 
-const cairoDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: RESTAURANT_TIME_ZONE,
+/** Uses the system's local timezone (matches the clock on screen). */
+const localDateFormatter = new Intl.DateTimeFormat("en-CA", {
   year: "numeric",
   month: "2-digit",
   day: "2-digit"
@@ -38,7 +36,7 @@ export const shortDate = (value: string) => {
   const isRestaurantWallTime = localDateTimePattern.test(value);
   const date = isRestaurantWallTime ? new Date(`${value}Z`) : appDate(value);
   return new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
-    timeZone: isRestaurantWallTime ? "UTC" : RESTAURANT_TIME_ZONE,
+    ...(isRestaurantWallTime ? { timeZone: "UTC" } : {}),
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -49,7 +47,6 @@ export const shortDate = (value: string) => {
 
 export const currentArabicDate = () =>
   new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
-    timeZone: RESTAURANT_TIME_ZONE,
     weekday: "long",
     day: "numeric",
     month: "long"
@@ -59,7 +56,7 @@ export const dateKey = (value: string | Date) => {
   if (typeof value === "string" && (/^\d{4}-\d{2}-\d{2}$/.test(value) || localDateTimePattern.test(value))) {
     return value.slice(0, 10);
   }
-  return cairoDateFormatter.format(appDate(value));
+  return localDateFormatter.format(appDate(value));
 };
 
 export const todayKey = () => dateKey(new Date());

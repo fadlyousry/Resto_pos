@@ -60,6 +60,8 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [sectionsOpen, setSectionsOpen] = useState(false);
   const [mealsOpen, setMealsOpen] = useState(false);
   const [mealToEdit, setMealToEdit] = useState<Meal | null>(null);
+  const [mealToDelete, setMealToDelete] = useState<Meal | null>(null);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [section, setSection] = useState<ProductSection>(() => state.sections[0]?.id ?? "cooked");
   const [categoryFilter, setCategoryFilter] = useState("الكل");
   const [search, setSearch] = useState("");
@@ -155,15 +157,14 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   return <div className="management-page products-admin-page">
     <div className="products-menu-switch">
       {state.sections.map((item, index) => {
-        const count = state.products.filter((product) => product.section === item.id).length;
         const available = state.products.filter((product) => product.section === item.id && product.available).length;
         return <button className={section === item.id ? `active ${index % 2 ? "fresh" : "cooked"}` : ""} onClick={() => { setSection(item.id); setCategoryFilter("الكل"); }} key={item.id}>
-          <span>{index % 2 ? <ShoppingBasket /> : <CookingPot />}</span><div><strong>{item.name}</strong><small>{count} صنف في القسم</small></div><b>{available} متاح</b>
+          <span>{index % 2 ? <ShoppingBasket /> : <CookingPot />}</span><div><strong>{item.name}</strong></div><b>{available} متاح</b>
         </button>;
       })}
       <button className={section === MEALS_SECTION ? "meals-menu-shortcut active" : "meals-menu-shortcut"} onClick={() => { setSection(MEALS_SECTION); setCategoryFilter("الكل"); setSearch(""); }}>
         <span><ShoppingBasket /></span>
-        <div><strong>الوجبات</strong><small>{state.meals.length} وجبة مكوّنة من الأصناف</small></div>
+        <div><strong>الوجبات</strong></div>
         <b>{state.meals.filter((meal) => meal.available).length} متاح</b>
       </button>
     </div>
@@ -185,21 +186,14 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
       <div className="meal-management-table">
         <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span className="meal-actions-heading">الإجراءات</span></div>
         {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
-          <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong><small>{meal.components.length} صنف داخل الوجبة</small></div></div>
+          <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong></div></div>
           <div className="meal-admin-components">{meal.components.map((component) => <span key={component.productId}><b>{component.quantity}×</b> {component.name}</span>)}</div>
-          <span className="meal-standalone-price"><small>منفردة</small><b>{money(mealStandaloneTotal(meal))}</b></span>
-          <span className="meal-selling-price"><small>سعر الوجبة</small><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</span>
+          <span className="meal-standalone-price"><b>{money(mealStandaloneTotal(meal))}</b></span>
+          <span className="meal-selling-price"><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</span>
           <div className="product-row-actions">
             <button className="product-icon-action edit" type="button" title="تعديل الوجبة" aria-label={`تعديل وجبة ${meal.name}`} onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })) }); setMealsOpen(true); }}><Edit3 /></button>
             <button className={meal.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={meal.available ? "إيقاف الوجبة" : "إتاحة الوجبة"} aria-label={meal.available ? `إيقاف وجبة ${meal.name}` : `إتاحة وجبة ${meal.name}`} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}>{meal.available ? <CheckCircle2 /> : <Minus />}</button>
-            <button className="product-icon-action delete" type="button" title="حذف الوجبة" aria-label={`حذف وجبة ${meal.name}`} onClick={() => {
-              if (!window.confirm(`هل أنت متأكد من حذف الوجبة "${meal.name}"؟`)) return;
-              update((current) => ({
-                ...current,
-                meals: current.meals.filter((item) => item.id !== meal.id)
-              }));
-              notify(`تم حذف الوجبة ${meal.name}`);
-            }}><Trash2 /></button>
+            <button className="product-icon-action delete" type="button" title="حذف الوجبة" aria-label={`حذف وجبة ${meal.name}`} onClick={() => setMealToDelete(meal)}><Trash2 /></button>
           </div>
         </div>)}
         {!visibleMeals.length && <Empty icon={<ShoppingBasket />} title={search ? "لا توجد وجبات مطابقة" : "لا توجد وجبات حتى الآن"} text={search ? "جرّب اسمًا آخر أو ابحث باسم أحد المكونات" : "اضغط إضافة وجبة وابدأ بتكوينها من الأصناف"} />}
@@ -222,11 +216,12 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
         </div>
       </div>
       <div className="product-management">
-        <div className="product-manage-table-head product-catalog-table-grid"><span>الصنف</span><span>الوحدة والمقاسات</span><span>التكلفة</span><span>سعر البيع السريع</span><span className="product-actions-heading">الإجراءات</span></div>
+        <div className="product-manage-table-head product-catalog-table-grid"><span>الصنف</span><span>التصنيف</span><span>الوحدة</span><span>التكلفة</span><span>سعر البيع السريع</span><span className="product-actions-heading">الإجراءات</span></div>
         {products.map((product) => <div className={product.available ? "product-manage-row editable product-catalog-table-grid" : "product-manage-row editable unavailable product-catalog-table-grid"} key={product.id}>
-          <div className="product-admin-name"><span className="product-admin-icon" style={{ background: `${product.accent}24`, color: product.accent }}>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <CookingPot />}</span><span><strong>{product.name}</strong><small>{product.category}</small></span></div>
-          <span className="product-admin-units"><b>{product.unit}</b>{product.options?.length ? <small>{product.options.length} مقاسات</small> : <small>سعر واحد</small>}</span>
-          <span className="product-admin-cost"><small>التكلفة</small><b>{money(product.cost)}</b></span>
+          <div className="product-admin-name"><span className="product-admin-icon" style={{ background: `${product.accent}24`, color: product.accent }}>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <CookingPot />}</span><span><strong>{product.name}</strong></span></div>
+          <span className="product-admin-category"><b>{product.category || "بدون تصنيف"}</b></span>
+          <span className="product-admin-units"><b>{product.unit}</b></span>
+          <span className="product-admin-cost"><b>{money(product.cost)}</b></span>
           {product.options?.length ? <div style={{ display: "flex", gap: "6px", alignItems: "center", overflowX: "auto" }}>
             {product.options.map((option) => {
               const key = `${product.id}:${option.id}`;
@@ -244,14 +239,7 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
           <div className="product-row-actions">
             <button className="product-icon-action edit" type="button" title="تعديل الصنف" aria-label={`تعديل صنف ${product.name}`} onClick={() => setEditing({ ...product, options: product.options?.map((option) => ({ ...option })) })}><Edit3 /></button>
             <button className={product.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={product.available ? "إيقاف الصنف" : "إتاحة الصنف"} aria-label={product.available ? `إيقاف صنف ${product.name}` : `إتاحة صنف ${product.name}`} onClick={() => toggle(product.id)}>{product.available ? <CheckCircle2 /> : <Minus />}</button>
-            <button className="product-icon-action delete" type="button" title="حذف الصنف" aria-label={`حذف صنف ${product.name}`} onClick={() => {
-              if (!window.confirm(`هل أنت متأكد من حذف الصنف "${product.name}"؟`)) return;
-              update((current) => ({
-                ...current,
-                products: current.products.filter((item) => item.id !== product.id)
-              }));
-              notify(`تم حذف الصنف ${product.name}`);
-            }}><Trash2 /></button>
+            <button className="product-icon-action delete" type="button" title="حذف الصنف" aria-label={`حذف صنف ${product.name}`} onClick={() => setProductToDelete(product)}><Trash2 /></button>
           </div>
         </div>)}
         {!products.length && <Empty icon={<Search />} title="لا توجد أصناف مطابقة" text="غيّر البحث أو اختر تصنيفًا آخر" />}
@@ -262,49 +250,50 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
       <div className="product-editor-layout">
         <aside className="product-image-editor">
           <label className={editing.imageDataUrl ? "product-image-upload has-image" : "product-image-upload"}>
-            {editing.imageDataUrl ? <img src={editing.imageDataUrl} alt={`صورة ${editing.name || "الصنف"}`} /> : <><span><ImagePlus /></span><strong>صورة المنتج</strong><small>اضغط لاختيار صورة واضحة</small></>}
+            {editing.imageDataUrl ? <img src={editing.imageDataUrl} alt={`صورة ${editing.name || "الصنف"}`} /> : <><span><ImagePlus /></span><strong>صورة المنتج</strong><small>اضغط لاختيار صورة</small></>}
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => selectProductImage(event.target.files?.[0])} />
           </label>
-          <div className="product-image-guidance"><strong>{editing.imageDataUrl ? "تم تحميل الصورة" : "الصورة اختيارية"}</strong><small>يفضل صورة مربعة بصيغة JPG أو PNG أو WebP، بحد أقصى 2 ميجابايت.</small></div>
           {editing.imageDataUrl && <button type="button" className="remove-product-image" onClick={() => setEditing({ ...editing, imageDataUrl: undefined })}><Trash2 /> حذف الصورة</button>}
+          <label className={editing.available ? "product-availability-toggle active" : "product-availability-toggle"}>
+            <input
+              type="checkbox"
+              checked={editing.available}
+              onChange={(event) => setEditing({ ...editing, available: event.target.checked })}
+            />
+            <span className="toggle-switch-slider">
+              <span className="toggle-switch-thumb" />
+            </span>
+            <div className="toggle-switch-label">
+              <strong>متاح للبيع</strong>
+              <small>{editing.available ? "يظهر في نقطة البيع" : "متوقف مؤقتاً"}</small>
+            </div>
+          </label>
         </aside>
         <section className="product-editor-main">
           <div className="product-editor-heading">
             <span><Edit3 /></span>
-            <div><strong>البيانات الأساسية</strong><small>اسم الصنف والقسم والتصنيف ووحدة البيع</small></div>
-            {state.products.some((item) => item.id === editing.id) && (
-              <button type="button" className="soft-button danger" style={{ color: "#b66052", border: "1px solid #fecaca", background: "#fff1ee", marginRight: "auto", display: "flex", alignItems: "center", gap: "5px" }} onClick={() => {
-                if (!window.confirm(`هل أنت تأكد من حذف الصنف "${editing.name}"؟`)) return;
-                update((current) => ({
-                  ...current,
-                  products: current.products.filter((item) => item.id !== editing.id)
-                }));
-                setEditing(null);
-                notify(`تم حذف الصنف ${editing.name}`);
-              }}><Trash2 size={15} /> حذف الصنف</button>
-            )}
+            <div><strong>البيانات الأساسية</strong></div>
           </div>
           <div className="editor-grid product-editor-fields">
-        <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} placeholder="مثال: بيتزا بالفراخ" /></label>
-        <label>القسم<select value={editing.section} onChange={(event) => {
-          const next = event.target.value as ProductSection;
-          const first = state.categories.find((item) => item.section === next && item.active);
-          setEditing({ ...editing, section: next, category: first?.name ?? "" });
-        }}>{state.sections.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-        <label>التصنيف<select value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>
-          <option value="">اختر التصنيف</option>{categories.map((item) => <option key={item.id}>{item.name}</option>)}
-        </select></label>
-        <label>وحدة البيع<input value={editing.unit} onChange={(event) => setEditing({ ...editing, unit: event.target.value })} placeholder="طبق، كيلو، صينية..." /></label>
-        {!editing.options?.length && <label>سعر البيع<input type="number" min="0" value={editing.price || ""} onChange={(event) => setEditing({ ...editing, price: Number(event.target.value) })} /></label>}
-        {!!editing.options?.length && <div className="option-managed-price-note"><BadgeDollarSign /><span><strong>السعر حسب المقاس</strong><small>عدّل سعر كل مقاس من الجدول بالأسفل، ولا يوجد سعر أساسي منفصل لهذا الصنف.</small></span></div>}
-        <label>التكلفة<input type="number" min="0" value={editing.cost || ""} onChange={(event) => setEditing({ ...editing, cost: Number(event.target.value) })} /></label>
-        <label className="check-label"><input type="checkbox" checked={editing.available} onChange={(event) => setEditing({ ...editing, available: event.target.checked })} /> متاح للبيع حاليًا</label>
+            <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} placeholder="مثال: بيتزا بالفراخ" /></label>
+            <label>القسم<select value={editing.section} onChange={(event) => {
+              const next = event.target.value as ProductSection;
+              const first = state.categories.find((item) => item.section === next && item.active);
+              setEditing({ ...editing, section: next, category: first?.name ?? "" });
+            }}>{state.sections.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+            <label>التصنيف<select value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>
+              <option value="">اختر التصنيف</option>{categories.map((item) => <option key={item.id}>{item.name}</option>)}
+            </select></label>
+            <label>وحدة البيع<input value={editing.unit} onChange={(event) => setEditing({ ...editing, unit: event.target.value })} placeholder="طبق، كيلو، صينية..." /></label>
+            {!editing.options?.length && <label>سعر البيع<input type="number" min="0" value={editing.price || ""} onChange={(event) => setEditing({ ...editing, price: Number(event.target.value) })} /></label>}
+            {!!editing.options?.length && <div className="option-managed-price-note"><BadgeDollarSign /><span><strong>السعر حسب المقاس</strong><small>عدّل سعر كل مقاس من الجدول بالأسفل</small></span></div>}
+            <label>التكلفة<input type="number" min="0" value={editing.cost || ""} onChange={(event) => setEditing({ ...editing, cost: Number(event.target.value) })} /></label>
           </div>
         </section>
       </div>
       <section className="product-options-editor">
         <header>
-          <div><strong>المقاسات وخيارات البيع</strong><small>مثال: نصف كيلو، كيلو، ميديم أو لارج. اتركها فارغة لو الصنف له سعر واحد.</small></div>
+          <div><strong>المقاسات وخيارات البيع</strong></div>
           <button type="button" className="soft-button" onClick={() => setEditing({
             ...editing,
             options: [...(editing.options ?? []), {
@@ -330,6 +319,56 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
     {categoriesOpen && <CategoryManager state={state} update={update} notify={notify} onClose={() => setCategoriesOpen(false)} />}
     {sectionsOpen && <SectionManager state={state} update={update} notify={notify} onClose={() => setSectionsOpen(false)} />}
     {mealsOpen && <MealManager state={state} update={update} notify={notify} initialMeal={mealToEdit} onClose={() => { setMealsOpen(false); setMealToEdit(null); }} />}
+    {mealToDelete && <Modal title="تأكيد حذف الوجبة" onClose={() => setMealToDelete(null)}>
+      <div className="delete-order-confirm">
+        <span className="delete-order-icon"><Trash2 /></span>
+        <strong>هل تريد حذف الوجبة «{mealToDelete.name}»؟</strong>
+        <p>سيتم حذف الوجبة نهائيًا من قائمة الوجبات المتاحة في نقطة البيع.</p>
+        <div>
+          <span>سعر الوجبة <b>{money(mealToDelete.price)} ج.م</b></span>
+          <span>عدد الأصناف المكوّنة <b>{mealToDelete.components.length} صنف</b></span>
+          <span>مجموع أسعار الأصناف منفردة <b>{money(mealStandaloneTotal(mealToDelete))} ج.م</b></span>
+        </div>
+        <footer>
+          <button type="button" className="soft-button" onClick={() => setMealToDelete(null)}>إلغاء</button>
+          <button type="button" className="delete-order-button" onClick={() => {
+            update((current) => ({
+              ...current,
+              meals: current.meals.filter((item) => item.id !== mealToDelete.id)
+            }));
+            notify(`تم حذف الوجبة ${mealToDelete.name}`);
+            setMealToDelete(null);
+          }}><Trash2 /> تأكيد حذف الوجبة</button>
+        </footer>
+      </div>
+    </Modal>}
+    {productToDelete && <Modal title="تأكيد حذف الصنف" onClose={() => setProductToDelete(null)}>
+      <div className="delete-order-confirm">
+        <span className="delete-order-icon"><Trash2 /></span>
+        <strong>هل تريد حذف الصنف «{productToDelete.name}»؟</strong>
+        <p>سيتم حذف الصنف نهائيًا من المنيو وقائمة المبيعات.</p>
+        <div>
+          <span>القسم <b>{state.sections.find((item) => item.id === productToDelete.section)?.name ?? productToDelete.section}</b></span>
+          <span>التصنيف <b>{productToDelete.category || "بدون تصنيف"}</b></span>
+          <span>السعر <b>{productToDelete.options?.length ? `${productToDelete.options.length} مقاسات` : `${money(productToDelete.price)} ج.م / ${productToDelete.unit}`}</b></span>
+          <span>التكلفة <b>{money(productToDelete.cost)} ج.م</b></span>
+        </div>
+        <footer>
+          <button type="button" className="soft-button" onClick={() => setProductToDelete(null)}>إلغاء</button>
+          <button type="button" className="delete-order-button" onClick={() => {
+            update((current) => ({
+              ...current,
+              products: current.products.filter((item) => item.id !== productToDelete.id)
+            }));
+            if (editing?.id === productToDelete.id) {
+              setEditing(null);
+            }
+            notify(`تم حذف الصنف ${productToDelete.name}`);
+            setProductToDelete(null);
+          }}><Trash2 /> تأكيد حذف الصنف</button>
+        </footer>
+      </div>
+    </Modal>}
   </div>;
 }
 
@@ -339,6 +378,7 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
   const [editingId, setEditingId] = useState("");
   const [sectionFilter, setSectionFilter] = useState<ProductSection>(firstSection);
   const [search, setSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<ProductCategory | null>(null);
   const visibleCategories = state.categories.filter((category) =>
     category.section === sectionFilter && category.name.includes(search.trim())
   );
@@ -369,18 +409,14 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
     setSectionFilter(form.section);
     notify(editingId ? "تم تعديل التصنيف وتحديث أصنافه" : "تمت إضافة التصنيف");
   };
-  return <Modal title="إدارة التصنيفات" onClose={onClose} size="wide">
+  return <>
+    <Modal title="إدارة التصنيفات" onClose={onClose} size="wide">
     <div className="category-manager">
-      <div className="category-manager-hero">
-        <span><Boxes /></span>
-        <div><strong>تنظيم تصنيفات المنيو</strong><small>أنشئ تصنيفات منفصلة داخل كل قسم لتسهيل الوصول للأصناف في نقطة البيع</small></div>
-        <div><b>{state.categories.length}</b><small>إجمالي التصنيفات</small></div>
-      </div>
       <div className="category-section-switch">
         {state.sections.map((item, index) => <button className={sectionFilter === item.id ? `active ${index % 2 ? "fresh" : ""}` : ""} onClick={() => { setSectionFilter(item.id); resetForm(item.id); }} key={item.id}>{index % 2 ? <ShoppingBasket /> : <CookingPot />}<span><strong>{item.name}</strong><small>{state.categories.filter((category) => category.section === item.id).length} تصنيف</small></span></button>)}
       </div>
       <div className={editingId ? "category-form editing" : "category-form"}>
-        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل التصنيف" : "إضافة تصنيف جديد"}</strong><small>{editingId ? "سيتم تحديث التصنيف في كل الأصناف المرتبطة به" : `سيُضاف إلى قسم ${state.sections.find((item) => item.id === form.section)?.name ?? "المنيو"}`}</small></div></div>
+        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل التصنيف" : "إضافة تصنيف جديد"}</strong></div></div>
         <label><span>اسم التصنيف</span><div><Boxes /><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} onKeyDown={(event) => event.key === "Enter" && add()} placeholder="مثال: حواوشي، فراخ، مجمدات..." /></div></label>
         <div className="category-form-actions">
           {editingId && <button className="soft-button" onClick={() => resetForm()}>إلغاء التعديل</button>}
@@ -405,21 +441,37 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
         <button className={category.active ? "category-icon-action availability active" : "category-icon-action availability"} type="button" title={category.active ? "إيقاف التصنيف" : "تفعيل التصنيف"} aria-label={category.active ? `إيقاف تصنيف ${category.name}` : `تفعيل تصنيف ${category.name}`} onClick={() => update((current) => ({
           ...current, categories: current.categories.map((item) => item.id === category.id ? { ...item, active: !item.active } : item)
         }))}>{category.active ? <CheckCircle2 /> : <Minus />}</button>
-        <button className="category-icon-action delete" type="button" title="حذف التصنيف" aria-label={`حذف تصنيف ${category.name}`} onClick={() => {
-          if (!window.confirm(`هل أنت متأكد من حذف التصنيف "${category.name}"؟`)) return;
-          update((current) => ({
-            ...current,
-            categories: current.categories.filter((item) => item.id !== category.id)
-          }));
-          notify(`تم حذف التصنيف ${category.name}`);
-        }}><Trash2 /></button>
+        <button className="category-icon-action delete" type="button" title="حذف التصنيف" aria-label={`حذف تصنيف ${category.name}`} onClick={() => setDeleteTarget(category)}><Trash2 /></button>
       </div>
     </div>;
       })}
       {!visibleCategories.length && <Empty icon={<Boxes />} title="لا توجد تصنيفات" text="أضف تصنيفًا جديدًا أو غيّر كلمة البحث" />}
     </div>
     </div>
-  </Modal>;
+  </Modal>
+  {deleteTarget && <Modal title="تأكيد حذف التصنيف" onClose={() => setDeleteTarget(null)}>
+    <div className="delete-order-confirm">
+      <span className="delete-order-icon"><Trash2 /></span>
+      <strong>هل تريد حذف تصنيف «{deleteTarget.name}»؟</strong>
+      <p>سيتم حذف التصنيف من قائمة التصنيفات التابعة للقسم.</p>
+      <div>
+        <span>القسم <b>{state.sections.find((item) => item.id === deleteTarget.section)?.name ?? deleteTarget.section}</b></span>
+        <span>الأصناف المرتبطة <b>{state.products.filter((product) => product.section === deleteTarget.section && product.category === deleteTarget.name).length} صنف</b></span>
+      </div>
+      <footer>
+        <button type="button" className="soft-button" onClick={() => setDeleteTarget(null)}>إلغاء</button>
+        <button type="button" className="delete-order-button" onClick={() => {
+          update((current) => ({
+            ...current,
+            categories: current.categories.filter((item) => item.id !== deleteTarget.id)
+          }));
+          notify(`تم حذف التصنيف ${deleteTarget.name}`);
+          setDeleteTarget(null);
+        }}><Trash2 /> تأكيد حذف التصنيف</button>
+      </footer>
+    </div>
+  </Modal>}
+  </>;
 }
 
 function SectionManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
@@ -476,13 +528,8 @@ function SectionManager({ state, update, notify, onClose }: ViewProps & { onClos
   return <>
   <Modal title="إدارة الأقسام" onClose={onClose} size="medium">
     <div className="section-manager">
-      <div className="category-manager-hero section-manager-hero">
-        <span><SlidersHorizontal /></span>
-        <div><strong>أقسام المنيو</strong><small>أضف أقسامًا جديدة أو غيّر أسماء الأقسام الحالية</small></div>
-        <div><b>{state.sections.length}</b><small>قسم</small></div>
-      </div>
       <div className={editingId ? "category-form editing section-form" : "category-form section-form"}>
-        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل اسم القسم" : "إضافة قسم جديد"}</strong><small>سيظهر الاسم في نقطة البيع والأصناف والمطبخ</small></div></div>
+        <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل اسم القسم" : "إضافة قسم جديد"}</strong></div></div>
         <label><span>اسم القسم</span><div><Boxes /><input autoFocus value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => event.key === "Enter" && save()} placeholder="مثال: حلويات، مشروبات..." /></div></label>
         <div className="category-form-actions">
           {editingId && <button className="soft-button" onClick={reset}>إلغاء التعديل</button>}
@@ -528,6 +575,7 @@ function SectionManager({ state, update, notify, onClose }: ViewProps & { onClos
 }
 
 function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps & { initialMeal: Meal | null; onClose: () => void }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState<Meal>(() => initialMeal
     ? { ...initialMeal, components: initialMeal.components.map((item) => ({ ...item })) }
     : { id: uid(), name: "", price: 0, available: true, components: [] });
@@ -575,49 +623,67 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
     onClose();
   };
 
-  return <Modal title={initialMeal ? "تعديل الوجبة" : "إضافة وجبة جديدة"} onClose={onClose} size="wide">
-    <div className="meal-editor-modal">
-      <div className="meal-main-fields">
-        <label>اسم الوجبة<input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="مثال: وجبة فردية" /></label>
-        <label>سعر الوجبة<input type="number" min="0" value={draft.price || ""} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} /></label>
-        <label className="check-label"><input type="checkbox" checked={draft.available} onChange={(event) => setDraft({ ...draft, available: event.target.checked })} /> متاحة للبيع</label>
+  return <>
+    <Modal title={initialMeal ? "تعديل الوجبة" : "إضافة وجبة جديدة"} onClose={onClose} size="wide">
+      <div className="meal-editor-modal">
+        <div className="meal-main-fields">
+          <label>اسم الوجبة<input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="مثال: وجبة فردية" /></label>
+          <label>سعر الوجبة<input type="number" min="0" value={draft.price || ""} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} /></label>
+          <label className="check-label"><input type="checkbox" checked={draft.available} onChange={(event) => setDraft({ ...draft, available: event.target.checked })} /> متاحة للبيع</label>
+        </div>
+        <div className="meal-product-filters">
+          <label className="search-box meal-product-search"><Search /><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="ابحث عن صنف بالاسم..." /></label>
+          <label className="meal-filter-select"><span><SlidersHorizontal /> القسم</span><select value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setMealCategoryFilter("all"); }}>
+            <option value="all">كل الأقسام ({availableProducts.length})</option>
+            {state.sections.map((section) => <option key={section.id} value={section.id}>{section.name} ({availableProducts.filter((product) => product.section === section.id).length})</option>)}
+            {!!draft.components.length && <option value="selected">المختارة فقط ({draft.components.length})</option>}
+          </select></label>
+          <label className="meal-filter-select"><span><Boxes /> التصنيف</span><select value={mealCategoryFilter} onChange={(event) => setMealCategoryFilter(event.target.value)}>
+            <option value="all">كل التصنيفات ({sectionProducts.length})</option>
+            {mealCategories.map((category) => <option key={category} value={category}>{category} ({sectionProducts.filter((product) => product.category === category).length})</option>)}
+          </select></label>
+          <small className="meal-filter-count">عرض <b>{filteredProducts.length}</b> من {availableProducts.length}</small>
+        </div>
+        <div className="meal-product-picker">{filteredProducts.map((product) => {
+          const component = selected(product.id);
+          return <div className={component ? "selected" : ""} key={product.id}>
+            <button className="meal-product-toggle" onClick={() => toggleProduct(product)}><span>{component && <Check />}</span><div><strong>{product.name}</strong><small>{state.sections.find((item) => item.id === product.section)?.name ?? product.section} · {product.category}</small></div><b className="meal-product-price">{money(product.price)}</b></button>
+            {component && <div className="meal-quantity"><button onClick={() => changeQuantity(product.id, component.quantity - 1)}><Minus /></button><b>{component.quantity}</b><button onClick={() => changeQuantity(product.id, component.quantity + 1)}><Plus /></button></div>}
+          </div>;
+        })}{!filteredProducts.length && <div className="meal-picker-empty"><Search /><strong>لا توجد أصناف مطابقة</strong><small>غيّر القسم أو التصنيف أو كلمة البحث</small></div>}</div>
+        <div className="meal-editor-summary"><span><small>مجموع أسعار الأصناف منفردة</small><b>{money(componentTotal)}</b></span><span><small>سعر الوجبة</small><b>{money(draft.price)}</b></span><span className={componentTotal > draft.price ? "saving" : ""}><small>فرق السعر للعميل</small><b>{componentTotal > draft.price ? `توفير ${money(componentTotal - draft.price)}` : money(draft.price - componentTotal)}</b></span></div>
+        <footer className="meal-editor-actions">
+          {initialMeal && <button type="button" className="meal-delete-action" onClick={() => setConfirmDelete(true)}><Trash2 /> حذف الوجبة</button>}
+          <button className="soft-button" onClick={onClose}>إلغاء</button>
+          <button className="primary-button" disabled={!draft.name.trim() || draft.price < 0 || !draft.components.length} onClick={save}><Save /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}</button>
+        </footer>
       </div>
-      <div className="meal-product-filters">
-        <label className="search-box meal-product-search"><Search /><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="ابحث عن صنف بالاسم..." /></label>
-        <label className="meal-filter-select"><span><SlidersHorizontal /> القسم</span><select value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setMealCategoryFilter("all"); }}>
-          <option value="all">كل الأقسام ({availableProducts.length})</option>
-          {state.sections.map((section) => <option key={section.id} value={section.id}>{section.name} ({availableProducts.filter((product) => product.section === section.id).length})</option>)}
-          {!!draft.components.length && <option value="selected">المختارة فقط ({draft.components.length})</option>}
-        </select></label>
-        <label className="meal-filter-select"><span><Boxes /> التصنيف</span><select value={mealCategoryFilter} onChange={(event) => setMealCategoryFilter(event.target.value)}>
-          <option value="all">كل التصنيفات ({sectionProducts.length})</option>
-          {mealCategories.map((category) => <option key={category} value={category}>{category} ({sectionProducts.filter((product) => product.category === category).length})</option>)}
-        </select></label>
-        <small className="meal-filter-count">عرض <b>{filteredProducts.length}</b> من {availableProducts.length}</small>
+    </Modal>
+    {confirmDelete && initialMeal && <Modal title="تأكيد حذف الوجبة" onClose={() => setConfirmDelete(false)}>
+      <div className="delete-order-confirm">
+        <span className="delete-order-icon"><Trash2 /></span>
+        <strong>هل تريد حذف الوجبة «{initialMeal.name}»؟</strong>
+        <p>سيتم حذف الوجبة نهائيًا من قائمة الوجبات المتاحة في نقطة البيع.</p>
+        <div>
+          <span>سعر الوجبة <b>{money(initialMeal.price)} ج.م</b></span>
+          <span>عدد الأصناف المكوّنة <b>{initialMeal.components.length} صنف</b></span>
+          <span>مجموع أسعار الأصناف منفردة <b>{money(componentTotal)} ج.م</b></span>
+        </div>
+        <footer>
+          <button type="button" className="soft-button" onClick={() => setConfirmDelete(false)}>إلغاء</button>
+          <button type="button" className="delete-order-button" onClick={() => {
+            update((current) => ({
+              ...current,
+              meals: current.meals.filter((item) => item.id !== initialMeal.id)
+            }));
+            notify(`تم حذف الوجبة ${initialMeal.name}`);
+            setConfirmDelete(false);
+            onClose();
+          }}><Trash2 /> تأكيد حذف الوجبة</button>
+        </footer>
       </div>
-      <div className="meal-product-picker">{filteredProducts.map((product) => {
-        const component = selected(product.id);
-        return <div className={component ? "selected" : ""} key={product.id}>
-          <button className="meal-product-toggle" onClick={() => toggleProduct(product)}><span>{component && <Check />}</span><div><strong>{product.name}</strong><small>{state.sections.find((item) => item.id === product.section)?.name ?? product.section} · {product.category}</small></div><b className="meal-product-price">{money(product.price)}</b></button>
-          {component && <div className="meal-quantity"><button onClick={() => changeQuantity(product.id, component.quantity - 1)}><Minus /></button><b>{component.quantity}</b><button onClick={() => changeQuantity(product.id, component.quantity + 1)}><Plus /></button></div>}
-        </div>;
-      })}{!filteredProducts.length && <div className="meal-picker-empty"><Search /><strong>لا توجد أصناف مطابقة</strong><small>غيّر القسم أو التصنيف أو كلمة البحث</small></div>}</div>
-      <div className="meal-editor-summary"><span><small>مجموع أسعار الأصناف منفردة</small><b>{money(componentTotal)}</b></span><span><small>سعر الوجبة</small><b>{money(draft.price)}</b></span><span className={componentTotal > draft.price ? "saving" : ""}><small>فرق السعر للعميل</small><b>{componentTotal > draft.price ? `توفير ${money(componentTotal - draft.price)}` : money(draft.price - componentTotal)}</b></span></div>
-      <footer className="meal-editor-actions">
-        {initialMeal && <button type="button" className="danger-button" style={{ marginInlineEnd: "auto" }} onClick={() => {
-          if (!window.confirm(`هل أنت متأكد من حذف الوجبة "${initialMeal.name}"؟`)) return;
-          update((current) => ({
-            ...current,
-            meals: current.meals.filter((item) => item.id !== initialMeal.id)
-          }));
-          notify(`تم حذف الوجبة ${initialMeal.name}`);
-          onClose();
-        }}><Trash2 /> حذف الوجبة</button>}
-        <button className="soft-button" onClick={onClose}>إلغاء</button>
-        <button className="primary-button" disabled={!draft.name.trim() || draft.price < 0 || !draft.components.length} onClick={save}><Save /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}</button>
-      </footer>
-    </div>
-  </Modal>;
+    </Modal>}
+  </>;
 }
 
 export function CustomerRecordsView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {

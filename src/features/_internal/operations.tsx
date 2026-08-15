@@ -28,12 +28,12 @@ function nextShiftOrderNumber(state: AppState) {
   const activeShift = state.cashShifts.find((shift) =>
     !shift.closedAt && (shift.treasuryId ?? defaultTreasuryId) === defaultTreasuryId
   );
-  if (!activeShift) return 1001;
+  if (!activeShift) return 101;
   return state.orders.reduce(
     (highest, order) => order.shiftId === activeShift.id
-      ? Math.max(highest, order.shiftNumber ?? 1000)
+      ? Math.max(highest, order.shiftNumber ?? 100)
       : highest,
-    1000
+    100
   ) + 1;
 }
 
