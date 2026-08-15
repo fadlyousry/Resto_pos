@@ -1,1 +1,1 @@
-export { ReportsView } from "../_internal/operations";
+export { ReportsView } from "./ReportsView";
