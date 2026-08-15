@@ -42,12 +42,12 @@ jobs:
           tagName: v__VERSION__
           releaseName: "Resto POS v__VERSION__"
           releaseBody: |
-            تحديث جديد لنظام Resto POS.
+            تحديث جديد لنظام Resto POS (v__VERSION__).
 
-            تحديثات وتطويرات في شاشه الخزنه وشاشه المشتريات السابقه وشاشه الاعدادت 
-            اضافة مسح قاعده البيانات
-            تحسيت التوقيت في البرنامج
-          releaseDraft: true
+            - إصلاح حساب الإيراد اليومي وإيراد الورديات بعد تعديل الفواتير وتسوية الحركات العكسية والإيداعات.
+            - تحديثات وتطويرات في شاشة الخزنة وتفاصيل الإيرادات.
+            - تحسينات في شاشة المشتريات السابقة وشاشة الإعدادات.
+          releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
