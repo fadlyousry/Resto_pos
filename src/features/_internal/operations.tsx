@@ -20,6 +20,7 @@ import { uid } from "../../shared/id";
 import { purchasesTreasuryId, salesTreasuryId, treasuryName, transactionTreasuryId } from "../../shared/treasury";
 import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
+import { playOrderConfirmedSound } from "../../shared/sound";
 
 const MEALS_SECTION = "__meals";
 
@@ -300,6 +301,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     setCart([]);
     setCustomer(null);
     setCheckout(false);
+    playOrderConfirmedSound();
     notify(`تم تعديل الطلب #${orderDisplayNumber(editingOrder)} وتسوية الحساب والمخزون`);
     onFinishEditing();
   };
@@ -361,6 +363,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     setCart([]);
     setCustomer(null);
     setCheckout(false);
+    playOrderConfirmedSound();
     notify(`تم تسجيل الطلب #${orderDisplayNumber(order)}`);
     if (state.settings.printCustomerReceipt !== false || state.settings.printKitchenReceipt !== false) {
       if (isDesktopRuntime()) {
