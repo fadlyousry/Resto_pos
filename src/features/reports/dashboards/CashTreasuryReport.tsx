@@ -9,16 +9,29 @@ import {
 } from "lucide-react";
 import type { AppState } from "../../../domain/types";
 import { money, shortDate } from "../../../shared/format";
-import type { DateRangeFilter, TreasuryReportData } from "../types";
+import { ReportDateFilterPopover } from "../components/ReportDateFilterPopover";
+import type { DateRangeFilter, ReportDatePreset, TreasuryReportData } from "../types";
 import { printReportAsPdf } from "../utils/pdfExport";
 
 interface CashTreasuryReportProps {
   data: TreasuryReportData;
   filter: DateRangeFilter;
+  preset: ReportDatePreset;
+  customFrom: string;
+  customTo: string;
+  onSelectPreset: (preset: ReportDatePreset, from?: string, to?: string) => void;
   state: AppState;
 }
 
-export function CashTreasuryReport({ data, filter, state }: CashTreasuryReportProps) {
+export function CashTreasuryReport({
+  data,
+  filter,
+  preset,
+  customFrom,
+  customTo,
+  onSelectPreset,
+  state
+}: CashTreasuryReportProps) {
   const handlePrint = () => {
     printReportAsPdf(
       {
@@ -65,14 +78,23 @@ export function CashTreasuryReport({ data, filter, state }: CashTreasuryReportPr
 
   return (
     <div className="reports-tab-content">
-      <div className="reports-section-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+      <div className="reports-section-header-row">
         <div>
           <h3 style={{ margin: 0, fontSize: "18px", color: "#1a382f" }}>تقرير الخزينة وجرد الورديات</h3>
           <small style={{ color: "#64748b" }}>متابعة أرصدة الخزن المتعددة وحركات الإيداع والصرف ومطابقة جرد الورديات</small>
         </div>
-        <button className="report-print-btn" onClick={handlePrint}>
-          <Printer size={16} /> طباعة تقرير الخزينة PDF
-        </button>
+        <div className="reports-section-header-actions">
+          <ReportDateFilterPopover
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={onSelectPreset}
+          />
+          <button className="report-print-btn" onClick={handlePrint}>
+            <Printer size={16} /> طباعة تقرير الخزينة PDF
+          </button>
+        </div>
       </div>
 
       {/* KPI Balances */}

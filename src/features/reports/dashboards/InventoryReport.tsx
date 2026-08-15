@@ -7,16 +7,29 @@ import {
 } from "lucide-react";
 import type { AppState } from "../../../domain/types";
 import { money, qty } from "../../../shared/format";
-import type { DateRangeFilter, InventoryReportData } from "../types";
+import { ReportDateFilterPopover } from "../components/ReportDateFilterPopover";
+import type { DateRangeFilter, InventoryReportData, ReportDatePreset } from "../types";
 import { printReportAsPdf } from "../utils/pdfExport";
 
 interface InventoryReportProps {
   data: InventoryReportData;
   filter: DateRangeFilter;
+  preset: ReportDatePreset;
+  customFrom: string;
+  customTo: string;
+  onSelectPreset: (preset: ReportDatePreset, from?: string, to?: string) => void;
   state: AppState;
 }
 
-export function InventoryReport({ data, filter, state }: InventoryReportProps) {
+export function InventoryReport({
+  data,
+  filter,
+  preset,
+  customFrom,
+  customTo,
+  onSelectPreset,
+  state
+}: InventoryReportProps) {
   const totalConsumedCost = data.consumedIngredients.reduce((sum, item) => sum + item.totalCost, 0);
 
   const handlePrint = () => {
@@ -63,14 +76,23 @@ export function InventoryReport({ data, filter, state }: InventoryReportProps) {
 
   return (
     <div className="reports-tab-content">
-      <div className="reports-section-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+      <div className="reports-section-header-row">
         <div>
           <h3 style={{ margin: 0, fontSize: "18px", color: "#1a382f" }}>تقرير المخزون واستهلاك الخامات</h3>
           <small style={{ color: "#64748b" }}>متابعة سحب المكونات في الوصفات، تقييم المخزن، وتكاليف الهوالك</small>
         </div>
-        <button className="report-print-btn" onClick={handlePrint}>
-          <Printer size={16} /> طباعة تقرير المخزون PDF
-        </button>
+        <div className="reports-section-header-actions">
+          <ReportDateFilterPopover
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={onSelectPreset}
+          />
+          <button className="report-print-btn" onClick={handlePrint}>
+            <Printer size={16} /> طباعة تقرير المخزون PDF
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}

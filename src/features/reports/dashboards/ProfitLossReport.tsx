@@ -5,16 +5,29 @@ import {
 } from "lucide-react";
 import type { AppState } from "../../../domain/types";
 import { money } from "../../../shared/format";
-import type { DateRangeFilter, ProfitLossReportData } from "../types";
+import { ReportDateFilterPopover } from "../components/ReportDateFilterPopover";
+import type { DateRangeFilter, ProfitLossReportData, ReportDatePreset } from "../types";
 import { printReportAsPdf } from "../utils/pdfExport";
 
 interface ProfitLossReportProps {
   data: ProfitLossReportData;
   filter: DateRangeFilter;
+  preset: ReportDatePreset;
+  customFrom: string;
+  customTo: string;
+  onSelectPreset: (preset: ReportDatePreset, from?: string, to?: string) => void;
   state: AppState;
 }
 
-export function ProfitLossReport({ data, filter, state }: ProfitLossReportProps) {
+export function ProfitLossReport({
+  data,
+  filter,
+  preset,
+  customFrom,
+  customTo,
+  onSelectPreset,
+  state
+}: ProfitLossReportProps) {
   const isNetProfitable = data.netProfit >= 0;
 
   const handlePrint = () => {
@@ -60,14 +73,23 @@ export function ProfitLossReport({ data, filter, state }: ProfitLossReportProps)
 
   return (
     <div className="reports-tab-content">
-      <div className="reports-section-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+      <div className="reports-section-header-row">
         <div>
           <h3 style={{ margin: 0, fontSize: "18px", color: "#1a382f" }}>تقرير الأرباح والخسائر والتحليل المالي</h3>
           <small style={{ color: "#64748b" }}>حساب مجمل وصافي الأرباح بدقة بعد خصم تكاليف الوصفات والمصروفات</small>
         </div>
-        <button className="report-print-btn" onClick={handlePrint}>
-          <Printer size={16} /> طباعة تقرير الأرباح والخسائر PDF
-        </button>
+        <div className="reports-section-header-actions">
+          <ReportDateFilterPopover
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={onSelectPreset}
+          />
+          <button className="report-print-btn" onClick={handlePrint}>
+            <Printer size={16} /> طباعة تقرير الأرباح والخسائر PDF
+          </button>
+        </div>
       </div>
 
       {/* Financial P&L Flow Step Cards */}

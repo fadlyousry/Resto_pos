@@ -1,9 +1,7 @@
 import { useMemo, useState } from "react";
 import {
-  BarChart3,
   Bike,
   Boxes,
-  Calendar,
   Landmark,
   Scale,
   TrendingUp,
@@ -52,28 +50,16 @@ export function ReportsView({ state }: { state: AppState }) {
   const deliveryData = useMemo(() => computeDeliveryReport(state, filter), [state, filter]);
   const customerData = useMemo(() => computeCustomerReport(state, filter), [state, filter]);
 
+  const handleSelectPreset = (p: ReportDatePreset, from?: string, to?: string) => {
+    setPreset(p);
+    if (from) setCustomFrom(from);
+    if (to) setCustomTo(to);
+  };
+
   return (
     <div className="reports-container">
       {/* Header & Tabs Container */}
       <div className="reports-header-card">
-        <div className="reports-header-top">
-          <div className="reports-title-area">
-            <div className="reports-icon-badge">
-              <BarChart3 size={24} />
-            </div>
-            <div>
-              <h2>لوحة التقارير والتحليلات الشاملة</h2>
-              <p>مؤشرات الأداء المالي، المبيعات، الأرباح، حركة الخزن، والمخزون</p>
-            </div>
-          </div>
-          <div className="reports-actions-area">
-            <div className="active-date-badge">
-              <Calendar size={14} />
-              <span>الفترة: {filter.label}</span>
-            </div>
-          </div>
-        </div>
-
         {/* Navigation Tabs */}
         <div className="reports-nav-tabs">
           <button
@@ -132,79 +118,88 @@ export function ReportsView({ state }: { state: AppState }) {
             <span>العملاء والولاء</span>
           </button>
         </div>
-
-        {/* Universal Date Range Bar */}
-        <div className="reports-date-bar">
-          <div className="date-preset-chips">
-            <button
-              className={`date-chip-btn ${preset === "today" ? "active" : ""}`}
-              onClick={() => setPreset("today")}
-            >
-              اليوم
-            </button>
-            <button
-              className={`date-chip-btn ${preset === "yesterday" ? "active" : ""}`}
-              onClick={() => setPreset("yesterday")}
-            >
-              أمس
-            </button>
-            <button
-              className={`date-chip-btn ${preset === "last7" ? "active" : ""}`}
-              onClick={() => setPreset("last7")}
-            >
-              آخر 7 أيام
-            </button>
-            <button
-              className={`date-chip-btn ${preset === "this_month" ? "active" : ""}`}
-              onClick={() => setPreset("this_month")}
-            >
-              هذا الشهر
-            </button>
-            <button
-              className={`date-chip-btn ${preset === "last_month" ? "active" : ""}`}
-              onClick={() => setPreset("last_month")}
-            >
-              الشهر السابق
-            </button>
-            <button
-              className={`date-chip-btn ${preset === "all" ? "active" : ""}`}
-              onClick={() => setPreset("all")}
-            >
-              كل الفترات
-            </button>
-          </div>
-
-          <div className="custom-date-inputs">
-            <span>من:</span>
-            <input
-              type="date"
-              value={customFrom}
-              onChange={(e) => {
-                setCustomFrom(e.target.value);
-                setPreset("custom");
-              }}
-            />
-            <span>إلى:</span>
-            <input
-              type="date"
-              value={customTo}
-              onChange={(e) => {
-                setCustomTo(e.target.value);
-                setPreset("custom");
-              }}
-            />
-          </div>
-        </div>
       </div>
 
-      {/* Active Dashboard Rendering */}
-      {activeTab === "sales" && <SalesOverviewReport data={salesData} filter={filter} state={state} />}
-      {activeTab === "menu" && <MenuPerformanceReport data={menuData} filter={filter} state={state} />}
-      {activeTab === "profit_loss" && <ProfitLossReport data={profitLossData} filter={filter} state={state} />}
-      {activeTab === "treasury" && <CashTreasuryReport data={treasuryData} filter={filter} state={state} />}
-      {activeTab === "inventory" && <InventoryReport data={inventoryData} filter={filter} state={state} />}
-      {activeTab === "delivery" && <DeliveryDriversReport data={deliveryData} filter={filter} state={state} />}
-      {activeTab === "customers" && <CustomersReport data={customerData} filter={filter} state={state} />}
+      {/* Unified Tab Content Box */}
+      <div className="reports-tab-content-card">
+        {activeTab === "sales" && (
+          <SalesOverviewReport
+            data={salesData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+        {activeTab === "menu" && (
+          <MenuPerformanceReport
+            data={menuData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+        {activeTab === "profit_loss" && (
+          <ProfitLossReport
+            data={profitLossData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+        {activeTab === "treasury" && (
+          <CashTreasuryReport
+            data={treasuryData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+        {activeTab === "inventory" && (
+          <InventoryReport
+            data={inventoryData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+        {activeTab === "delivery" && (
+          <DeliveryDriversReport
+            data={deliveryData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+        {activeTab === "customers" && (
+          <CustomersReport
+            data={customerData}
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={handleSelectPreset}
+            state={state}
+          />
+        )}
+      </div>
     </div>
   );
 }

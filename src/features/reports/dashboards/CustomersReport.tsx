@@ -7,16 +7,29 @@ import {
 } from "lucide-react";
 import type { AppState } from "../../../domain/types";
 import { money } from "../../../shared/format";
-import type { CustomerReportData, DateRangeFilter } from "../types";
+import { ReportDateFilterPopover } from "../components/ReportDateFilterPopover";
+import type { CustomerReportData, DateRangeFilter, ReportDatePreset } from "../types";
 import { printReportAsPdf } from "../utils/pdfExport";
 
 interface CustomersReportProps {
   data: CustomerReportData;
   filter: DateRangeFilter;
+  preset: ReportDatePreset;
+  customFrom: string;
+  customTo: string;
+  onSelectPreset: (preset: ReportDatePreset, from?: string, to?: string) => void;
   state: AppState;
 }
 
-export function CustomersReport({ data, filter, state }: CustomersReportProps) {
+export function CustomersReport({
+  data,
+  filter,
+  preset,
+  customFrom,
+  customTo,
+  onSelectPreset,
+  state
+}: CustomersReportProps) {
   const handlePrint = () => {
     printReportAsPdf(
       {
@@ -59,14 +72,23 @@ export function CustomersReport({ data, filter, state }: CustomersReportProps) {
 
   return (
     <div className="reports-tab-content">
-      <div className="reports-section-header-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+      <div className="reports-section-header-row">
         <div>
           <h3 style={{ margin: 0, fontSize: "18px", color: "#1a382f" }}>تقرير العملاء وتحليلات الولاء والمناطق</h3>
           <small style={{ color: "#64748b" }}>بيانات كبار العملاء، معدل تكرار الطلب، والمناطق الجغرافية الأكثر مبيعاً</small>
         </div>
-        <button className="report-print-btn" onClick={handlePrint}>
-          <Printer size={16} /> طباعة تقرير العملاء PDF
-        </button>
+        <div className="reports-section-header-actions">
+          <ReportDateFilterPopover
+            filter={filter}
+            preset={preset}
+            customFrom={customFrom}
+            customTo={customTo}
+            onSelectPreset={onSelectPreset}
+          />
+          <button className="report-print-btn" onClick={handlePrint}>
+            <Printer size={16} /> طباعة تقرير العملاء PDF
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
