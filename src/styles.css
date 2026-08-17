@@ -487,7 +487,7 @@ svg { flex: 0 0 auto; }
 .customer-search-bar-row { display: flex; gap: 8px; align-items: center; }
 .customer-results { display: grid; gap: 9px; margin-top: 12px; }
 .customer-result-item { min-height: 72px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 10px; border: 1.5px solid #9ca3af; background: #fff; border-radius: 11px; padding: 11px; text-align: right; color: inherit; cursor: pointer; transition: .18s ease; }
-.customer-result-item:hover, .customer-result-item:focus-visible { border-color: #111827; background: #f0fdf4; outline: 0; box-shadow: 0 4px 12px rgba(0, 0, 0, .08); }
+.customer-result-item:hover, .customer-result-item:focus-visible, .customer-result-item.highlighted { border-color: #16a34a; background: #f0fdf4; outline: 0; box-shadow: 0 0 0 2px #16a34a, 0 4px 12px rgba(0, 0, 0, .08); }
 .customer-result-item > div { display: grid; gap: 2px; }
 .customer-results strong { font-size: 14px; font-weight: 800; color: #111827; }
 .customer-results small { font-size: 11px; font-weight: 700; color: #374151; }

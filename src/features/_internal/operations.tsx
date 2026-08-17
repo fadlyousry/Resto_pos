@@ -52,6 +52,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   const [showCustomers, setShowCustomers] = useState(false);
   const [customerCandidate, setCustomerCandidate] = useState<Customer | null>(null);
   const [customerRegistrationOpen, setCustomerRegistrationOpen] = useState(false);
+  const [highlightedCustomerIndex, setHighlightedCustomerIndex] = useState(-1);
   const [customerForm, setCustomerForm] = useState({ name: "", phone: "", zone: "", address: "", notes: "" });
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [optionProduct, setOptionProduct] = useState<Product | null>(null);
@@ -109,6 +110,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     setCustomerQuery("");
     setCustomerCandidate(null);
     setCustomerRegistrationOpen(false);
+    setHighlightedCustomerIndex(-1);
     setCustomerForm({ name: "", phone: "", zone: "", address: "", notes: "" });
     setShowCustomers(true);
   };
@@ -130,6 +132,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   const changeCustomerSearch = (value: string) => {
     setCustomerQuery(value);
     setCustomerCandidate(null);
+    setHighlightedCustomerIndex(-1);
     const looksLikePhone = /^[\d+\s-]+$/.test(value.trim()) && value.trim().replace(/\D/g, "").length > 0;
     setCustomerForm((current) => ({
       ...current,
@@ -747,9 +750,24 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                     value={customerQuery}
                     onChange={(event) => changeCustomerSearch(event.target.value)}
                     onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                      if (event.nativeEvent.isComposing) return;
+                      if (event.key === "ArrowDown") {
                         event.preventDefault();
-                        openNewCustomerForm();
+                        if (customerResults.length > 0) {
+                          setHighlightedCustomerIndex((prev) => (prev < 0 ? 0 : Math.min(prev + 1, customerResults.length - 1)));
+                        }
+                      } else if (event.key === "ArrowUp") {
+                        event.preventDefault();
+                        if (customerResults.length > 0) {
+                          setHighlightedCustomerIndex((prev) => (prev > 0 ? prev - 1 : -1));
+                        }
+                      } else if (event.key === "Enter") {
+                        event.preventDefault();
+                        if (customerResults.length > 0 && highlightedCustomerIndex >= 0 && highlightedCustomerIndex < customerResults.length) {
+                          setCustomerCandidate({ ...customerResults[highlightedCustomerIndex] });
+                        } else {
+                          openNewCustomerForm();
+                        }
                       }
                     }}
                     placeholder="ابحث بالاسم أو رقم الموبايل أو العنوان..."
@@ -780,11 +798,12 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                     {customerQuery.trim() ? `العملاء المطابقون للبحث (${customerResults.length}):` : "العملاء المسجلون مؤخرًا:"}
                   </div>
                 )}
-                {customerResults.map((item) => {
+                {customerResults.map((item, idx) => {
                   const orderCount = Math.max(item.ordersCount, state.orders.filter((order) => order.customerId === item.id).length);
+                  const isHighlighted = idx === highlightedCustomerIndex;
                   return (
                     <div
-                      className="customer-result-item"
+                      className={`customer-result-item ${isHighlighted ? "highlighted" : ""}`}
                       role="button"
                       tabIndex={0}
                       key={item.id}
