@@ -4,11 +4,11 @@ import {
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
   Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
-  Utensils, WalletCards, X
+  Utensils, WalletCards, X, Shuffle, BadgeDollarSign
 } from "lucide-react";
 import type {
   AppState, CashTransaction, Customer, Driver, DriverSettlement, MenuSection, Order, OrderItem,
-  OrderStage, PaymentMethod, Product, ProductSection
+  OrderStage, PaymentMethod, Product, ProductSection, Meal, MealComponent
 } from "../../domain/types";
 import { CustomerFile } from "./management";
 import { InvoiceModal } from "../orders/InvoiceModal";
@@ -55,6 +55,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   const [customerForm, setCustomerForm] = useState({ name: "", phone: "", zone: "", address: "", notes: "" });
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
   const [optionProduct, setOptionProduct] = useState<Product | null>(null);
+  const [customizingMeal, setCustomizingMeal] = useState<Meal | null>(null);
   const [checkout, setCheckout] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const hasOpenShift = state.cashShifts.some((shift) =>
@@ -85,20 +86,24 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   }, [editingOrder?.id]);
 
   const products = state.products.filter((product) =>
+    !product.isMealComponent &&
     product.section === section && product.available &&
     (category === "الكل" || product.category === category) &&
     product.name.includes(search.trim())
   );
   const meals = state.meals.filter((meal) => meal.available && meal.name.includes(search.trim()));
-  const categories = section === MEALS_SECTION ? ["الكل"] : ["الكل", ...new Set(state.products.filter((product) => product.section === section).map((product) => product.category))];
+  const categories = section === MEALS_SECTION ? ["الكل"] : ["الكل", ...new Set(state.products.filter((product) => !product.isMealComponent && product.section === section).map((product) => product.category).filter(Boolean))];
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalUnits = cart.reduce((sum, item) => sum + item.quantity, 0);
   const normalizedCustomerQuery = customerQuery.trim().toLocaleLowerCase("ar");
-  const customerResults = state.customers.filter((item) =>
-    item.name.toLocaleLowerCase("ar").includes(normalizedCustomerQuery) ||
-    item.phone.replace(/\s/g, "").includes(normalizedCustomerQuery.replace(/\s/g, ""))
-  ).slice(0, 5);
-  const customerNotFound = normalizedCustomerQuery.length >= 2 && customerResults.length === 0;
+  const searchDigits = customerQuery.trim().replace(/\D/g, "");
+  const customerResults = customerQuery.trim()
+    ? state.customers.filter((item) =>
+        item.name.toLocaleLowerCase("ar").includes(normalizedCustomerQuery) ||
+        (searchDigits.length > 0 && item.phone.replace(/\D/g, "").includes(searchDigits)) ||
+        item.address.toLocaleLowerCase("ar").includes(normalizedCustomerQuery)
+      ).slice(0, 8)
+    : state.customers.slice(0, 5);
 
   const openCustomerPicker = () => {
     setCustomerQuery("");
@@ -107,38 +112,108 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     setCustomerForm({ name: "", phone: "", zone: "", address: "", notes: "" });
     setShowCustomers(true);
   };
+
+  const openNewCustomerForm = (initialQuery = customerQuery) => {
+    const trimmed = initialQuery.trim();
+    const looksLikePhone = /^[\d+\s-]+$/.test(trimmed) && trimmed.replace(/\D/g, "").length > 0;
+    setCustomerForm({
+      name: looksLikePhone ? "" : trimmed,
+      phone: looksLikePhone ? trimmed.replace(/[^\d+]/g, "") : "",
+      zone: "",
+      address: "",
+      notes: ""
+    });
+    setCustomerCandidate(null);
+    setCustomerRegistrationOpen(true);
+  };
+
   const changeCustomerSearch = (value: string) => {
     setCustomerQuery(value);
     setCustomerCandidate(null);
-    setCustomerRegistrationOpen(false);
-    const looksLikePhone = /^[\d+\s-]+$/.test(value.trim());
+    const looksLikePhone = /^[\d+\s-]+$/.test(value.trim()) && value.trim().replace(/\D/g, "").length > 0;
     setCustomerForm((current) => ({
       ...current,
-      name: looksLikePhone ? "" : value,
-      phone: looksLikePhone ? value.replace(/[^\d+]/g, "") : ""
+      name: looksLikePhone ? "" : value.trim(),
+      phone: looksLikePhone ? value.trim().replace(/[^\d+]/g, "") : ""
     }));
   };
+
   const confirmExistingCustomer = () => {
-    if (!customerCandidate?.name.trim() || !customerCandidate.phone.trim() || !customerCandidate.address.trim()) return;
+    if (!customerCandidate) return;
+    const name = customerCandidate.name.trim();
+    const phone = customerCandidate.phone.trim();
+    const address = customerCandidate.address.trim();
+
+    if (!name || name.length < 2) {
+      notify("يرجى إدخال اسم العميل (حرفين على الأقل)");
+      return;
+    }
+    if (!phone || phone.replace(/\D/g, "").length < 8) {
+      notify("يرجى إدخال رقم هاتف صحيح");
+      return;
+    }
+    if (!address) {
+      notify("يرجى إدخال عنوان التوصيل");
+      return;
+    }
+
+    const updatedCandidate: Customer = {
+      ...customerCandidate,
+      name,
+      phone,
+      address
+    };
+
     update((current) => ({
       ...current,
-      customers: current.customers.map((item) => item.id === customerCandidate.id ? customerCandidate : item)
+      customers: current.customers.map((item) => item.id === updatedCandidate.id ? updatedCandidate : item),
+      orders: current.orders.map((order) => order.customerId === updatedCandidate.id ? {
+        ...order,
+        customerName: updatedCandidate.name,
+        customerPhone: updatedCandidate.phone,
+        address: updatedCandidate.address
+      } : order)
     }));
-    setCustomer(customerCandidate);
+    setCustomer(updatedCandidate);
     setShowCustomers(false);
+    setCustomerCandidate(null);
     notify("تم اختيار العميل وعنوان التوصيل");
   };
+
   const registerCustomerFromSearch = () => {
-    if (!customerForm.name.trim() || !customerForm.phone.trim() || !customerForm.address.trim()) return;
+    const name = customerForm.name.trim();
+    const phone = customerForm.phone.trim();
+    const address = customerForm.address.trim();
+
+    if (!name || name.length < 2) {
+      notify("يرجى إدخال اسم العميل (حرفين على الأقل)");
+      return;
+    }
+    if (!phone || phone.replace(/\D/g, "").length < 8) {
+      notify("يرجى إدخال رقم هاتف صحيح للعميل (8 أرقام على الأقل)");
+      return;
+    }
+    if (!address) {
+      notify("يرجى إدخال عنوان التوصيل");
+      return;
+    }
+
     const item: Customer = {
-      id: uid(), ...customerForm, name: customerForm.name.trim(), phone: customerForm.phone.trim(),
-      address: customerForm.address.trim(), zone: customerForm.zone.trim(),
-      ordersCount: 0, totalSpent: 0
+      id: uid(),
+      name,
+      phone,
+      address,
+      zone: customerForm.zone.trim(),
+      notes: customerForm.notes.trim(),
+      ordersCount: 0,
+      totalSpent: 0
     };
     update((current) => ({ ...current, customers: [item, ...current.customers] }));
     setCustomer(item);
     setShowCustomers(false);
-    notify("تم تسجيل العميل واختياره للطلب");
+    setCustomerRegistrationOpen(false);
+    setCustomerCandidate(null);
+    notify(`تم تسجيل العميل "${name}" واختياره للطلب`);
   };
 
   const addProduct = (product: Product, option = product.options?.[0]) => {
@@ -178,6 +253,47 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           note: meal.components.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
         }];
     });
+  };
+
+  const handleMealClick = (meal: Meal) => {
+    const hasOptions = Boolean(meal.options && meal.options.length > 0);
+    const hasChoices = Boolean(meal.choiceGroups && meal.choiceGroups.length > 0);
+    if (hasOptions || hasChoices) {
+      setCustomizingMeal(meal);
+    } else {
+      addMeal(meal);
+    }
+  };
+
+  const addCustomizedMealToCart = (item: {
+    mealId: string;
+    optionId?: string;
+    optionName?: string;
+    name: string;
+    price: number;
+    cost: number;
+    mealComponents: MealComponent[];
+    note: string;
+  }) => {
+    const productId = `meal:${item.mealId}:${item.optionId ?? "base"}:${uid()}`;
+    setCart((current) => [
+      ...current,
+      {
+        productId,
+        mealId: item.mealId,
+        optionId: item.optionId,
+        optionName: item.optionName,
+        name: item.name,
+        unit: "وجبة",
+        price: item.price,
+        cost: item.cost,
+        quantity: 1,
+        section: MEALS_SECTION,
+        mealComponents: item.mealComponents,
+        note: item.note
+      }
+    ]);
+    setCustomizingMeal(null);
   };
 
   const setQuantity = (productId: string, optionId: string | undefined, delta: number) => {
@@ -399,7 +515,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         </div>}
         <div className="section-switch">
           {state.sections.map((item, index) => <button className={section === item.id ? `active ${index % 2 ? "fresh" : "cooked"}` : ""} onClick={() => { setSection(item.id); setCategory("الكل"); }} key={item.id}>
-            {index % 2 ? <ShoppingBag /> : <Utensils />} <span><strong>{item.name}</strong><small>{state.products.filter((product) => product.section === item.id && product.available).length} صنف متاح</small></span>
+            {index % 2 ? <ShoppingBag /> : <Utensils />} <span><strong>{item.name}</strong><small>{state.products.filter((product) => !product.isMealComponent && product.section === item.id && product.available).length} صنف متاح</small></span>
           </button>)}
           <button className={section === MEALS_SECTION ? "active meals" : ""} onClick={() => { setSection(MEALS_SECTION); setCategory("الكل"); }}>
             <ShoppingBag /> <span><strong>الوجبات</strong><small>{state.meals.filter((meal) => meal.available).length} وجبة متاحة</small></span>
@@ -412,22 +528,34 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           </div>
         </div>
         <div className="product-grid">
-          {section === MEALS_SECTION ? meals.map((meal) => (
-            <button className="product-card meal-card" onClick={() => addMeal(meal)} key={meal.id}>
-              <div className="product-card-top">
-                <span className="food-visual meal-visual"><ShoppingBag size={26} /></span>
-                <span className="product-info">
-                  <strong>{meal.name}</strong>
-                  <small>{meal.components.map((item) => `${item.quantity}× ${item.name}${item.optionName ? ` (${item.optionName})` : ""}`).join(" · ")}</small>
-                </span>
-              </div>
-              <div className="product-card-footer">
-                <span className="price-label">السعر</span>
-                <span className="price-divider" />
-                <span className="price-value">{money(meal.price)} ج.م</span>
-              </div>
-            </button>
-          )) : products.map((product) => (
+          {section === MEALS_SECTION ? meals.map((meal) => {
+            const hasOptions = Boolean(meal.options && meal.options.length > 0);
+            const hasChoices = Boolean(meal.choiceGroups && meal.choiceGroups.length > 0);
+            const minPrice = hasOptions ? Math.min(...meal.options!.map((o) => o.price)) : meal.price;
+            const subtitleText = [
+              meal.components.map((item) => `${item.quantity}× ${item.name}${item.optionName ? ` (${item.optionName})` : ""}`).join(" · "),
+              hasChoices ? `${meal.choiceGroups!.length} خيارات تبديل (إما ده أو ده)` : ""
+            ].filter(Boolean).join(" | ");
+
+            return (
+              <button className="product-card meal-card" onClick={() => handleMealClick(meal)} key={meal.id}>
+                <div className="product-card-top">
+                  <span className="food-visual meal-visual"><ShoppingBag size={26} /></span>
+                  <span className="product-info">
+                    <strong>{meal.name}</strong>
+                    <small>{subtitleText}</small>
+                  </span>
+                </div>
+                <div className="product-card-footer">
+                  <span className="price-label">السعر</span>
+                  <span className="price-divider" />
+                  <span className="price-value">
+                    {hasOptions ? `يبدأ من ${money(minPrice)} ج.م` : `${money(meal.price)} ج.م`}
+                  </span>
+                </div>
+              </button>
+            );
+          }) : products.map((product) => (
             <button className="product-card" onClick={() => product.options?.length ? setOptionProduct(product) : addProduct(product, undefined)} key={product.id}>
               <div className="product-card-top">
                 <span className="food-visual" style={{ background: `linear-gradient(145deg, ${product.accent}30, ${product.accent}80)` }}>
@@ -505,33 +633,96 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       </aside>
 
       {showCustomers && (
-        <Modal title="اختيار العميل" onClose={() => setShowCustomers(false)} size="medium">
-          {!customerCandidate && <label className="search-box modal-search"><Search size={18} /><input
-            autoFocus
-            value={customerQuery}
-            onChange={(event) => changeCustomerSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && customerNotFound && !event.nativeEvent.isComposing) {
+        <Modal
+          title={customerRegistrationOpen ? "تسجيل عميل جديد" : customerCandidate ? "تأكيد بيانات العميل" : "اختيار العميل"}
+          onClose={() => {
+            setShowCustomers(false);
+            setCustomerCandidate(null);
+            setCustomerRegistrationOpen(false);
+          }}
+          size="medium"
+        >
+          {customerRegistrationOpen ? (
+            <div className="customer-inline-register" onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                !(event.target instanceof HTMLButtonElement) &&
+                !(event.target instanceof HTMLTextAreaElement)
+              ) {
                 event.preventDefault();
-                setCustomerRegistrationOpen(true);
+                registerCustomerFromSearch();
               }
-            }}
-            placeholder="ابحث بالاسم أو رقم الموبايل..."
-          /></label>}
-
-          {customerCandidate ? (
+            }}>
+              <button type="button" className="back-to-results" onClick={() => setCustomerRegistrationOpen(false)}>
+                <ChevronLeft /> الرجوع لنتائج البحث
+              </button>
+              <div className="not-found-title">
+                <UserPlus />
+                <span>
+                  <strong>تسجيل عميل جديد للطلب</strong>
+                  <small>اكتب بيانات العميل وسيتم حفظه تلقائيًا في سجل العملاء وتعيينه للطلب الحالي</small>
+                </span>
+              </div>
+              <div className="inline-customer-form">
+                <label>
+                  <span>اسم العميل <em style={{ color: "#dc2626" }}>*</em></span>
+                  <input
+                    autoFocus={!customerForm.name}
+                    value={customerForm.name}
+                    onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })}
+                    placeholder="اكتب اسم العميل بالكامل"
+                  />
+                </label>
+                <label>
+                  <span>رقم الهاتف <em style={{ color: "#dc2626" }}>*</em></span>
+                  <input
+                    autoFocus={Boolean(customerForm.name) && !customerForm.phone}
+                    value={customerForm.phone}
+                    onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })}
+                    placeholder="01xxxxxxxxx"
+                    inputMode="tel"
+                  />
+                </label>
+                <label className="full-field">
+                  <span>العنوان بالتفصيل <em style={{ color: "#dc2626" }}>*</em></span>
+                  <textarea
+                    autoFocus={Boolean(customerForm.name && customerForm.phone)}
+                    value={customerForm.address}
+                    onChange={(event) => setCustomerForm({ ...customerForm, address: event.target.value })}
+                    placeholder="المنطقة، الشارع، رقم العقار، الدور وأقرب علامة مميزة"
+                  />
+                </label>
+                <label className="full-field">
+                  <span>ملاحظات إضافية <i style={{ color: "#6b7280", fontStyle: "normal", fontSize: "11px" }}>(اختياري)</i></span>
+                  <input
+                    value={customerForm.notes}
+                    onChange={(event) => setCustomerForm({ ...customerForm, notes: event.target.value })}
+                    placeholder="أي تعليمات خاصة بالتوصيل أو الاتصال"
+                  />
+                </label>
+              </div>
+              <button type="button" className="primary-button customer-confirm-button" onClick={registerCustomerFromSearch}>
+                <UserPlus size={18} /> حفظ واختيار العميل للطلب
+              </button>
+            </div>
+          ) : customerCandidate ? (
             <div className="customer-address-step" onKeyDown={(event) => {
               if (
                 event.key === "Enter" &&
                 !event.shiftKey &&
                 !event.nativeEvent.isComposing &&
-                !(event.target instanceof HTMLButtonElement)
+                !(event.target instanceof HTMLButtonElement) &&
+                !(event.target instanceof HTMLTextAreaElement)
               ) {
                 event.preventDefault();
                 confirmExistingCustomer();
               }
             }}>
-              <button className="back-to-results" onClick={() => setCustomerCandidate(null)}><ChevronLeft /> الرجوع لنتائج البحث</button>
+              <button type="button" className="back-to-results" onClick={() => setCustomerCandidate(null)}>
+                <ChevronLeft /> الرجوع لنتائج البحث
+              </button>
               <div className="customer-address-head">
                 <span className="customer-avatar">{customerCandidate.name.charAt(0)}</span>
                 <span><strong>{customerCandidate.name}</strong><small>{customerCandidate.phone}</small></span>
@@ -542,43 +733,175 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                 <label className="full-field">العنوان بالتفصيل<textarea autoFocus value={customerCandidate.address} onChange={(event) => setCustomerCandidate({ ...customerCandidate, address: event.target.value })} placeholder="اكتب عنوان التوصيل بالتفصيل" /></label>
               </div>
               <p className="address-save-note"><MapPin /> العنوان المعدل هيُحفظ في ملف العميل ويُستخدم للطلب الحالي.</p>
-              <button className="primary-button customer-confirm-button" onClick={confirmExistingCustomer}>
+              <button type="button" className="primary-button customer-confirm-button" onClick={confirmExistingCustomer}>
                 <Check /> تأكيد العميل والعنوان
               </button>
             </div>
-          ) : customerNotFound && customerRegistrationOpen ? (
-            <div className="customer-inline-register">
-              <div className="not-found-title"><UserPlus /><span><strong>العميل غير مسجل</strong><small>كمّل البيانات علشان يتسجل ويتضاف للطلب</small></span></div>
-              <div className="inline-customer-form">
-                <label>اسم العميل<input autoFocus={!customerForm.name} value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} /></label>
-                <label>رقم الهاتف<input autoFocus={!customerForm.phone} value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} /></label>
-                <label className="full-field">العنوان بالتفصيل<textarea value={customerForm.address} onChange={(event) => setCustomerForm({ ...customerForm, address: event.target.value })} placeholder="اكتب عنوان التوصيل بالتفصيل" /></label>
-              </div>
-              <button className="primary-button customer-confirm-button" onClick={registerCustomerFromSearch}><UserPlus /> تسجيل واختيار العميل</button>
-            </div>
           ) : (
-            <div className="customer-results">
-              {customerResults.map((item) => {
-                const orderCount = Math.max(item.ordersCount, state.orders.filter((order) => order.customerId === item.id).length);
-                return <div className="customer-result-item" role="button" tabIndex={0} key={item.id} onClick={() => setCustomerCandidate({ ...item })} onKeyDown={(event) => event.key === "Enter" && setCustomerCandidate({ ...item })}>
-                  <span className="customer-avatar">{item.name.charAt(0)}</span>
-                  <div><strong>{item.name}</strong><small>{item.phone}</small><p>{item.address}</p></div>
-                  <span className="customer-result-actions">
-                    {orderCount > 0 && <em>{orderCount === 1 ? "طلب واحد" : `${orderCount} طلبات`}</em>}
-                    <button title="فتح سجل العميل" onClick={(event) => {
-                      event.stopPropagation();
-                      setHistoryCustomer({ ...item });
-                      setShowCustomers(false);
-                    }}><Info /></button>
-                    <ChevronLeft />
+            <div>
+              <div className="customer-search-bar-row">
+                <label className="search-box modal-search" style={{ flex: 1, margin: 0 }}>
+                  <Search size={18} />
+                  <input
+                    autoFocus
+                    value={customerQuery}
+                    onChange={(event) => changeCustomerSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        openNewCustomerForm();
+                      }
+                    }}
+                    placeholder="ابحث بالاسم أو رقم الموبايل أو العنوان..."
+                  />
+                  {customerQuery && (
+                    <button
+                      type="button"
+                      style={{ border: 0, background: "transparent", color: "#6b7280", cursor: "pointer", display: "grid", placeItems: "center", padding: "4px" }}
+                      onClick={() => changeCustomerSearch("")}
+                    >
+                      <X size={15} />
+                    </button>
+                  )}
+                </label>
+                <button
+                  type="button"
+                  className="primary-button"
+                  style={{ whiteSpace: "nowrap", minHeight: "46px", padding: "0 14px", display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 800, flexShrink: 0 }}
+                  onClick={() => openNewCustomerForm()}
+                >
+                  <UserPlus size={17} /> عميل جديد
+                </button>
+              </div>
+
+              {customerQuery.trim().length > 0 && (
+                <div
+                  className="customer-register-banner"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openNewCustomerForm()}
+                  onKeyDown={(e) => { if (e.key === "Enter") openNewCustomerForm(); }}
+                >
+                  <span
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "9px",
+                      background: "#22c55e",
+                      color: "#fff",
+                      display: "grid",
+                      placeItems: "center",
+                      flexShrink: 0
+                    }}
+                  >
+                    <UserPlus size={19} />
                   </span>
-                </div>;
-              })}
-              {customerNotFound && <div className="customer-enter-hint">
-                <UserPlus />
-                <span><strong>العميل غير موجود</strong><small>اضغط Enter لتسجيله كعميل جديد</small></span>
-                <kbd>Enter ↵</kbd>
-              </div>}
+                  <div style={{ flex: 1, minWidth: 0, display: "grid", gap: "2px" }}>
+                    <strong style={{ fontSize: "13px", color: "#14532d", fontWeight: 800 }}>
+                      {/^[\d+\s-]+$/.test(customerQuery.trim()) && customerQuery.trim().replace(/\D/g, "").length > 0
+                        ? `تسجيل عميل جديد برقم: ${customerQuery.trim()}`
+                        : `تسجيل عميل جديد باسم: "${customerQuery.trim()}"`}
+                    </strong>
+                    <small style={{ fontSize: "11px", color: "#15803d", fontWeight: 600 }}>
+                      اضغط هنا لتسجيل بيانات عميل جديد واختياره للطلب مباشرة
+                    </small>
+                  </div>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      background: "#dcfce7",
+                      color: "#15803d",
+                      padding: "5px 10px",
+                      borderRadius: "7px",
+                      fontSize: "11px",
+                      fontWeight: 800
+                    }}
+                  >
+                    تسجيل الآن <ChevronLeft size={14} />
+                  </span>
+                </div>
+              )}
+
+              <div className="customer-results">
+                {customerResults.length > 0 && (
+                  <div style={{ fontSize: "11px", fontWeight: 800, color: "#6b7280", margin: "2px 0 4px" }}>
+                    {customerQuery.trim() ? `العملاء المطابقون للبحث (${customerResults.length}):` : "العملاء المسجلون مؤخرًا:"}
+                  </div>
+                )}
+                {customerResults.map((item) => {
+                  const orderCount = Math.max(item.ordersCount, state.orders.filter((order) => order.customerId === item.id).length);
+                  return (
+                    <div
+                      className="customer-result-item"
+                      role="button"
+                      tabIndex={0}
+                      key={item.id}
+                      onClick={() => setCustomerCandidate({ ...item })}
+                      onKeyDown={(event) => event.key === "Enter" && setCustomerCandidate({ ...item })}
+                    >
+                      <span className="customer-avatar">{item.name.charAt(0)}</span>
+                      <div>
+                        <strong>{item.name}</strong>
+                        <small>{item.phone}</small>
+                        <p>{item.address}</p>
+                      </div>
+                      <span className="customer-result-actions">
+                        {orderCount > 0 && <em>{orderCount === 1 ? "طلب واحد" : `${orderCount} طلبات`}</em>}
+                        <button
+                          type="button"
+                          title="فتح سجل العميل"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setHistoryCustomer({ ...item });
+                            setShowCustomers(false);
+                          }}
+                        >
+                          <Info />
+                        </button>
+                        <ChevronLeft />
+                      </span>
+                    </div>
+                  );
+                })}
+
+                {customerResults.length === 0 && customerQuery.trim().length > 0 && (
+                  <div
+                    className="customer-enter-hint"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openNewCustomerForm()}
+                    onKeyDown={(e) => { if (e.key === "Enter") openNewCustomerForm(); }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <UserPlus />
+                    <span>
+                      <strong>لا يوجد عميل مسجل باسم أو رقم "{customerQuery.trim()}"</strong>
+                      <small>اضغط هنا أو اضغط Enter لتسجيله كعميل جديد الآن</small>
+                    </span>
+                    <kbd>Enter ↵</kbd>
+                  </div>
+                )}
+
+                {customerResults.length === 0 && customerQuery.trim().length === 0 && (
+                  <div
+                    className="customer-enter-hint"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openNewCustomerForm()}
+                    onKeyDown={(e) => { if (e.key === "Enter") openNewCustomerForm(); }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <UserPlus />
+                    <span>
+                      <strong>لم يتم تسجيل أي عملاء بعد</strong>
+                      <small>اضغط هنا لتسجيل أول عميل في النظام</small>
+                    </span>
+                    <kbd>عميل جديد +</kbd>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </Modal>
@@ -595,6 +918,14 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           </div>
         </div>
       </Modal>}
+      {customizingMeal && (
+        <MealCustomizerModal
+          meal={customizingMeal}
+          state={state}
+          onAdd={addCustomizedMealToCart}
+          onClose={() => setCustomizingMeal(null)}
+        />
+      )}
       {historyCustomer && <CustomerFile
         customer={historyCustomer}
         state={state}
@@ -618,6 +949,221 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} editingOrder={editingOrder} drivers={state.drivers} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
       {receiptOrder && <InvoiceModal order={receiptOrder} settings={state.settings} autoPrint onClose={() => setReceiptOrder(null)} />}
     </div>
+  );
+}
+
+function MealCustomizerModal({
+  meal,
+  state,
+  onAdd,
+  onClose
+}: {
+  meal: Meal;
+  state: AppState;
+  onAdd: (customizedItem: {
+    mealId: string;
+    optionId?: string;
+    optionName?: string;
+    name: string;
+    price: number;
+    cost: number;
+    mealComponents: MealComponent[];
+    note: string;
+  }) => void;
+  onClose: () => void;
+}) {
+  const hasOptions = Boolean(meal.options && meal.options.length > 0);
+  const [selectedOptionId, setSelectedOptionId] = useState<string>(() => meal.options?.[0]?.id ?? "");
+
+  const [selectedChoices, setSelectedChoices] = useState<Record<string, { productId: string; optionId?: string }>>(() => {
+    const initial: Record<string, { productId: string; optionId?: string }> = {};
+    meal.choiceGroups?.forEach((group) => {
+      if (group.defaultChoiceProductId) {
+        initial[group.id] = { productId: group.defaultChoiceProductId, optionId: group.defaultChoiceOptionId };
+      } else if (group.choices.length > 0) {
+        initial[group.id] = { productId: group.choices[0].productId, optionId: group.choices[0].optionId };
+      }
+    });
+    return initial;
+  });
+
+  const selectedOption = hasOptions ? meal.options?.find((o) => o.id === selectedOptionId) : undefined;
+  const basePrice = selectedOption ? selectedOption.price : meal.price;
+
+  let choiceExtraTotal = 0;
+  const chosenComponents: MealComponent[] = [
+    ...meal.components.map((comp) => ({ ...comp }))
+  ];
+
+  meal.choiceGroups?.forEach((group) => {
+    const sel = selectedChoices[group.id];
+    if (sel) {
+      const choice = group.choices.find((c) => c.productId === sel.productId && c.optionId === sel.optionId)
+        ?? group.choices.find((c) => c.productId === sel.productId);
+      if (choice) {
+        choiceExtraTotal += choice.extraPrice ?? 0;
+        chosenComponents.push({
+          productId: choice.productId,
+          optionId: choice.optionId,
+          optionName: choice.optionName,
+          name: choice.name,
+          unit: choice.unit,
+          price: choice.price,
+          cost: choice.cost,
+          recipeMultiplier: choice.recipeMultiplier ?? 1,
+          quantity: choice.quantity || 1
+        });
+      }
+    }
+  });
+
+  const totalMealPrice = basePrice + choiceExtraTotal;
+
+  const totalCost = chosenComponents.reduce((sum, component) => {
+    const product = state.products.find((p) => p.id === component.productId);
+    const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
+    const compCost = option?.cost ?? component.cost ?? product?.cost ?? 0;
+    return sum + compCost * component.quantity;
+  }, 0);
+
+  const mealName = selectedOption ? `${meal.name} (${selectedOption.name})` : meal.name;
+
+  const notesList = [
+    ...meal.components.map((c) => `${c.quantity}× ${c.name}${c.optionName ? ` (${c.optionName})` : ""}`),
+    ...Object.entries(selectedChoices).map(([groupId, sel]) => {
+      const group = meal.choiceGroups?.find((g) => g.id === groupId);
+      const choice = group?.choices.find((c) => c.productId === sel.productId && c.optionId === sel.optionId);
+      return choice ? `${group?.name}: ${choice.name}${choice.optionName ? ` (${choice.optionName})` : ""}` : "";
+    }).filter(Boolean)
+  ];
+
+  const handleConfirm = () => {
+    onAdd({
+      mealId: meal.id,
+      optionId: selectedOption?.id,
+      optionName: selectedOption?.name,
+      name: mealName,
+      price: totalMealPrice,
+      cost: totalCost,
+      mealComponents: chosenComponents,
+      note: notesList.join(" · ")
+    });
+  };
+
+  return (
+    <Modal title={`تخصيص وجبة: ${meal.name}`} onClose={onClose} size="wide">
+      <div className="meal-customizer-modal" style={{ display: "grid", gap: "16px", padding: "6px" }}>
+        {hasOptions && meal.options && (
+          <div style={{ display: "grid", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#166534", fontWeight: 800, fontSize: "13px" }}>
+              <BadgeDollarSign size={18} /> 1. اختر حجم الوجبة:
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "8px" }}>
+              {meal.options.map((opt) => {
+                const isSelected = opt.id === selectedOptionId;
+                return (
+                  <button
+                    type="button"
+                    key={opt.id}
+                    onClick={() => setSelectedOptionId(opt.id)}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: "4px",
+                      padding: "12px",
+                      borderRadius: "10px",
+                      border: `2px solid ${isSelected ? "#16a34a" : "#e5e7eb"}`,
+                      background: isSelected ? "#f0fdf4" : "#fff",
+                      cursor: "pointer",
+                      transition: "all 0.15s"
+                    }}
+                  >
+                    <strong style={{ fontSize: "14px", color: isSelected ? "#15803d" : "#1f2937" }}>{opt.name}</strong>
+                    <b style={{ fontSize: "15px", color: "#16a34a" }}>{money(opt.price)} ج.م</b>
+                    {isSelected && <span style={{ fontSize: "10px", padding: "1px 6px", borderRadius: "4px", background: "#dcfce7", color: "#15803d", fontWeight: 800 }}>✓ محدد</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {meal.choiceGroups && meal.choiceGroups.length > 0 && (
+          <div style={{ display: "grid", gap: "14px" }}>
+            {meal.choiceGroups.map((group, gIdx) => {
+              const currentSel = selectedChoices[group.id];
+              return (
+                <div key={group.id} style={{ display: "grid", gap: "8px", padding: "12px", background: "#f8fafc", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 800, fontSize: "13px", color: "#1e40af" }}>
+                      <Shuffle size={16} /> {hasOptions ? `${gIdx + 2}. ` : `${gIdx + 1}. `}{group.name}:
+                    </div>
+                    {group.required !== false && <span style={{ fontSize: "10px", color: "#64748b", background: "#e2e8f0", padding: "2px 6px", borderRadius: "4px" }}>إجباري</span>}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px" }}>
+                    {group.choices.map((choice) => {
+                      const isSelected = currentSel?.productId === choice.productId && currentSel?.optionId === choice.optionId;
+                      return (
+                        <button
+                          type="button"
+                          key={`${choice.productId}:${choice.optionId ?? "base"}`}
+                          onClick={() => setSelectedChoices((prev) => ({ ...prev, [group.id]: { productId: choice.productId, optionId: choice.optionId } }))}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            padding: "10px 12px",
+                            borderRadius: "8px",
+                            border: `2px solid ${isSelected ? "#2563eb" : "#cbd5e1"}`,
+                            background: isSelected ? "#eff6ff" : "#fff",
+                            cursor: "pointer",
+                            textAlign: "right",
+                            transition: "all 0.15s"
+                          }}
+                        >
+                          <div style={{ display: "grid", gap: "2px" }}>
+                            <strong style={{ fontSize: "12px", color: isSelected ? "#1e40af" : "#1f2937" }}>{choice.name}{choice.optionName ? ` (${choice.optionName})` : ""}</strong>
+                            {choice.extraPrice ? <small style={{ fontSize: "10px", color: "#b45309", fontWeight: 700 }}>+{money(choice.extraPrice)} ج.م</small> : <small style={{ fontSize: "9px", color: "#64748b" }}>مشمل ضمن الوجبة</small>}
+                          </div>
+                          {isSelected && <Check size={16} color="#2563eb" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {meal.components.length > 0 && (
+          <div style={{ padding: "10px 12px", background: "#f9fafb", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, color: "#4b5563", display: "block", marginBottom: "4px" }}>المكونات المرفقة تلقائياً مع الوجبة:</span>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "5px" }}>
+              {meal.components.map((c) => (
+                <span key={`${c.productId}:${c.optionId ?? "base"}`} style={{ fontSize: "11px", padding: "2px 7px", borderRadius: "5px", background: "#fff", border: "1px solid #d1d5db", color: "#374151" }}>
+                  <b>{c.quantity}×</b> {c.name}{c.optionName ? ` (${c.optionName})` : ""}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: "1px solid #e5e7eb" }}>
+          <div>
+            <span style={{ fontSize: "11px", color: "#6b7280" }}>إجمالي سعر الوجبة:</span>
+            <b style={{ fontSize: "20px", color: "#15803d", display: "block" }}>{money(totalMealPrice)} ج.م</b>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button type="button" className="soft-button" onClick={onClose}>إلغاء</button>
+            <button type="button" className="primary-button" onClick={handleConfirm} style={{ paddingInline: "20px" }}>
+              <Plus size={16} /> إضافة الوجبة إلى الطلب ({money(totalMealPrice)} ج.م)
+            </button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

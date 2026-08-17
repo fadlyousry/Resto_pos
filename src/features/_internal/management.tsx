@@ -4,11 +4,11 @@ import {
   BadgeDollarSign, Boxes, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
   ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
-  PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2
-  , Monitor
+  PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2, Monitor, Shuffle, Layers
 } from "lucide-react";
 import type {
-  AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo
+  AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo,
+  MealOption, MealChoiceGroup, MealChoiceItem
 } from "../../domain/types";
 import type { ViewProps } from "../../shared/contracts";
 import { money, orderDisplayNumber, shortDate, stageLabels } from "../../shared/format";
@@ -25,12 +25,376 @@ import {
   errorMessage, isDesktopRuntime, listDesktopPrinters, printTestReceipt, type PrinterInfo
 } from "../../infrastructure/desktopPrinting";
 
-const emptyProduct = (category?: ProductCategory, section: ProductSection = "cooked"): Product => ({
-  id: uid(), name: "", category: category?.name ?? "", section: category?.section ?? section,
-  unit: "طبق", price: 0, cost: 0, available: true, accent: category?.color ?? "#6f927d"
+const emptyProduct = (category?: ProductCategory, section: ProductSection = "cooked", isMealComponent = false): Product => ({
+  id: uid(), name: "", category: category?.name ?? (isMealComponent ? "مكونات وجبات" : ""), section: category?.section ?? section,
+  unit: "قطعة", price: 0, cost: 0, available: true, accent: category?.color ?? "#6f927d",
+  isMealComponent
 });
 
 const MEALS_SECTION = "__meals";
+const MEAL_ITEMS_SECTION = "__meal_items";
+
+interface ProductEditorModalProps {
+  initialProduct: Product;
+  state: AppState;
+  update: (updater: (current: AppState) => AppState) => void;
+  notify: (message: string) => void;
+  onClose: () => void;
+  onSaved?: (savedProduct: Product) => void;
+}
+
+function ProductEditorModal({
+  initialProduct,
+  state,
+  update,
+  notify,
+  onClose,
+  onSaved
+}: ProductEditorModalProps) {
+  const [editing, setEditing] = useState<Product>(() => ({
+    ...initialProduct,
+    options: initialProduct.options?.map((opt) => ({ ...opt }))
+  }));
+
+  const selectProductImage = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      notify("اختار ملف صورة صالح");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      notify("حجم الصورة يجب ألا يتجاوز 2 ميجابايت");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setEditing((current) => ({ ...current, imageDataUrl: String(reader.result) }));
+    reader.readAsDataURL(file);
+  };
+
+  const saveProduct = () => {
+    if (
+      !editing.name.trim() ||
+      !editing.unit ||
+      editing.price < 0 ||
+      editing.cost < 0 ||
+      (!editing.isMealComponent && !editing.category) ||
+      editing.options?.some(
+        (option) =>
+          !option.name.trim() ||
+          !option.unit.trim() ||
+          option.price < 0 ||
+          option.cost < 0 ||
+          option.recipeMultiplier <= 0
+      )
+    )
+      return;
+
+    const productToSave: Product = {
+      ...(editing.options?.length
+        ? { ...editing, price: Math.min(...editing.options.map((option) => option.price)) }
+        : editing),
+      isMealComponent: Boolean(editing.isMealComponent)
+    };
+
+    update((current) => ({
+      ...current,
+      products: current.products.some((item) => item.id === editing.id)
+        ? current.products.map((item) => (item.id === editing.id ? productToSave : item))
+        : [productToSave, ...current.products]
+    }));
+
+    notify("تم حفظ الصنف");
+    onSaved?.(productToSave);
+    onClose();
+  };
+
+  const categories = state.categories.filter(
+    (item) =>
+      item.active &&
+      item.section === (editing.isMealComponent ? MEAL_ITEMS_SECTION : editing.section)
+  );
+
+  return (
+    <Modal
+      title={state.products.some((item) => item.id === editing.id) ? "تعديل الصنف" : "إضافة صنف"}
+      onClose={onClose}
+      size="wide"
+    >
+      <div className="product-editor-layout">
+        <aside className="product-image-editor">
+          <label className={editing.imageDataUrl ? "product-image-upload has-image" : "product-image-upload"}>
+            {editing.imageDataUrl ? (
+              <img src={editing.imageDataUrl} alt={`صورة ${editing.name || "الصنف"}`} />
+            ) : (
+              <>
+                <span>
+                  <ImagePlus />
+                </span>
+                <strong>صورة المنتج</strong>
+                <small>اضغط لاختيار صورة</small>
+              </>
+            )}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => selectProductImage(event.target.files?.[0])}
+            />
+          </label>
+          {editing.imageDataUrl && (
+            <button
+              type="button"
+              className="remove-product-image"
+              onClick={() => setEditing({ ...editing, imageDataUrl: undefined })}
+            >
+              <Trash2 /> حذف الصورة
+            </button>
+          )}
+          <label className={editing.available ? "product-availability-toggle active" : "product-availability-toggle"}>
+            <input
+              type="checkbox"
+              checked={editing.available}
+              onChange={(event) => setEditing({ ...editing, available: event.target.checked })}
+            />
+            <span className="toggle-switch-slider">
+              <span className="toggle-switch-thumb" />
+            </span>
+            <div className="toggle-switch-label">
+              <strong>متاح للبيع</strong>
+              <small>{editing.available ? "يظهر في نقطة البيع" : "متوقف مؤقتاً"}</small>
+            </div>
+          </label>
+        </aside>
+        <section className="product-editor-main">
+          <div className="product-editor-heading">
+            <span>
+              <Edit3 />
+            </span>
+            <div>
+              <strong>البيانات الأساسية</strong>
+            </div>
+          </div>
+          <div className="editor-grid product-editor-fields">
+            <label>
+              اسم الصنف
+              <input
+                autoFocus
+                value={editing.name}
+                onChange={(event) => setEditing({ ...editing, name: event.target.value })}
+                placeholder="مثال: بيتزا بالفراخ"
+              />
+            </label>
+            <label>
+              القسم
+              <select
+                value={editing.isMealComponent ? MEAL_ITEMS_SECTION : editing.section}
+                onChange={(event) => {
+                  const next = event.target.value as ProductSection;
+                  const isMealComp = next === MEAL_ITEMS_SECTION;
+                  const targetSection = isMealComp ? (state.sections[0]?.id ?? "cooked") : next;
+                  const firstCat = state.categories.find(
+                    (item) => item.section === (isMealComp ? MEAL_ITEMS_SECTION : targetSection) && item.active
+                  );
+                  setEditing({
+                    ...editing,
+                    section: targetSection,
+                    category: firstCat?.name ?? "",
+                    isMealComponent: isMealComp
+                  });
+                }}
+              >
+                {state.sections.map((item) => (
+                  <option value={item.id} key={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+                <option value={MEAL_ITEMS_SECTION}>الوجبات</option>
+              </select>
+            </label>
+            <label>
+              التصنيف
+              <select
+                value={editing.category}
+                onChange={(event) => setEditing({ ...editing, category: event.target.value })}
+              >
+                <option value="">اختر التصنيف</option>
+                {categories.map((item) => (
+                  <option key={item.id} value={item.name}>
+                    {item.name}
+                  </option>
+                ))}
+                {editing.category && !categories.some((item) => item.name === editing.category) && (
+                  <option value={editing.category}>{editing.category}</option>
+                )}
+              </select>
+            </label>
+            <label>
+              وحدة البيع
+              <input
+                value={editing.unit}
+                onChange={(event) => setEditing({ ...editing, unit: event.target.value })}
+                placeholder="طبق، كيلو، صينية..."
+              />
+            </label>
+            {!editing.options?.length && (
+              <label>
+                سعر البيع
+                <input
+                  type="number"
+                  min="0"
+                  value={editing.price || ""}
+                  onChange={(event) => setEditing({ ...editing, price: Number(event.target.value) })}
+                />
+              </label>
+            )}
+            {!!editing.options?.length && (
+              <div className="option-managed-price-note">
+                <BadgeDollarSign />
+                <span>
+                  <strong>السعر حسب المقاس</strong>
+                  <small>عدّل سعر كل مقاس من الجدول بالأسفل</small>
+                </span>
+              </div>
+            )}
+            <label>
+              التكلفة
+              <input
+                type="number"
+                min="0"
+                value={editing.cost || ""}
+                onChange={(event) => setEditing({ ...editing, cost: Number(event.target.value) })}
+              />
+            </label>
+          </div>
+        </section>
+      </div>
+      <section className="product-options-editor">
+        <header>
+          <div>
+            <strong>المقاسات وخيارات البيع</strong>
+          </div>
+          <button
+            type="button"
+            className="soft-button"
+            onClick={() =>
+              setEditing({
+                ...editing,
+                options: [
+                  ...(editing.options ?? []),
+                  {
+                    id: uid(),
+                    name: "",
+                    unit: editing.unit || "وحدة",
+                    price: editing.price,
+                    cost: editing.cost,
+                    recipeMultiplier: 1
+                  }
+                ]
+              })
+            }
+          >
+            <Plus /> إضافة مقاس
+          </button>
+        </header>
+        {!!editing.options?.length && (
+          <div className="product-options-table">
+            <div className="product-options-head">
+              <span>اسم المقاس</span>
+              <span>وحدة البيع</span>
+              <span>سعر البيع</span>
+              <span>التكلفة</span>
+              <span>معامل الوصفة</span>
+              <span />
+            </div>
+            {editing.options.map((option) => (
+              <div className="product-option-row" key={option.id}>
+                <input
+                  value={option.name}
+                  placeholder="مثال: لارج"
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      options: editing.options?.map((item) =>
+                        item.id === option.id ? { ...item, name: event.target.value } : item
+                      )
+                    })
+                  }
+                />
+                <input
+                  value={option.unit}
+                  placeholder="صينية / كيلو"
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      options: editing.options?.map((item) =>
+                        item.id === option.id ? { ...item, unit: event.target.value } : item
+                      )
+                    })
+                  }
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={option.price || ""}
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      options: editing.options?.map((item) =>
+                        item.id === option.id ? { ...item, price: Number(event.target.value) } : item
+                      )
+                    })
+                  }
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={option.cost || ""}
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      options: editing.options?.map((item) =>
+                        item.id === option.id ? { ...item, cost: Number(event.target.value) } : item
+                      )
+                    })
+                  }
+                />
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={option.recipeMultiplier || ""}
+                  title="يضاعف كميات مكونات الوصفة بهذا الرقم"
+                  onChange={(event) =>
+                    setEditing({
+                      ...editing,
+                      options: editing.options?.map((item) =>
+                        item.id === option.id ? { ...item, recipeMultiplier: Number(event.target.value) } : item
+                      )
+                    })
+                  }
+                />
+                <button
+                  type="button"
+                  title="حذف المقاس"
+                  onClick={() =>
+                    setEditing({ ...editing, options: editing.options?.filter((item) => item.id !== option.id) })
+                  }
+                >
+                  <Trash2 />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!editing.options?.length && (
+          <div className="product-options-empty">الصنف يستخدم وحدة وسعر البيع الأساسيين حاليًا.</div>
+        )}
+      </section>
+      <button className="primary-button modal-save" onClick={saveProduct}>
+        <Save /> حفظ الصنف
+      </button>
+    </Modal>
+  );
+}
 
 interface CatalogTableHeaderProps {
   title: string;
@@ -38,8 +402,8 @@ interface CatalogTableHeaderProps {
   addLabel: string;
   addIcon: ReactNode;
   onAdd: () => void;
-  onManageSections: () => void;
-  onManageCategories: () => void;
+  onManageSections?: () => void;
+  onManageCategories?: () => void;
   extraAction?: ReactNode;
 }
 
@@ -48,8 +412,8 @@ function CatalogTableHeader({
 }: CatalogTableHeaderProps) {
   return <WorkspaceSectionHeader title={title} subtitle={subtitle} className="products-admin-head catalog-table-header" actions={<>
       {extraAction}
-      <button className="soft-button" onClick={onManageSections}><SlidersHorizontal /> إدارة الأقسام</button>
-      <button className="soft-button" onClick={onManageCategories}><Boxes /> إدارة التصنيفات</button>
+      {onManageSections && <button className="soft-button" onClick={onManageSections}><SlidersHorizontal /> إدارة الأقسام</button>}
+      {onManageCategories && <button className="soft-button" onClick={onManageCategories}><Boxes /> إدارة التصنيفات</button>}
       <button className="primary-button compact" onClick={onAdd}>{addIcon} {addLabel}</button>
     </>} />;
 }
@@ -63,21 +427,25 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [mealToDelete, setMealToDelete] = useState<Meal | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [section, setSection] = useState<ProductSection>(() => state.sections[0]?.id ?? "cooked");
+  const [mealsSubTab, setMealsSubTab] = useState<"meals" | "meal_items">("meals");
   const [categoryFilter, setCategoryFilter] = useState("الكل");
+  const [mealItemsCategoryFilter, setMealItemsCategoryFilter] = useState("الكل");
   const [search, setSearch] = useState("");
   const [draftPrices, setDraftPrices] = useState<Record<string, number>>({});
   const [draftOptionPrices, setDraftOptionPrices] = useState<Record<string, number>>({});
+
   useEffect(() => {
     if (section !== MEALS_SECTION && !state.sections.some((item) => item.id === section)) {
       setSection(state.sections[0]?.id ?? MEALS_SECTION);
       setCategoryFilter("الكل");
     }
   }, [section, state.sections]);
-  const sectionProducts = state.products.filter((product) => product.section === section);
-  const sectionCategories = ["الكل", ...new Set(sectionProducts.map((product) => product.category))];
-  const products = state.products.filter((product) =>
-    product.section === section
-    && (categoryFilter === "الكل" || product.category === categoryFilter)
+
+  const sectionProducts = state.products.filter((product) => !product.isMealComponent && product.section === section);
+
+  const sectionCategories = ["الكل", ...new Set(sectionProducts.map((product) => product.category).filter(Boolean))];
+  const products = sectionProducts.filter((product) =>
+    (categoryFilter === "الكل" || product.category === categoryFilter)
     && product.name.includes(search.trim())
   );
   const changedPrices = Object.entries(draftPrices).filter(([id, price]) => {
@@ -107,50 +475,23 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
     }));
     setDraftPrices({});
     setDraftOptionPrices({});
-    notify(`تم حفظ ${priceChangesCount} تحديث في الأسعار`);
-  };
-  const saveProduct = () => {
-    if (!editing?.name.trim() || !editing.category || !editing.unit || editing.price < 0 || editing.cost < 0
-      || editing.options?.some((option) => !option.name.trim() || !option.unit.trim() || option.price < 0 || option.cost < 0 || option.recipeMultiplier <= 0)) return;
-    const productToSave = editing.options?.length
-      ? { ...editing, price: Math.min(...editing.options.map((option) => option.price)) }
-      : editing;
-    update((current) => ({
-      ...current,
-      products: current.products.some((item) => item.id === editing.id)
-        ? current.products.map((item) => item.id === editing.id ? productToSave : item)
-        : [productToSave, ...current.products]
-    }));
-    setDraftPrices((current) => {
-      const next = { ...current };
-      delete next[editing.id];
-      return next;
-    });
-    setDraftOptionPrices((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${editing.id}:`))));
-    setEditing(null);
-    notify("تم حفظ الصنف");
-  };
-  const selectProductImage = (file?: File) => {
-    if (!file || !editing) return;
-    if (!file.type.startsWith("image/")) {
-      notify("اختار ملف صورة صالح");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      notify("حجم الصورة يجب ألا يتجاوز 2 ميجابايت");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setEditing((current) => current ? { ...current, imageDataUrl: String(reader.result) } : current);
-    reader.readAsDataURL(file);
+    notify("تم حفظ تغييرات الأسعار بنجاح");
   };
   const toggle = (id: string) => update((current) => ({
     ...current, products: current.products.map((product) => product.id === id ? { ...product, available: !product.available } : product)
   }));
-  const categories = state.categories.filter((item) => item.active && (!editing || item.section === editing.section));
 
   const activeSection = state.sections.find((item) => item.id === section) ?? state.sections[0];
   const availableCount = sectionProducts.filter((item) => item.available).length;
+  const mealItemsProducts = state.products.filter((product) => product.isMealComponent);
+  const mealItemsCategories = ["الكل", ...new Set([
+    ...state.categories.filter((c) => c.section === MEAL_ITEMS_SECTION && c.active).map((c) => c.name),
+    ...mealItemsProducts.map((p) => p.category).filter(Boolean)
+  ])];
+  const filteredMealItems = mealItemsProducts.filter((product) =>
+    (mealItemsCategoryFilter === "الكل" || product.category === mealItemsCategoryFilter) &&
+    product.name.includes(search.trim())
+  );
   const visibleMeals = state.meals.filter((meal) =>
     meal.name.includes(search.trim()) ||
     meal.components.some((item) => item.name.includes(search.trim()) || (item.optionName && item.optionName.includes(search.trim())))
@@ -165,8 +506,8 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   return <div className="management-page products-admin-page">
     <div className="products-menu-switch">
       {state.sections.map((item, index) => {
-        const available = state.products.filter((product) => product.section === item.id && product.available).length;
-        return <button className={section === item.id ? `active ${index % 2 ? "fresh" : "cooked"}` : ""} onClick={() => { setSection(item.id); setCategoryFilter("الكل"); }} key={item.id}>
+        const available = state.products.filter((product) => !product.isMealComponent && product.section === item.id && product.available).length;
+        return <button className={section === item.id ? `active ${index % 2 ? "fresh" : "cooked"}` : ""} onClick={() => { setSection(item.id); setCategoryFilter("الكل"); setSearch(""); }} key={item.id}>
           <span>{index % 2 ? <ShoppingBasket /> : <CookingPot />}</span><div><strong>{item.name}</strong></div><b>{available} متاح</b>
         </button>;
       })}
@@ -178,34 +519,143 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
     </div>
 
     {section === MEALS_SECTION ? <div className="panel products-admin-panel meals-admin-panel">
-      <CatalogTableHeader
-        title="إدارة الوجبات"
-        subtitle={`${state.meals.filter((meal) => meal.available).length} وجبة متاحة من إجمالي ${state.meals.length}`}
-        addLabel="إضافة وجبة"
-        addIcon={<Plus />}
-        onAdd={() => { setMealToEdit(null); setMealsOpen(true); }}
-        onManageSections={() => setSectionsOpen(true)}
-        onManageCategories={() => setCategoriesOpen(true)}
-      />
-      <div className="products-admin-toolbar meals-admin-toolbar">
-        <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم الوجبة أو أحد مكوناتها..." /></label>
-        <span className="meals-business-hint"><ShoppingBasket /><span><strong>سعر مستقل للوجبة</strong><small>المكونات تُخصم تلقائيًا من المخزون عند البيع</small></span></span>
+      {/* Sleek unified sub-tabs & actions header */}
+      <div className="meals-panel-topbar">
+        <div className="meals-segmented-tabs">
+          <button
+            type="button"
+            className={mealsSubTab === "meals" ? "meals-segmented-tab active" : "meals-segmented-tab"}
+            onClick={() => { setMealsSubTab("meals"); setSearch(""); }}
+          >
+            <ShoppingBasket size={17} />
+            <span>الوجبات المتكاملة</span>
+          </button>
+
+          <button
+            type="button"
+            className={mealsSubTab === "meal_items" ? "meals-segmented-tab active" : "meals-segmented-tab"}
+            onClick={() => { setMealsSubTab("meal_items"); setSearch(""); }}
+          >
+            <Boxes size={17} />
+            <span>أصناف ومكونات الوجبات</span>
+          </button>
+        </div>
+
+        <div className="meals-panel-actions workspace-section-actions">
+          {mealsSubTab === "meals" ? (
+            <button
+              type="button"
+              className="primary-button compact"
+              onClick={() => { setMealToEdit(null); setMealsOpen(true); }}
+            >
+              <Plus /> إضافة وجبة جديدة
+            </button>
+          ) : (
+            <>
+              {priceChangesCount > 0 && (
+                <button
+                  type="button"
+                  className="save-price-changes"
+                  onClick={savePriceChanges}
+                >
+                  <Check /> حفظ تغييرات الأسعار <b>{priceChangesCount}</b>
+                </button>
+              )}
+              <button
+                type="button"
+                className="soft-button"
+                onClick={() => setCategoriesOpen(true)}
+              >
+                <Boxes /> إدارة التصنيفات
+              </button>
+              <button
+                type="button"
+                className="primary-button compact"
+                onClick={() => {
+                  const firstMealCat = state.categories.find((c) => c.section === MEAL_ITEMS_SECTION && c.active);
+                  setEditing(emptyProduct(firstMealCat, state.sections[0]?.id ?? "cooked", true));
+                }}
+              >
+                <PackagePlus /> إضافة صنف للوجبات
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      <div className="meal-management-table">
-        <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span className="meal-actions-heading">الإجراءات</span></div>
-        {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
-          <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong></div></div>
-          <div className="meal-admin-components">{meal.components.map((component) => <span key={`${component.productId}:${component.optionId ?? "base"}`}><b>{component.quantity}×</b> {component.name}{component.optionName ? ` (${component.optionName})` : ""}</span>)}</div>
-          <span className="meal-standalone-price"><b>{money(mealStandaloneTotal(meal))}</b></span>
-          <span className="meal-selling-price"><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</span>
-          <div className="product-row-actions">
-            <button className="product-icon-action edit" type="button" title="تعديل الوجبة" aria-label={`تعديل وجبة ${meal.name}`} onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })) }); setMealsOpen(true); }}><Edit3 /></button>
-            <button className={meal.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={meal.available ? "إيقاف الوجبة" : "إتاحة الوجبة"} aria-label={meal.available ? `إيقاف وجبة ${meal.name}` : `إتاحة وجبة ${meal.name}`} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}>{meal.available ? <CheckCircle2 /> : <Minus />}</button>
-            <button className="product-icon-action delete" type="button" title="حذف الوجبة" aria-label={`حذف وجبة ${meal.name}`} onClick={() => setMealToDelete(meal)}><Trash2 /></button>
+
+      {mealsSubTab === "meals" ? (
+        <>
+          <div className="products-admin-toolbar meals-admin-toolbar" style={{ display: "block" }}>
+            <label className="search-box" style={{ maxWidth: "380px" }}><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم الوجبة أو أحد مكوناتها..." /></label>
           </div>
-        </div>)}
-        {!visibleMeals.length && <Empty icon={<ShoppingBasket />} title={search ? "لا توجد وجبات مطابقة" : "لا توجد وجبات حتى الآن"} text={search ? "جرّب اسمًا آخر أو ابحث باسم أحد المكونات" : "اضغط إضافة وجبة وابدأ بتكوينها من الأصناف"} />}
-      </div>
+          <div className="meal-management-table">
+            <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات والخيارات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span className="meal-actions-heading">الإجراءات</span></div>
+            {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
+              <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong></div></div>
+              <div className="meal-admin-components">
+                {meal.components.map((component) => <span key={`${component.productId}:${component.optionId ?? "base"}`}><b>{component.quantity}×</b> {component.name}{component.optionName ? ` (${component.optionName})` : ""}</span>)}
+                {meal.choiceGroups?.map((group) => <span className="choice-group-badge" key={group.id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "#eef4ff", color: "#1e40af", borderColor: "#bfdbfe" }}><Shuffle size={11} /> {group.name} ({group.choices.length} خيارات)</span>)}
+              </div>
+              <span className="meal-standalone-price"><b>{money(mealStandaloneTotal(meal))}</b></span>
+              <span className="meal-selling-price">
+                {meal.options?.length ? (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+                    {meal.options.map((opt) => <span key={opt.id} style={{ fontSize: "11px", background: "#f0fdf4", color: "#166534", padding: "2px 6px", borderRadius: "5px", border: "1px solid #bbf7d0" }}><b>{opt.name}:</b> {money(opt.price)}</span>)}
+                  </div>
+                ) : (
+                  <><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</>
+                )}
+              </span>
+              <div className="product-row-actions">
+                <button className="product-icon-action edit" type="button" title="تعديل الوجبة" aria-label={`تعديل وجبة ${meal.name}`} onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })), options: meal.options?.map((opt) => ({ ...opt })), choiceGroups: meal.choiceGroups?.map((cg) => ({ ...cg, choices: cg.choices.map((c) => ({ ...c })) })) }); setMealsOpen(true); }}><Edit3 /></button>
+                <button className={meal.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={meal.available ? "إيقاف الوجبة" : "إتاحة الوجبة"} aria-label={meal.available ? `إيقاف وجبة ${meal.name}` : `إتاحة وجبة ${meal.name}`} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}>{meal.available ? <CheckCircle2 /> : <Minus />}</button>
+                <button className="product-icon-action delete" type="button" title="حذف الوجبة" aria-label={`حذف وجبة ${meal.name}`} onClick={() => setMealToDelete(meal)}><Trash2 /></button>
+              </div>
+            </div>)}
+            {!visibleMeals.length && <Empty icon={<ShoppingBasket />} title={search ? "لا توجد وجبات مطابقة" : "لا توجد وجبات حتى الآن"} text={search ? "جرّب اسمًا آخر أو ابحث باسم أحد المكونات" : "اضغط إضافة وجبة وابدأ بتكوينها من الأصناف"} />}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="products-admin-toolbar" style={{ minHeight: "56px" }}>
+            <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث في أصناف الوجبات المخصصة..." /></label>
+            {mealItemsCategories.length > 1 && (
+              <div className="products-category-filter">
+                {mealItemsCategories.map((item) => <button key={item} className={mealItemsCategoryFilter === item ? "active" : ""} onClick={() => setMealItemsCategoryFilter(item)}>{item}</button>)}
+              </div>
+            )}
+          </div>
+          <div className="product-management">
+            <div className="product-manage-table-head product-catalog-table-grid"><span>الصنف</span><span>التصنيف</span><span>الوحدة</span><span>التكلفة</span><span>سعر المرجع / المقاسات</span><span className="product-actions-heading">الإجراءات</span></div>
+            {filteredMealItems.map((product) => <div className={product.available ? "product-manage-row editable product-catalog-table-grid" : "product-manage-row editable unavailable product-catalog-table-grid"} key={product.id}>
+              <div className="product-admin-name"><span className="product-admin-icon" style={{ background: `${product.accent}24`, color: product.accent }}>{product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <Boxes />}</span><span><strong>{product.name}</strong></span></div>
+              <span className="product-admin-category"><b>{product.category || "مكونات وجبات"}</b></span>
+              <span className="product-admin-units"><b>{product.unit}</b></span>
+              <span className="product-admin-cost"><b>{money(product.cost)}</b></span>
+              {product.options?.length ? <div style={{ display: "flex", gap: "6px", alignItems: "center", overflowX: "auto" }}>
+                {product.options.map((option) => {
+                  const key = `${product.id}:${option.id}`;
+                  const value = draftOptionPrices[key] ?? option.price;
+                  const isChanged = value !== option.price;
+                  return <label key={option.id} className={isChanged ? "quick-price changed" : "quick-price"} style={{ display: "flex", flexDirection: "row", alignItems: "center", minHeight: "34px", height: "34px", margin: 0, borderRadius: "7px", overflow: "hidden" }}>
+                    <input type="number" min="0" value={value} onChange={(event) => setDraftOptionPrices({ ...draftOptionPrices, [key]: Number(event.target.value) })} onKeyDown={(event) => event.key === "Enter" && savePriceChanges()} style={{ width: "46px", height: "34px", textAlign: "center", padding: "0 4px", fontSize: "12px", fontWeight: 700, border: 0, outline: 0 }} />
+                    <span style={{ height: "34px", display: "grid", placeItems: "center", padding: "0 6px", fontSize: "9px", fontWeight: 700, background: "#f1f4f1", color: "#47534c", whiteSpace: "nowrap" }}>{option.name}</span>
+                  </label>;
+                })}
+              </div> : <label className={draftPrices[product.id] !== undefined && draftPrices[product.id] !== product.price ? "quick-price changed" : "quick-price"}>
+                <input type="number" min="0" value={draftPrices[product.id] ?? product.price} onChange={(event) => setDraftPrices({ ...draftPrices, [product.id]: Number(event.target.value) })} onKeyDown={(event) => event.key === "Enter" && savePriceChanges()} />
+                <span>السعر المرجعي</span>
+              </label>}
+              <div className="product-row-actions">
+                <button className="product-icon-action edit" type="button" title="تعديل الصنف" aria-label={`تعديل صنف ${product.name}`} onClick={() => setEditing({ ...product, options: product.options?.map((option) => ({ ...option })) })}><Edit3 /></button>
+                <button className={product.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={product.available ? "إيقاف الصنف" : "إتاحة الصنف"} aria-label={product.available ? `إيقاف صنف ${product.name}` : `إتاحة صنف ${product.name}`} onClick={() => toggle(product.id)}>{product.available ? <CheckCircle2 /> : <Minus />}</button>
+                <button className="product-icon-action delete" type="button" title="حذف الصنف" aria-label={`حذف صنف ${product.name}`} onClick={() => setProductToDelete(product)}><Trash2 /></button>
+              </div>
+            </div>)}
+            {!filteredMealItems.length && <Empty icon={<Boxes />} title="لا توجد أصناف وجبات" text="اضغط «إضافة صنف للوجبات» لإنشاء مكونات أو إضافات مخصصة للوجبات" />}
+          </div>
+        </>
+      )}
     </div> : <div className="panel products-admin-panel">
       <CatalogTableHeader
         title={`أصناف قسم ${activeSection?.name ?? "المنيو"}`}
@@ -254,77 +704,26 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
       </div>
     </div>}
 
-    {editing && <Modal title={state.products.some((item) => item.id === editing.id) ? "تعديل الصنف" : "إضافة صنف"} onClose={() => setEditing(null)} size="wide">
-      <div className="product-editor-layout">
-        <aside className="product-image-editor">
-          <label className={editing.imageDataUrl ? "product-image-upload has-image" : "product-image-upload"}>
-            {editing.imageDataUrl ? <img src={editing.imageDataUrl} alt={`صورة ${editing.name || "الصنف"}`} /> : <><span><ImagePlus /></span><strong>صورة المنتج</strong><small>اضغط لاختيار صورة</small></>}
-            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => selectProductImage(event.target.files?.[0])} />
-          </label>
-          {editing.imageDataUrl && <button type="button" className="remove-product-image" onClick={() => setEditing({ ...editing, imageDataUrl: undefined })}><Trash2 /> حذف الصورة</button>}
-          <label className={editing.available ? "product-availability-toggle active" : "product-availability-toggle"}>
-            <input
-              type="checkbox"
-              checked={editing.available}
-              onChange={(event) => setEditing({ ...editing, available: event.target.checked })}
-            />
-            <span className="toggle-switch-slider">
-              <span className="toggle-switch-thumb" />
-            </span>
-            <div className="toggle-switch-label">
-              <strong>متاح للبيع</strong>
-              <small>{editing.available ? "يظهر في نقطة البيع" : "متوقف مؤقتاً"}</small>
-            </div>
-          </label>
-        </aside>
-        <section className="product-editor-main">
-          <div className="product-editor-heading">
-            <span><Edit3 /></span>
-            <div><strong>البيانات الأساسية</strong></div>
-          </div>
-          <div className="editor-grid product-editor-fields">
-            <label>اسم الصنف<input autoFocus value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} placeholder="مثال: بيتزا بالفراخ" /></label>
-            <label>القسم<select value={editing.section} onChange={(event) => {
-              const next = event.target.value as ProductSection;
-              const first = state.categories.find((item) => item.section === next && item.active);
-              setEditing({ ...editing, section: next, category: first?.name ?? "" });
-            }}>{state.sections.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
-            <label>التصنيف<select value={editing.category} onChange={(event) => setEditing({ ...editing, category: event.target.value })}>
-              <option value="">اختر التصنيف</option>{categories.map((item) => <option key={item.id}>{item.name}</option>)}
-            </select></label>
-            <label>وحدة البيع<input value={editing.unit} onChange={(event) => setEditing({ ...editing, unit: event.target.value })} placeholder="طبق، كيلو، صينية..." /></label>
-            {!editing.options?.length && <label>سعر البيع<input type="number" min="0" value={editing.price || ""} onChange={(event) => setEditing({ ...editing, price: Number(event.target.value) })} /></label>}
-            {!!editing.options?.length && <div className="option-managed-price-note"><BadgeDollarSign /><span><strong>السعر حسب المقاس</strong><small>عدّل سعر كل مقاس من الجدول بالأسفل</small></span></div>}
-            <label>التكلفة<input type="number" min="0" value={editing.cost || ""} onChange={(event) => setEditing({ ...editing, cost: Number(event.target.value) })} /></label>
-          </div>
-        </section>
-      </div>
-      <section className="product-options-editor">
-        <header>
-          <div><strong>المقاسات وخيارات البيع</strong></div>
-          <button type="button" className="soft-button" onClick={() => setEditing({
-            ...editing,
-            options: [...(editing.options ?? []), {
-              id: uid(), name: "", unit: editing.unit || "وحدة", price: editing.price, cost: editing.cost, recipeMultiplier: 1
-            }]
-          })}><Plus /> إضافة مقاس</button>
-        </header>
-        {!!editing.options?.length && <div className="product-options-table">
-          <div className="product-options-head"><span>اسم المقاس</span><span>وحدة البيع</span><span>سعر البيع</span><span>التكلفة</span><span>معامل الوصفة</span><span /></div>
-          {editing.options.map((option) => <div className="product-option-row" key={option.id}>
-            <input value={option.name} placeholder="مثال: لارج" onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, name: event.target.value } : item) })} />
-            <input value={option.unit} placeholder="صينية / كيلو" onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, unit: event.target.value } : item) })} />
-            <input type="number" min="0" value={option.price || ""} onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, price: Number(event.target.value) } : item) })} />
-            <input type="number" min="0" value={option.cost || ""} onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, cost: Number(event.target.value) } : item) })} />
-            <input type="number" min="0.01" step="0.01" value={option.recipeMultiplier || ""} title="يضاعف كميات مكونات الوصفة بهذا الرقم" onChange={(event) => setEditing({ ...editing, options: editing.options?.map((item) => item.id === option.id ? { ...item, recipeMultiplier: Number(event.target.value) } : item) })} />
-            <button type="button" title="حذف المقاس" onClick={() => setEditing({ ...editing, options: editing.options?.filter((item) => item.id !== option.id) })}><Trash2 /></button>
-          </div>)}
-        </div>}
-        {!editing.options?.length && <div className="product-options-empty">الصنف يستخدم وحدة وسعر البيع الأساسيين حاليًا.</div>}
-      </section>
-      <button className="primary-button modal-save" onClick={saveProduct}><Save /> حفظ الصنف</button>
-    </Modal>}
-    {categoriesOpen && <CategoryManager state={state} update={update} notify={notify} onClose={() => setCategoriesOpen(false)} />}
+    {editing && (
+      <ProductEditorModal
+        initialProduct={editing}
+        state={state}
+        update={update}
+        notify={notify}
+        onClose={() => setEditing(null)}
+        onSaved={(saved) => {
+          setDraftPrices((current) => {
+            const next = { ...current };
+            delete next[saved.id];
+            return next;
+          });
+          setDraftOptionPrices((current) =>
+            Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${saved.id}:`)))
+          );
+        }}
+      />
+    )}
+    {categoriesOpen && <CategoryManager state={state} update={update} notify={notify} initialSection={section === MEALS_SECTION ? MEAL_ITEMS_SECTION : section} onClose={() => setCategoriesOpen(false)} />}
     {sectionsOpen && <SectionManager state={state} update={update} notify={notify} onClose={() => setSectionsOpen(false)} />}
     {mealsOpen && <MealManager state={state} update={update} notify={notify} initialMeal={mealToEdit} onClose={() => { setMealsOpen(false); setMealToEdit(null); }} />}
     {mealToDelete && <Modal title="تأكيد حذف الوجبة" onClose={() => setMealToDelete(null)}>
@@ -354,11 +753,10 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
       <div className="delete-order-confirm">
         <span className="delete-order-icon"><Trash2 /></span>
         <strong>هل تريد حذف الصنف «{productToDelete.name}»؟</strong>
-        <p>سيتم حذف الصنف نهائيًا من المنيو وقائمة المبيعات.</p>
+        <p>سيتم حذف الصنف نهائيًا ولن يظهر في المنيو أو الكاشير.</p>
         <div>
-          <span>القسم <b>{state.sections.find((item) => item.id === productToDelete.section)?.name ?? productToDelete.section}</b></span>
-          <span>التصنيف <b>{productToDelete.category || "بدون تصنيف"}</b></span>
-          <span>السعر <b>{productToDelete.options?.length ? `${productToDelete.options.length} مقاسات` : `${money(productToDelete.price)} ج.م / ${productToDelete.unit}`}</b></span>
+          <span>سعر البيع <b>{money(productToDelete.price)} ج.م</b></span>
+          <span>الوحدة <b>{productToDelete.unit}</b></span>
           <span>التكلفة <b>{money(productToDelete.cost)} ج.م</b></span>
         </div>
         <footer>
@@ -380,8 +778,8 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   </div>;
 }
 
-function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClose: () => void }) {
-  const firstSection = state.sections[0]?.id ?? "cooked";
+function CategoryManager({ state, update, notify, onClose, initialSection }: ViewProps & { onClose: () => void; initialSection?: ProductSection }) {
+  const firstSection = initialSection ?? state.sections[0]?.id ?? "cooked";
   const [form, setForm] = useState<Omit<ProductCategory, "id">>({ name: "", section: firstSection, color: "#6f927d", active: true });
   const [editingId, setEditingId] = useState("");
   const [sectionFilter, setSectionFilter] = useState<ProductSection>(firstSection);
@@ -390,9 +788,14 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
   const visibleCategories = state.categories.filter((category) =>
     category.section === sectionFilter && category.name.includes(search.trim())
   );
-  const resetForm = (section = sectionFilter) => {
+  const resetForm = (sec = sectionFilter) => {
     setEditingId("");
-    setForm({ name: "", section, color: state.sections.findIndex((item) => item.id === section) % 2 ? "#c58d5b" : "#6f927d", active: true });
+    setForm({
+      name: "",
+      section: sec,
+      color: sec === MEAL_ITEMS_SECTION ? "#4f46e5" : (state.sections.findIndex((item) => item.id === sec) % 2 ? "#c58d5b" : "#6f927d"),
+      active: true
+    });
   };
   const add = () => {
     if (!form.name.trim()) return;
@@ -422,23 +825,29 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
     <div className="category-manager">
       <div className="category-section-switch">
         {state.sections.map((item, index) => <button className={sectionFilter === item.id ? `active ${index % 2 ? "fresh" : ""}` : ""} onClick={() => { setSectionFilter(item.id); resetForm(item.id); }} key={item.id}>{index % 2 ? <ShoppingBasket /> : <CookingPot />}<span><strong>{item.name}</strong><small>{state.categories.filter((category) => category.section === item.id).length} تصنيف</small></span></button>)}
+        <button className={sectionFilter === MEAL_ITEMS_SECTION ? "active" : ""} onClick={() => { setSectionFilter(MEAL_ITEMS_SECTION); resetForm(MEAL_ITEMS_SECTION); }}>
+          <Boxes />
+          <span><strong>الوجبات</strong><small>{state.categories.filter((category) => category.section === MEAL_ITEMS_SECTION).length} تصنيف</small></span>
+        </button>
       </div>
       <div className={editingId ? "category-form editing" : "category-form"}>
         <div className="category-form-title"><span>{editingId ? <Edit3 /> : <Plus />}</span><div><strong>{editingId ? "تعديل التصنيف" : "إضافة تصنيف جديد"}</strong></div></div>
-        <label><span>اسم التصنيف</span><div><Boxes /><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} onKeyDown={(event) => event.key === "Enter" && add()} placeholder="مثال: حواوشي، فراخ، مجمدات..." /></div></label>
+        <label><span>اسم التصنيف</span><div><Boxes /><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} onKeyDown={(event) => event.key === "Enter" && add()} placeholder="مثال: حواوشي، فراخ، مجمدات، إضافات وجبات..." /></div></label>
         <div className="category-form-actions">
           {editingId && <button className="soft-button" onClick={() => resetForm()}>إلغاء التعديل</button>}
           <button className="primary-button" disabled={!form.name.trim()} onClick={add}>{editingId ? <Save /> : <Plus />} {editingId ? "حفظ التعديل" : "إضافة التصنيف"}</button>
         </div>
       </div>
       <div className="category-list-head">
-        <div><strong>تصنيفات {state.sections.find((item) => item.id === sectionFilter)?.name ?? "القسم"}</strong><small>{visibleCategories.length} نتيجة</small></div>
+        <div><strong>تصنيفات {sectionFilter === MEAL_ITEMS_SECTION ? "الوجبات" : (state.sections.find((item) => item.id === sectionFilter)?.name ?? "القسم")}</strong><small>{visibleCategories.length} نتيجة</small></div>
         <label className="search-box"><Search /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث عن تصنيف..." /></label>
       </div>
       <div className="category-manager-list">{visibleCategories.map((category) => {
-        const productsCount = state.products.filter((product) => product.section === category.section && product.category === category.name).length;
+        const productsCount = category.section === MEAL_ITEMS_SECTION
+          ? state.products.filter((product) => product.isMealComponent && product.category === category.name).length
+          : state.products.filter((product) => !product.isMealComponent && product.section === category.section && product.category === category.name).length;
         return <div className={category.active ? "" : "inactive"} key={category.id}>
-      <span className="category-list-icon">{state.sections.findIndex((item) => item.id === category.section) % 2 ? <ShoppingBasket /> : <CookingPot />}</span>
+      <span className="category-list-icon">{category.section === MEAL_ITEMS_SECTION ? <Boxes /> : (state.sections.findIndex((item) => item.id === category.section) % 2 ? <ShoppingBasket /> : <CookingPot />)}</span>
       <span><strong>{category.name}</strong><small>{productsCount ? `${productsCount} صنف مرتبط` : "لا توجد أصناف مرتبطة"}</small></span>
       <em className={category.active ? "active" : ""}>{category.active ? "نشط" : "متوقف"}</em>
       <div className="category-row-actions">
@@ -463,8 +872,8 @@ function CategoryManager({ state, update, notify, onClose }: ViewProps & { onClo
       <strong>هل تريد حذف تصنيف «{deleteTarget.name}»؟</strong>
       <p>سيتم حذف التصنيف من قائمة التصنيفات التابعة للقسم.</p>
       <div>
-        <span>القسم <b>{state.sections.find((item) => item.id === deleteTarget.section)?.name ?? deleteTarget.section}</b></span>
-        <span>الأصناف المرتبطة <b>{state.products.filter((product) => product.section === deleteTarget.section && product.category === deleteTarget.name).length} صنف</b></span>
+        <span>القسم <b>{deleteTarget.section === MEAL_ITEMS_SECTION ? "الوجبات" : (state.sections.find((item) => item.id === deleteTarget.section)?.name ?? deleteTarget.section)}</b></span>
+        <span>الأصناف المرتبطة <b>{deleteTarget.section === MEAL_ITEMS_SECTION ? state.products.filter((product) => product.isMealComponent && product.category === deleteTarget.name).length : state.products.filter((product) => product.section === deleteTarget.section && product.category === deleteTarget.name).length} صنف</b></span>
       </div>
       <footer>
         <button type="button" className="soft-button" onClick={() => setDeleteTarget(null)}>إلغاء</button>
@@ -581,15 +990,844 @@ function SectionManager({ state, update, notify, onClose }: ViewProps & { onClos
   </Modal>}
   </>;
 }
+// ==========================================
+// MEAL MANAGER MODULAR ARCHITECTURE
+// ==========================================
+
+interface MealHeaderFieldsProps {
+  name: string;
+  onNameChange: (name: string) => void;
+  onAddNewProduct: () => void;
+}
+
+function MealHeaderFields({ name, onNameChange, onAddNewProduct }: MealHeaderFieldsProps) {
+  return (
+    <div className="meal-editor-top-bar">
+      <div className="meal-name-field">
+        <label>اسم الوجبة</label>
+        <input
+          autoFocus
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          placeholder="مثال: وجبة التوفير العائلية، وجبة ميكس جريل..."
+        />
+      </div>
+      <button
+        type="button"
+        className="primary-button"
+        onClick={onAddNewProduct}
+        style={{
+          minHeight: "40px",
+          padding: "0 18px",
+          fontSize: "12px",
+          fontWeight: 800,
+          background: "var(--green-800)",
+          color: "#fff",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "8px",
+          whiteSpace: "nowrap",
+          borderRadius: "10px",
+          border: 0,
+          cursor: "pointer",
+          alignSelf: "flex-end"
+        }}
+      >
+        <PackagePlus size={17} /> إضافة صنف للوجبة
+      </button>
+    </div>
+  );
+}
+
+interface MealWizardTabsProps {
+  activeTab: "components" | "choices" | "sizes";
+  onTabChange: (tab: "components" | "choices" | "sizes") => void;
+  componentsCount: number;
+  choicesCount: number;
+  sizesCount: number;
+  hasSizes: boolean;
+}
+
+function MealWizardTabs({
+  activeTab,
+  onTabChange,
+  componentsCount,
+  choicesCount,
+  sizesCount,
+  hasSizes
+}: MealWizardTabsProps) {
+  return (
+    <div className="meal-steps-wizard">
+      <button
+        type="button"
+        className={`meal-wizard-tab-btn ${activeTab === "components" ? "active-components" : ""}`}
+        onClick={() => onTabChange("components")}
+      >
+        <Layers size={16} />
+        <span>1. المكونات الأساسية</span>
+        <span className="tab-step-count">{componentsCount}</span>
+      </button>
+
+      <button
+        type="button"
+        className={`meal-wizard-tab-btn ${activeTab === "choices" ? "active-choices" : ""}`}
+        onClick={() => onTabChange("choices")}
+      >
+        <Shuffle size={16} />
+        <span>2. خيارات التبديل (إما ده أو ده)</span>
+        <span className="tab-step-count">{choicesCount}</span>
+      </button>
+
+      <button
+        type="button"
+        className={`meal-wizard-tab-btn ${activeTab === "sizes" ? "active-pricing" : ""}`}
+        onClick={() => onTabChange("sizes")}
+      >
+        <BadgeDollarSign size={16} />
+        <span>3. التسعير والأحجام</span>
+        <span className="tab-step-count">{hasSizes && sizesCount ? `${sizesCount} أحجام` : "سعر موحد"}</span>
+      </button>
+    </div>
+  );
+}
+
+interface MealFixedComponentsTabProps {
+  state: AppState;
+  draft: Meal;
+  onToggleProduct: (product: Product) => void;
+  onOptionChange: (product: Product, optionId: string) => void;
+  onChangeQuantity: (productId: string, qty: number) => void;
+  onRemoveComponent: (productId: string) => void;
+  productSearch: string;
+  onProductSearchChange: (search: string) => void;
+  sectionFilter: string;
+  onSectionFilterChange: (section: string) => void;
+  mealCategoryFilter: string;
+  onMealCategoryFilterChange: (category: string) => void;
+  selectedOptionByProduct: Record<string, string>;
+  componentTotal: number;
+}
+
+function MealFixedComponentsTab({
+  state,
+  draft,
+  onToggleProduct,
+  onOptionChange,
+  onChangeQuantity,
+  onRemoveComponent,
+  productSearch,
+  onProductSearchChange,
+  sectionFilter,
+  onSectionFilterChange,
+  mealCategoryFilter,
+  onMealCategoryFilterChange,
+  selectedOptionByProduct,
+  componentTotal
+}: MealFixedComponentsTabProps) {
+  const isSelected = (productId: string) => draft.components.find((item) => item.productId === productId);
+
+  const getActiveOption = (product: Product) => {
+    if (!product.options?.length) return undefined;
+    const comp = isSelected(product.id);
+    const optId = comp?.optionId ?? selectedOptionByProduct[product.id] ?? product.options[0]?.id;
+    return product.options.find((opt) => opt.id === optId) ?? product.options[0];
+  };
+
+  const availableProducts = state.products.filter((product) => product.available);
+  const sectionProducts = availableProducts.filter((product) => {
+    if (sectionFilter === "all") return true;
+    if (sectionFilter === "meal_items") return Boolean(product.isMealComponent);
+    if (sectionFilter === "regular") return !product.isMealComponent;
+    if (sectionFilter === "selected") return Boolean(isSelected(product.id));
+    return product.section === sectionFilter && !product.isMealComponent;
+  });
+
+  const mealCategories = [...new Set(sectionProducts.map((product) => product.category).filter(Boolean))];
+  const normalizedSearch = productSearch.trim().toLocaleLowerCase("ar");
+  const filteredProducts = sectionProducts.filter((product) => {
+    if (mealCategoryFilter !== "all" && product.category !== mealCategoryFilter) return false;
+    if (!normalizedSearch) return true;
+    const matchName = product.name.toLocaleLowerCase("ar").includes(normalizedSearch);
+    const matchOption = product.options?.some((opt) => opt.name.toLocaleLowerCase("ar").includes(normalizedSearch));
+    return matchName || matchOption;
+  });
+
+  const totalCost = draft.components.reduce((sum, c) => sum + (c.cost || 0) * c.quantity, 0);
+
+  return (
+    <div className="meal-split-container">
+      {/* Right Column (60%): Product Picker / Warehouse */}
+      <div className="meal-picker-panel">
+        <div className="meal-picker-toolbar">
+          <label className="search-box" style={{ flex: 1, minWidth: "160px" }}>
+            <Search />
+            <input
+              value={productSearch}
+              onChange={(e) => onProductSearchChange(e.target.value)}
+              placeholder="ابحث عن صنف أو مكون..."
+            />
+          </label>
+          <select
+            value={sectionFilter}
+            onChange={(e) => {
+              onSectionFilterChange(e.target.value);
+              onMealCategoryFilterChange("all");
+            }}
+            style={{ minHeight: "36px", fontSize: "11px", borderRadius: "8px", border: "1px solid #cbd5e1", padding: "0 8px" }}
+          >
+            <option value="all">كل الأقسام ({availableProducts.length})</option>
+            <option value="meal_items">🍱 أصناف الوجبات فقط ({availableProducts.filter((p) => p.isMealComponent).length})</option>
+            <option value="regular">🍔 أصناف المنيو العامة ({availableProducts.filter((p) => !p.isMealComponent).length})</option>
+            {state.sections.map((sec) => (
+              <option key={sec.id} value={sec.id}>
+                {sec.name} ({availableProducts.filter((p) => !p.isMealComponent && p.section === sec.id).length})
+              </option>
+            ))}
+            {!!draft.components.length && <option value="selected">المختارة فقط ({draft.components.length})</option>}
+          </select>
+          {mealCategories.length > 0 && (
+            <select
+              value={mealCategoryFilter}
+              onChange={(e) => onMealCategoryFilterChange(e.target.value)}
+              style={{ minHeight: "36px", fontSize: "11px", borderRadius: "8px", border: "1px solid #cbd5e1", padding: "0 8px" }}
+            >
+              <option value="all">كل التصنيفات</option>
+              {mealCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div className="meal-picker-grid">
+          {filteredProducts.map((product) => {
+            const comp = isSelected(product.id);
+            const hasOptions = Boolean(product.options && product.options.length > 0);
+            const activeOption = getActiveOption(product);
+            const currentPrice = activeOption ? activeOption.price : product.price;
+
+            return (
+              <div
+                key={product.id}
+                className={`meal-picker-card ${comp ? "is-selected" : ""}`}
+                onClick={() => onToggleProduct(product)}
+                title={product.name}
+              >
+                <div className="meal-picker-card-top">
+                  <span className="meal-picker-card-name">{product.name}</span>
+                  {product.isMealComponent ? (
+                    <span className="meal-picker-card-badge">وجبات</span>
+                  ) : (
+                    <span className="meal-picker-card-meta">
+                      {state.sections.find((s) => s.id === product.section)?.name ?? product.category}
+                    </span>
+                  )}
+                </div>
+
+                <div className="meal-picker-card-bottom">
+                  <b className="meal-picker-card-price">{money(currentPrice)} ج.م</b>
+                  {hasOptions ? (
+                    <div className="meal-picker-option-wrap" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        className="meal-picker-option-select"
+                        value={activeOption?.id}
+                        onChange={(e) => onOptionChange(product, e.target.value)}
+                      >
+                        {product.options!.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.name} ({money(opt.price)} ج.م)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <span className="meal-picker-unit-tag">{product.unit || "قطعة"}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {!filteredProducts.length && (
+            <div style={{ gridColumn: "1 / -1", textAlign: "center", padding: "30px", color: "#64748b" }}>
+              <Search size={24} style={{ margin: "0 auto 6px", opacity: 0.5 }} />
+              <strong style={{ display: "block", fontSize: "13px" }}>لا توجد أصناف مطابقة للبحث</strong>
+              <small>جرّب تغيير كلمة البحث أو القسم</small>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Left Column (40%): Current Selected Components Basket */}
+      <div className="meal-basket-panel">
+        <div className="meal-basket-header">
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <Layers size={16} color="#166534" />
+            <strong style={{ fontSize: "13px", color: "#1e293b" }}>مكونات الوجبة الحالية</strong>
+          </div>
+          <span style={{ fontSize: "11px", fontWeight: 800, padding: "2px 8px", borderRadius: "6px", background: "#dcfce7", color: "#166534" }}>
+            {draft.components.length} أصناف
+          </span>
+        </div>
+
+        <div className="meal-basket-list">
+          {draft.components.map((component) => (
+            <div className="meal-basket-item" key={component.productId}>
+              <div className="meal-basket-item-info">
+                <span className="meal-basket-item-title">{component.name}</span>
+                <span className="meal-basket-item-sub">
+                  {component.optionName ? `مقاس: ${component.optionName} · ` : ""}
+                  {money(component.price ?? 0)} ج.م / {component.unit}
+                </span>
+              </div>
+              <div className="meal-basket-controls">
+                <div className="meal-basket-qty-stepper">
+                  <button
+                    type="button"
+                    onClick={() => onChangeQuantity(component.productId, component.quantity - 1)}
+                  >
+                    -
+                  </button>
+                  <b>{component.quantity}</b>
+                  <button
+                    type="button"
+                    onClick={() => onChangeQuantity(component.productId, component.quantity + 1)}
+                  >
+                    +
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="meal-basket-item-delete"
+                  title="حذف من الوجبة"
+                  onClick={() => onRemoveComponent(component.productId)}
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {!draft.components.length && (
+            <div style={{ textAlign: "center", padding: "40px 16px", color: "#94a3b8", display: "grid", gap: "6px" }}>
+              <Layers size={32} style={{ margin: "0 auto", opacity: 0.4 }} />
+              <strong style={{ fontSize: "13px", color: "#64748b" }}>لم يتم اختيار أي مكونات بعد</strong>
+              <small>اضغط على أي صنف من القائمة باليمين لإضافته للوجبة وتحديد كميته</small>
+            </div>
+          )}
+        </div>
+
+        <div className="meal-basket-footer">
+          <div className="meal-basket-footer-row">
+            <span>التكلفة الإجمالية التقديرية:</span>
+            <b>{money(totalCost)} ج.م</b>
+          </div>
+          <div className="meal-basket-footer-row total-row">
+            <span>مجموع المكونات منفردة:</span>
+            <b>{money(componentTotal)} ج.م</b>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface MealChoiceGroupsTabProps {
+  draft: Meal;
+  newGroupTitle: string;
+  onNewGroupTitleChange: (title: string) => void;
+  onAddChoiceGroup: () => void;
+  onRemoveChoiceGroup: (groupId: string) => void;
+  onUpdateChoiceGroup: (groupId: string, updater: (group: MealChoiceGroup) => MealChoiceGroup) => void;
+  onAddChoiceItemToGroup: (groupId: string, product: Product, option?: { id: string; name: string; unit: string; price: number; cost: number; recipeMultiplier: number }) => void;
+  onRemoveChoiceFromGroup: (groupId: string, productId: string, optionId?: string) => void;
+  addingChoiceToGroupId: string | null;
+  setAddingChoiceToGroupId: (groupId: string | null) => void;
+  choicePickerSearch: string;
+  setChoicePickerSearch: (search: string) => void;
+  choicePickerSection: string;
+  setChoicePickerSection: (section: string) => void;
+  choiceProducts: Product[];
+  onOpenProductModal: (groupId: string) => void;
+}
+
+function MealChoiceGroupsTab({
+  draft,
+  newGroupTitle,
+  onNewGroupTitleChange,
+  onAddChoiceGroup,
+  onRemoveChoiceGroup,
+  onUpdateChoiceGroup,
+  onAddChoiceItemToGroup,
+  onRemoveChoiceFromGroup,
+  addingChoiceToGroupId,
+  setAddingChoiceToGroupId,
+  choicePickerSearch,
+  setChoicePickerSearch,
+  choicePickerSection,
+  setChoicePickerSection,
+  choiceProducts,
+  onOpenProductModal
+}: MealChoiceGroupsTabProps) {
+  return (
+    <div style={{ display: "grid", gap: "12px", padding: "4px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", background: "#eff6ff", borderRadius: "10px", border: "1px solid #bfdbfe", color: "#1e40af" }}>
+        <Shuffle size={20} />
+        <div style={{ display: "grid", gap: "2px" }}>
+          <strong style={{ fontSize: "12px" }}>خيارات التبديل التبادلي (إما ده أو ده)</strong>
+          <small style={{ fontSize: "11px", color: "#3b82f6" }}>
+            تتيح للكاشير اختيار صنف واحد من بين عدة بدائل أثناء أخذ الطلب (مثل: اختيار نوع المشروب: بيبسي أو سفن، أو اختيار الصوص)
+          </small>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+        <input
+          style={{ flex: 1, minHeight: "40px", padding: "0 12px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "13px" }}
+          value={newGroupTitle}
+          onChange={(e) => onNewGroupTitleChange(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && onAddChoiceGroup()}
+          placeholder="اكتب اسم مجموعة الاختيار (مثال: اختر المشروب، اختر الصوص، اختر الصنف الجانبي)..."
+        />
+        <button
+          type="button"
+          className="primary-button compact"
+          onClick={onAddChoiceGroup}
+          disabled={!newGroupTitle.trim()}
+          style={{ minHeight: "40px", whiteSpace: "nowrap" }}
+        >
+          <Plus size={16} /> إضافة مجموعة اختيار
+        </button>
+      </div>
+
+      {draft.choiceGroups && draft.choiceGroups.length > 0 ? (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {draft.choiceGroups.map((group, groupIndex) => (
+            <div key={group.id} className="choice-group-card">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ width: "24px", height: "24px", display: "grid", placeItems: "center", borderRadius: "50%", background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: 800 }}>
+                    {groupIndex + 1}
+                  </span>
+                  <input
+                    style={{ fontWeight: 800, fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", padding: "4px 8px", background: "#fff" }}
+                    value={group.name}
+                    onChange={(e) => onUpdateChoiceGroup(group.id, (g) => ({ ...g, name: e.target.value }))}
+                  />
+                  <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#475569", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={group.required !== false}
+                      onChange={(e) => onUpdateChoiceGroup(group.id, (g) => ({ ...g, required: e.target.checked }))}
+                    />
+                    إجباري الاختيار
+                  </label>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <button
+                    type="button"
+                    className="soft-button"
+                    onClick={() => setAddingChoiceToGroupId(addingChoiceToGroupId === group.id ? null : group.id)}
+                    style={{ fontSize: "11px", padding: "4px 10px", minHeight: "32px" }}
+                  >
+                    <Plus size={13} /> {addingChoiceToGroupId === group.id ? "إغلاق قائمة الأصناف" : "إضافة بدائل للمجموعة"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveChoiceGroup(group.id)}
+                    style={{ border: 0, background: "transparent", color: "#ef4444", cursor: "pointer", padding: "4px" }}
+                    title="حذف المجموعة"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Inline Choice Picker */}
+              {addingChoiceToGroupId === group.id && (
+                <div style={{ border: "1px dashed #93c5fd", borderRadius: "8px", padding: "10px", background: "#eff6ff" }}>
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      style={{ flex: 1, minHeight: "34px", padding: "0 10px", fontSize: "12px", border: "1px solid #bfdbfe", borderRadius: "6px" }}
+                      value={choicePickerSearch}
+                      onChange={(e) => setChoicePickerSearch(e.target.value)}
+                      placeholder="ابحث لاختيار صنف كخيار بديل..."
+                    />
+                    <select
+                      value={choicePickerSection}
+                      onChange={(e) => setChoicePickerSection(e.target.value)}
+                      style={{ minHeight: "34px", fontSize: "11px", border: "1px solid #bfdbfe", borderRadius: "6px", padding: "0 8px" }}
+                    >
+                      <option value="all">كل الأقسام</option>
+                      <option value="meal_items">أصناف الوجبات فقط</option>
+                      <option value="regular">أصناف المنيو العامة</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="soft-button"
+                      onClick={() => onOpenProductModal(group.id)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "5px",
+                        padding: "4px 10px",
+                        fontSize: "11px",
+                        minHeight: "34px",
+                        whiteSpace: "nowrap"
+                      }}
+                    >
+                      <PackagePlus size={14} /> + صنف جديد
+                    </button>
+                  </div>
+                  <div style={{ maxHeight: "160px", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "6px" }}>
+                    {choiceProducts.map((p) => {
+                      const isAlreadyInGroup = group.choices.some((c) => c.productId === p.id);
+                      return (
+                        <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", background: isAlreadyInGroup ? "#dbeafe" : "#fff", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
+                          <div style={{ display: "grid", gap: "2px", minWidth: 0 }}>
+                            <strong style={{ fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</strong>
+                            <small style={{ fontSize: "9px", color: "#64748b" }}>{p.isMealComponent ? "صنف وجبات" : p.category}</small>
+                          </div>
+                          {p.options?.length ? (
+                            <select
+                              style={{ fontSize: "10px", padding: "2px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
+                              onChange={(e) => {
+                                const opt = p.options?.find((o) => o.id === e.target.value);
+                                if (opt) onAddChoiceItemToGroup(group.id, p, opt);
+                              }}
+                              defaultValue=""
+                            >
+                              <option value="" disabled>+ المقاس</option>
+                              {p.options.map((opt) => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
+                            </select>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onAddChoiceItemToGroup(group.id, p)}
+                              disabled={isAlreadyInGroup}
+                              style={{ padding: "3px 7px", fontSize: "10px", borderRadius: "4px", border: "1px solid #cbd5e1", background: isAlreadyInGroup ? "#94a3b8" : "#2563eb", color: "#fff", cursor: isAlreadyInGroup ? "default" : "pointer" }}
+                            >
+                              {isAlreadyInGroup ? "مضاف" : "+ إضافة"}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Current Choices in this group */}
+              {group.choices.length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "8px" }}>
+                  {group.choices.map((choice) => {
+                    const isDefault = group.defaultChoiceProductId === choice.productId && group.defaultChoiceOptionId === choice.optionId;
+                    return (
+                      <div key={`${choice.productId}:${choice.optionId ?? "base"}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: isDefault ? "#f0fdf4" : "#fff", borderRadius: "7px", border: `1px solid ${isDefault ? "#86efac" : "#e2e8f0"}` }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateChoiceGroup(group.id, (g) => ({ ...g, defaultChoiceProductId: choice.productId, defaultChoiceOptionId: choice.optionId }))}
+                            title={isDefault ? "الخيار الافتراضي" : "اضغط لجعله الخيار الافتراضي"}
+                            style={{ width: "18px", height: "18px", borderRadius: "50%", border: `2px solid ${isDefault ? "#16a34a" : "#cbd5e1"}`, background: isDefault ? "#16a34a" : "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}
+                          >
+                            {isDefault && <Check size={12} color="#fff" />}
+                          </button>
+                          <div style={{ display: "grid", gap: "1px" }}>
+                            <strong style={{ fontSize: "12px" }}>{choice.name}{choice.optionName ? ` (${choice.optionName})` : ""}</strong>
+                            <small style={{ fontSize: "10px", color: isDefault ? "#166534" : "#64748b" }}>{isDefault ? "الخيار التلقائي" : "خيار بديل"}</small>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px" }}>
+                            <span style={{ color: "#64748b" }}>+ج.م:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              value={choice.extraPrice || ""}
+                              onChange={(e) => {
+                                const extra = Number(e.target.value) || 0;
+                                onUpdateChoiceGroup(group.id, (g: MealChoiceGroup) => ({
+                                  ...g,
+                                  choices: g.choices.map((c: MealChoiceItem) => c.productId === choice.productId && c.optionId === choice.optionId ? { ...c, extraPrice: extra } : c)
+                                }));
+                              }}
+                              placeholder="0"
+                              style={{ width: "48px", minHeight: "28px", padding: "0 4px", fontSize: "11px", textAlign: "center", border: "1px solid #cbd5e1", borderRadius: "5px" }}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => onRemoveChoiceFromGroup(group.id, choice.productId, choice.optionId)}
+                            style={{ border: 0, background: "transparent", color: "#ef4444", cursor: "pointer", padding: "3px" }}
+                            title="حذف هذا الخيار"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div style={{ fontSize: "11px", color: "#94a3b8", textAlign: "center", padding: "12px" }}>
+                  لم يتم إضافة أي أصناف بديلة لهذه المجموعة بعد. اضغط «إضافة بدائل للمجموعة» بالأعلى لاختيار أصناف.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ textAlign: "center", padding: "30px", border: "2px dashed #cbd5e1", borderRadius: "10px", color: "#64748b" }}>
+          <Shuffle size={28} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
+          <strong style={{ display: "block", fontSize: "13px" }}>لا توجد خيارات تبديل في هذه الوجبة بعد</strong>
+          <small>اكتب اسم المجموعة (مثل: اختيار المشروب) واضغط إضافة</small>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface MealPricingAndSizesTabProps {
+  draft: Meal;
+  enableSizes: boolean;
+  onEnableSizesChange: (enable: boolean) => void;
+  onPriceChange: (price: number) => void;
+  onAddMealSize: () => void;
+  onRemoveMealSize: (sizeId: string) => void;
+  onUpdateMealSize: (sizeId: string, updates: Partial<MealOption>) => void;
+  componentTotal: number;
+}
+
+function MealPricingAndSizesTab({
+  draft,
+  enableSizes,
+  onEnableSizesChange,
+  onPriceChange,
+  onAddMealSize,
+  onRemoveMealSize,
+  onUpdateMealSize,
+  componentTotal
+}: MealPricingAndSizesTabProps) {
+  const savings = Math.max(0, componentTotal - (draft.price || 0));
+
+  return (
+    <div style={{ display: "grid", gap: "14px", padding: "4px 0" }}>
+      {/* Mode Switcher */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+        <button
+          type="button"
+          onClick={() => onEnableSizesChange(false)}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            padding: "12px 14px",
+            borderRadius: "10px",
+            border: `2px solid ${!enableSizes ? "#15803d" : "#e2e8f0"}`,
+            background: !enableSizes ? "#f0fdf4" : "#ffffff",
+            cursor: "pointer",
+            textAlign: "right"
+          }}
+        >
+          <strong style={{ fontSize: "13px", color: !enableSizes ? "#166534" : "#1e293b" }}>🔘 سعر موحد للوجبة</strong>
+          <small style={{ fontSize: "10.5px", color: "#64748b" }}>سعر بيع واحد وثابت للوجبة بالكامل</small>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => onEnableSizesChange(true)}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "4px",
+            padding: "12px 14px",
+            borderRadius: "10px",
+            border: `2px solid ${enableSizes ? "#b45309" : "#e2e8f0"}`,
+            background: enableSizes ? "#fffbeb" : "#ffffff",
+            cursor: "pointer",
+            textAlign: "right"
+          }}
+        >
+          <strong style={{ fontSize: "13px", color: enableSizes ? "#92400e" : "#1e293b" }}>🔘 أحجام ومقاسات متعددة</strong>
+          <small style={{ fontSize: "10.5px", color: "#64748b" }}>بيع الوجبة بعدة أحجام (صغير / وسط / كبير) بأسعار مختلفة</small>
+        </button>
+      </div>
+
+      {!enableSizes ? (
+        <div style={{ display: "grid", gap: "12px" }}>
+          <div style={{ padding: "16px", background: "#ffffff", borderRadius: "10px", border: "1px solid #e2e8f0", display: "flex", alignItems: "center", gap: "16px", flexWrap: "wrap" }}>
+            <label style={{ display: "grid", gap: "6px", fontSize: "12px", fontWeight: 800, minWidth: "200px" }}>
+              سعر بيع الوجبة الأساسي (ج.م)
+              <input
+                type="number"
+                min="0"
+                value={draft.price || ""}
+                onChange={(e) => onPriceChange(Number(e.target.value))}
+                placeholder="0"
+                style={{ minHeight: "40px", padding: "0 12px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "14px", fontWeight: 800 }}
+              />
+            </label>
+          </div>
+
+          {/* Customer Savings Calculator Widget */}
+          <div className="meal-savings-widget">
+            <div className="meal-savings-metric">
+              <small>مجموع المكونات منفردة</small>
+              <strong>{money(componentTotal)} ج.م</strong>
+            </div>
+            <div style={{ fontSize: "18px", color: "#166534", fontWeight: 800 }}>←</div>
+            <div className="meal-savings-metric">
+              <small>سعر بيع الوجبة</small>
+              <strong style={{ color: "#166534" }}>{money(draft.price ?? 0)} ج.م</strong>
+            </div>
+            <div style={{ fontSize: "18px", color: "#166534", fontWeight: 800 }}>←</div>
+            <div className="meal-savings-metric">
+              <small>قيمة التوفير للزبون</small>
+              <strong style={{ color: savings > 0 ? "#15803d" : "#64748b" }}>
+                {savings > 0 ? `توفير ${money(savings)} ج.م` : "بدون خصم توفير"}
+              </strong>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: "10px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong style={{ fontSize: "13px" }}>جدول الأحجام والأسعار:</strong>
+            <button type="button" className="soft-button" onClick={onAddMealSize} style={{ fontSize: "11px", padding: "5px 12px" }}>
+              <Plus size={14} /> إضافة حجم آخر
+            </button>
+          </div>
+          <div className="product-options-table">
+            <div className="product-options-head">
+              <span>اسم الحجم (مثل: وسط)</span>
+              <span>سعر البيع (ج.م)</span>
+              <span>التكلفة التقديرية (اختياري)</span>
+              <span />
+            </div>
+            {draft.options?.map((opt) => (
+              <div className="product-option-row" key={opt.id}>
+                <input
+                  value={opt.name}
+                  placeholder="مثال: وسط، لارج، عائلي..."
+                  onChange={(e) => onUpdateMealSize(opt.id, { name: e.target.value })}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={opt.price || ""}
+                  placeholder="السعر"
+                  onChange={(e) => onUpdateMealSize(opt.id, { price: Number(e.target.value) })}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={opt.cost || ""}
+                  placeholder="التكلفة"
+                  onChange={(e) => onUpdateMealSize(opt.id, { cost: Number(e.target.value) })}
+                />
+                <button type="button" title="حذف الحجم" onClick={() => onRemoveMealSize(opt.id)}>
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface MealEditorFooterProps {
+  draft: Meal;
+  componentTotal: number;
+  enableSizes: boolean;
+  isSavable: boolean;
+  isEditing: boolean;
+  onSave: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+}
+
+function MealEditorFooter({
+  draft,
+  componentTotal,
+  enableSizes,
+  isSavable,
+  isEditing,
+  onSave,
+  onCancel,
+  onDelete
+}: MealEditorFooterProps) {
+  const savings = Math.max(0, componentTotal - (draft.price || 0));
+
+  return (
+    <div className="meal-editor-footer">
+      <div className="meal-editor-footer-metrics">
+        <div className="meal-editor-footer-chip">
+          <small>المكونات الثابتة</small>
+          <b>{draft.components.length} أصناف</b>
+        </div>
+        <div className="meal-editor-footer-chip">
+          <small>خيارات التبديل</small>
+          <b>{draft.choiceGroups?.length ?? 0} مجموعات</b>
+        </div>
+        <div className="meal-editor-footer-chip">
+          <small>سعر الوجبة</small>
+          <b>{enableSizes && draft.options?.length ? `${draft.options.length} أحجام` : `${money(draft.price ?? 0)} ج.م`}</b>
+        </div>
+        {!enableSizes && savings > 0 && (
+          <div className="meal-editor-footer-chip">
+            <small>فرق التوفير</small>
+            <b style={{ color: "#166534" }}>{money(savings)} ج.م</b>
+          </div>
+        )}
+      </div>
+
+      <div className="meal-editor-footer-actions">
+        {isEditing && (
+          <button type="button" className="meal-delete-action" onClick={onDelete} style={{ minHeight: "38px" }}>
+            <Trash2 size={15} /> حذف الوجبة
+          </button>
+        )}
+        <button type="button" className="soft-button" onClick={onCancel} style={{ minHeight: "38px" }}>
+          إلغاء
+        </button>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={!isSavable}
+          onClick={onSave}
+          style={{ minHeight: "38px", minWidth: "130px" }}
+        >
+          <Save size={16} /> {isEditing ? "حفظ التعديلات" : "إضافة الوجبة"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps & { initialMeal: Meal | null; onClose: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [activeTab, setActiveTab] = useState<"components" | "choices" | "sizes">("components");
   const [draft, setDraft] = useState<Meal>(() => initialMeal
-    ? { ...initialMeal, components: initialMeal.components.map((item) => ({ ...item })) }
-    : { id: uid(), name: "", price: 0, available: true, components: [] });
+    ? {
+        ...initialMeal,
+        components: initialMeal.components.map((item) => ({ ...item })),
+        options: initialMeal.options?.map((opt) => ({ ...opt })),
+        choiceGroups: initialMeal.choiceGroups?.map((cg) => ({ ...cg, choices: cg.choices.map((c) => ({ ...c })) }))
+      }
+    : { id: uid(), name: "", price: 0, available: true, components: [], options: [], choiceGroups: [] });
+
+  const [enableSizes, setEnableSizes] = useState(() => Boolean(draft.options && draft.options.length > 0));
   const [productSearch, setProductSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [mealCategoryFilter, setMealCategoryFilter] = useState("all");
   const [selectedOptionByProduct, setSelectedOptionByProduct] = useState<Record<string, string>>({});
+  const [newGroupTitle, setNewGroupTitle] = useState("");
+  const [addingChoiceToGroupId, setAddingChoiceToGroupId] = useState<string | null>(null);
+  const [choicePickerSearch, setChoicePickerSearch] = useState("");
+  const [choicePickerSection, setChoicePickerSection] = useState("all");
+  const [productToCreate, setProductToCreate] = useState<{ product: Product; targetGroupId?: string } | null>(null);
 
   const selected = (productId: string) => draft.components.find((item) => item.productId === productId);
 
@@ -629,6 +1867,13 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
     }
   };
 
+  const removeComponent = (productId: string) => {
+    setDraft({
+      ...draft,
+      components: draft.components.filter((item) => item.productId !== productId)
+    });
+  };
+
   const handleOptionChange = (product: Product, newOptionId: string) => {
     setSelectedOptionByProduct((prev) => ({ ...prev, [product.id]: newOptionId }));
     const exists = selected(product.id);
@@ -662,6 +1907,122 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
     });
   };
 
+  // Choice group helpers
+  const addChoiceGroup = () => {
+    if (!newGroupTitle.trim()) return;
+    const newGroup: MealChoiceGroup = {
+      id: uid(),
+      name: newGroupTitle.trim(),
+      required: true,
+      choices: []
+    };
+    setDraft({
+      ...draft,
+      choiceGroups: [...(draft.choiceGroups ?? []), newGroup]
+    });
+    setNewGroupTitle("");
+  };
+
+  const removeChoiceGroup = (groupId: string) => {
+    setDraft({
+      ...draft,
+      choiceGroups: (draft.choiceGroups ?? []).filter((g) => g.id !== groupId)
+    });
+  };
+
+  const updateChoiceGroup = (groupId: string, updater: (group: MealChoiceGroup) => MealChoiceGroup) => {
+    setDraft({
+      ...draft,
+      choiceGroups: (draft.choiceGroups ?? []).map((g) => g.id === groupId ? updater(g) : g)
+    });
+  };
+
+  const addChoiceItemToGroup = (groupId: string, product: Product, option?: { id: string; name: string; unit: string; price: number; cost: number; recipeMultiplier: number }) => {
+    const choiceItem: MealChoiceItem = {
+      productId: product.id,
+      optionId: option?.id,
+      optionName: option?.name,
+      name: product.name,
+      unit: option?.unit ?? product.unit,
+      price: option?.price ?? product.price,
+      cost: option?.cost ?? product.cost,
+      recipeMultiplier: option?.recipeMultiplier ?? 1,
+      quantity: 1,
+      extraPrice: 0
+    };
+    updateChoiceGroup(groupId, (g) => {
+      const exists = g.choices.some((c) => c.productId === product.id && c.optionId === option?.id);
+      if (exists) return g;
+      const updatedChoices = [...g.choices, choiceItem];
+      return {
+        ...g,
+        choices: updatedChoices,
+        defaultChoiceProductId: g.defaultChoiceProductId ?? product.id,
+        defaultChoiceOptionId: g.defaultChoiceOptionId ?? option?.id
+      };
+    });
+  };
+
+  const removeChoiceFromGroup = (groupId: string, productId: string, optionId?: string) => {
+    updateChoiceGroup(groupId, (g) => {
+      const updatedChoices = g.choices.filter((c) => !(c.productId === productId && c.optionId === optionId));
+      return {
+        ...g,
+        choices: updatedChoices,
+        defaultChoiceProductId: g.defaultChoiceProductId === productId && g.defaultChoiceOptionId === optionId
+          ? updatedChoices[0]?.productId
+          : g.defaultChoiceProductId,
+        defaultChoiceOptionId: g.defaultChoiceOptionId === productId && g.defaultChoiceOptionId === optionId
+          ? updatedChoices[0]?.optionId
+          : g.defaultChoiceOptionId
+      };
+    });
+  };
+
+  // Size option helpers
+  const addMealSize = () => {
+    const newOption: MealOption = {
+      id: uid(),
+      name: (draft.options?.length ?? 0) === 0 ? "وسط" : (draft.options?.length === 1 ? "كبير" : "عائلي"),
+      price: draft.price || 0,
+      cost: 0
+    };
+    setDraft({
+      ...draft,
+      options: [...(draft.options ?? []), newOption]
+    });
+  };
+
+  const removeMealSize = (sizeId: string) => {
+    const updated = (draft.options ?? []).filter((opt) => opt.id !== sizeId);
+    setDraft({
+      ...draft,
+      options: updated
+    });
+    if (!updated.length) setEnableSizes(false);
+  };
+
+  const updateMealSize = (sizeId: string, updates: Partial<MealOption>) => {
+    setDraft({
+      ...draft,
+      options: (draft.options ?? []).map((opt) => opt.id === sizeId ? { ...opt, ...updates } : opt)
+    });
+  };
+
+  const handleEnableSizesChange = (enable: boolean) => {
+    setEnableSizes(enable);
+    if (enable && (!draft.options || draft.options.length === 0)) {
+      setDraft({
+        ...draft,
+        options: [
+          { id: uid(), name: "صغير", price: draft.price || 0, cost: 0 },
+          { id: uid(), name: "وسط", price: draft.price ? draft.price + 20 : 0, cost: 0 },
+          { id: uid(), name: "كبير", price: draft.price ? draft.price + 40 : 0, cost: 0 }
+        ]
+      });
+    }
+  };
+
   const componentTotal = draft.components.reduce((sum, component) => {
     const product = state.products.find((item) => item.id === component.productId);
     const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
@@ -670,23 +2031,39 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
   }, 0);
 
   const availableProducts = state.products.filter((product) => product.available);
-  const sectionProducts = availableProducts.filter((product) =>
-    sectionFilter === "all"
-    || (sectionFilter === "selected" ? Boolean(selected(product.id)) : product.section === sectionFilter)
-  );
-  const mealCategories = [...new Set(sectionProducts.map((product) => product.category))];
-  const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("ar");
-  const filteredProducts = sectionProducts.filter((product) => {
-    if (mealCategoryFilter !== "all" && product.category !== mealCategoryFilter) return false;
-    if (!normalizedProductSearch) return true;
-    const matchName = product.name.toLocaleLowerCase("ar").includes(normalizedProductSearch);
-    const matchOption = product.options?.some((opt) => opt.name.toLocaleLowerCase("ar").includes(normalizedProductSearch));
-    return matchName || matchOption;
+
+  // Choice picker filtered products
+  const choiceProducts = availableProducts.filter((product) => {
+    if (choicePickerSection === "meal_items") return Boolean(product.isMealComponent);
+    if (choicePickerSection === "regular") return !product.isMealComponent;
+    if (choicePickerSection !== "all" && product.section !== choicePickerSection) return false;
+    if (!choicePickerSearch.trim()) return true;
+    const q = choicePickerSearch.trim().toLocaleLowerCase("ar");
+    return product.name.toLocaleLowerCase("ar").includes(q) || product.options?.some((opt) => opt.name.toLocaleLowerCase("ar").includes(q));
   });
 
+  const handleOpenAddProduct = (targetGroupId?: string) => {
+    const firstMealCat = state.categories.find((c) => c.section === MEAL_ITEMS_SECTION && c.active);
+    setProductToCreate({
+      product: emptyProduct(firstMealCat, state.sections[0]?.id ?? "cooked", true),
+      targetGroupId
+    });
+  };
+
   const save = () => {
-    if (!draft.name.trim() || draft.price < 0 || !draft.components.length) return;
-    const meal = { ...draft, name: draft.name.trim() };
+    if (!draft.name.trim() || (!draft.components.length && !(draft.choiceGroups?.length))) return;
+    const finalOptions = enableSizes && draft.options?.length ? draft.options : undefined;
+    const basePrice = finalOptions?.length ? Math.min(...finalOptions.map((o) => o.price)) : draft.price;
+    if (basePrice < 0) return;
+
+    const meal: Meal = {
+      ...draft,
+      name: draft.name.trim(),
+      price: basePrice,
+      options: finalOptions,
+      choiceGroups: draft.choiceGroups?.length ? draft.choiceGroups : undefined
+    };
+
     update((current) => ({
       ...current,
       meals: current.meals.some((item) => item.id === meal.id)
@@ -697,102 +2074,157 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
     onClose();
   };
 
-  return <>
-    <Modal title={initialMeal ? "تعديل الوجبة" : "إضافة وجبة جديدة"} onClose={onClose} size="wide">
-      <div className="meal-editor-modal">
-        <div className="meal-main-fields">
-          <label>اسم الوجبة<input autoFocus value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="مثال: وجبة فردية" /></label>
-          <label>سعر الوجبة<input type="number" min="0" value={draft.price || ""} onChange={(event) => setDraft({ ...draft, price: Number(event.target.value) })} /></label>
-          <label className="check-label"><input type="checkbox" checked={draft.available} onChange={(event) => setDraft({ ...draft, available: event.target.checked })} /> متاحة للبيع</label>
-        </div>
-        <div className="meal-product-filters">
-          <label className="search-box meal-product-search"><Search /><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="ابحث عن صنف أو مقاس بالاسم..." /></label>
-          <label className="meal-filter-select"><span><SlidersHorizontal /> القسم</span><select value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setMealCategoryFilter("all"); }}>
-            <option value="all">كل الأقسام ({availableProducts.length})</option>
-            {state.sections.map((section) => <option key={section.id} value={section.id}>{section.name} ({availableProducts.filter((product) => product.section === section.id).length})</option>)}
-            {!!draft.components.length && <option value="selected">المختارة فقط ({draft.components.length})</option>}
-          </select></label>
-          <label className="meal-filter-select"><span><Boxes /> التصنيف</span><select value={mealCategoryFilter} onChange={(event) => setMealCategoryFilter(event.target.value)}>
-            <option value="all">كل التصنيفات ({sectionProducts.length})</option>
-            {mealCategories.map((category) => <option key={category} value={category}>{category} ({sectionProducts.filter((product) => product.category === category).length})</option>)}
-          </select></label>
-          <small className="meal-filter-count">عرض <b>{filteredProducts.length}</b> من {availableProducts.length}</small>
-        </div>
-        <div className="meal-product-picker">{filteredProducts.map((product) => {
-          const component = selected(product.id);
-          const hasOptions = Boolean(product.options && product.options.length > 0);
-          const activeOption = getActiveOption(product);
-          const currentPrice = activeOption ? activeOption.price : product.price;
+  const isSavable = Boolean(
+    draft.name.trim() &&
+    (draft.components.length > 0 || (draft.choiceGroups && draft.choiceGroups.length > 0)) &&
+    (!enableSizes || (draft.options && draft.options.length > 0 && draft.options.every((o) => o.name.trim() && o.price >= 0))) &&
+    (enableSizes || draft.price >= 0)
+  );
 
-          return <div className={component ? "selected" : ""} key={product.id}>
-            <button type="button" className="meal-product-toggle" onClick={() => toggleProduct(product)}>
-              <span>{component && <Check />}</span>
-              <div className="meal-product-text-wrap">
-                <div className="meal-product-name-row">
-                  <strong>{product.name}</strong>
-                  {hasOptions && (
-                    <select
-                      className="meal-product-size-select"
-                      value={activeOption?.id}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        handleOptionChange(product, e.target.value);
-                      }}
-                      title="اختر المقاس"
-                    >
-                      {product.options!.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                <small>{state.sections.find((item) => item.id === product.section)?.name ?? product.section} · {product.category}</small>
-              </div>
-              <b className="meal-product-price">{money(currentPrice)}</b>
-            </button>
-            {component && <div className="meal-quantity">
-              <button type="button" onClick={() => changeQuantity(product.id, component.quantity - 1)}><Minus /></button>
-              <b>{component.quantity}</b>
-              <button type="button" onClick={() => changeQuantity(product.id, component.quantity + 1)}><Plus /></button>
-            </div>}
-          </div>;
-        })}{!filteredProducts.length && <div className="meal-picker-empty"><Search /><strong>لا توجد أصناف مطابقة</strong><small>غيّر القسم أو التصنيف أو كلمة البحث</small></div>}</div>
-        <div className="meal-editor-summary"><span><small>مجموع أسعار الأصناف منفردة</small><b>{money(componentTotal)}</b></span><span><small>سعر الوجبة</small><b>{money(draft.price)}</b></span><span className={componentTotal > draft.price ? "saving" : ""}><small>فرق السعر للعميل</small><b>{componentTotal > draft.price ? `توفير ${money(componentTotal - draft.price)}` : money(draft.price - componentTotal)}</b></span></div>
-        <footer className="meal-editor-actions">
-          {initialMeal && <button type="button" className="meal-delete-action" onClick={() => setConfirmDelete(true)}><Trash2 /> حذف الوجبة</button>}
-          <button className="soft-button" onClick={onClose}>إلغاء</button>
-          <button className="primary-button" disabled={!draft.name.trim() || draft.price < 0 || !draft.components.length} onClick={save}><Save /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}</button>
-        </footer>
-      </div>
-    </Modal>
-    {confirmDelete && initialMeal && <Modal title="تأكيد حذف الوجبة" onClose={() => setConfirmDelete(false)}>
-      <div className="delete-order-confirm">
-        <span className="delete-order-icon"><Trash2 /></span>
-        <strong>هل تريد حذف الوجبة «{initialMeal.name}»؟</strong>
-        <p>سيتم حذف الوجبة نهائيًا من قائمة الوجبات المتاحة في نقطة البيع.</p>
-        <div>
-          <span>سعر الوجبة <b>{money(initialMeal.price)} ج.م</b></span>
-          <span>عدد الأصناف المكوّنة <b>{initialMeal.components.length} صنف</b></span>
-          <span>مجموع أسعار الأصناف منفردة <b>{money(componentTotal)} ج.م</b></span>
+  return (
+    <>
+      <Modal title={initialMeal ? `تعديل الوجبة: ${draft.name || initialMeal.name}` : "إضافة وجبة جديدة"} onClose={onClose} size="wide">
+        <div className="meal-editor-modal-container">
+          {/* 1. Header & Basic Info */}
+          <MealHeaderFields
+            name={draft.name}
+            onNameChange={(name) => setDraft({ ...draft, name })}
+            onAddNewProduct={() => handleOpenAddProduct()}
+          />
+
+          {/* 2. Step Navigation Wizard */}
+          <MealWizardTabs
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            componentsCount={draft.components.length}
+            choicesCount={draft.choiceGroups?.length ?? 0}
+            sizesCount={draft.options?.length ?? 0}
+            hasSizes={enableSizes}
+          />
+
+          {/* 3. Step 1: Fixed Components (Split Layout) */}
+          {activeTab === "components" && (
+            <MealFixedComponentsTab
+              state={state}
+              draft={draft}
+              onToggleProduct={toggleProduct}
+              onOptionChange={handleOptionChange}
+              onChangeQuantity={changeQuantity}
+              onRemoveComponent={removeComponent}
+              productSearch={productSearch}
+              onProductSearchChange={setProductSearch}
+              sectionFilter={sectionFilter}
+              onSectionFilterChange={setSectionFilter}
+              mealCategoryFilter={mealCategoryFilter}
+              onMealCategoryFilterChange={setMealCategoryFilter}
+              selectedOptionByProduct={selectedOptionByProduct}
+              componentTotal={componentTotal}
+            />
+          )}
+
+          {/* 4. Step 2: Choice Groups */}
+          {activeTab === "choices" && (
+            <MealChoiceGroupsTab
+              draft={draft}
+              newGroupTitle={newGroupTitle}
+              onNewGroupTitleChange={setNewGroupTitle}
+              onAddChoiceGroup={addChoiceGroup}
+              onRemoveChoiceGroup={removeChoiceGroup}
+              onUpdateChoiceGroup={updateChoiceGroup}
+              onAddChoiceItemToGroup={addChoiceItemToGroup}
+              onRemoveChoiceFromGroup={removeChoiceFromGroup}
+              addingChoiceToGroupId={addingChoiceToGroupId}
+              setAddingChoiceToGroupId={setAddingChoiceToGroupId}
+              choicePickerSearch={choicePickerSearch}
+              setChoicePickerSearch={setChoicePickerSearch}
+              choicePickerSection={choicePickerSection}
+              setChoicePickerSection={setChoicePickerSection}
+              choiceProducts={choiceProducts}
+              onOpenProductModal={(groupId) => handleOpenAddProduct(groupId)}
+            />
+          )}
+
+          {/* 5. Step 3: Pricing & Sizes */}
+          {activeTab === "sizes" && (
+            <MealPricingAndSizesTab
+              draft={draft}
+              enableSizes={enableSizes}
+              onEnableSizesChange={handleEnableSizesChange}
+              onPriceChange={(price) => setDraft({ ...draft, price })}
+              onAddMealSize={addMealSize}
+              onRemoveMealSize={removeMealSize}
+              onUpdateMealSize={updateMealSize}
+              componentTotal={componentTotal}
+            />
+          )}
+
+          {/* 6. Footer Summary & Actions */}
+          <MealEditorFooter
+            draft={draft}
+            componentTotal={componentTotal}
+            enableSizes={enableSizes}
+            isSavable={isSavable}
+            isEditing={Boolean(initialMeal)}
+            onSave={save}
+            onCancel={onClose}
+            onDelete={() => setConfirmDelete(true)}
+          />
         </div>
-        <footer>
-          <button type="button" className="soft-button" onClick={() => setConfirmDelete(false)}>إلغاء</button>
-          <button type="button" className="delete-order-button" onClick={() => {
-            update((current) => ({
-              ...current,
-              meals: current.meals.filter((item) => item.id !== initialMeal.id)
-            }));
-            notify(`تم حذف الوجبة ${initialMeal.name}`);
-            setConfirmDelete(false);
-            onClose();
-          }}><Trash2 /> تأكيد حذف الوجبة</button>
-        </footer>
-      </div>
-    </Modal>}
-  </>;
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      {confirmDelete && initialMeal && (
+        <Modal title="تأكيد حذف الوجبة" onClose={() => setConfirmDelete(false)}>
+          <div className="delete-order-confirm">
+            <span className="delete-order-icon"><Trash2 /></span>
+            <strong>هل تريد حذف الوجبة «{initialMeal.name}»؟</strong>
+            <p>سيتم حذف الوجبة نهائيًا من قائمة الوجبات المتاحة في نقطة البيع.</p>
+            <div>
+              <span>سعر الوجبة <b>{money(initialMeal.price)} ج.م</b></span>
+              <span>عدد الأصناف المكوّنة <b>{initialMeal.components.length} صنف</b></span>
+              <span>مجموع أسعار الأصناف منفردة <b>{money(componentTotal)} ج.م</b></span>
+            </div>
+            <footer>
+              <button type="button" className="soft-button" onClick={() => setConfirmDelete(false)}>إلغاء</button>
+              <button
+                type="button"
+                className="delete-order-button"
+                onClick={() => {
+                  update((current) => ({
+                    ...current,
+                    meals: current.meals.filter((item) => item.id !== initialMeal.id)
+                  }));
+                  notify(`تم حذف الوجبة ${initialMeal.name}`);
+                  setConfirmDelete(false);
+                  onClose();
+                }}
+              >
+                <Trash2 /> تأكيد حذف الوجبة
+              </button>
+            </footer>
+          </div>
+        </Modal>
+      )}
+
+      {/* Full Reusable Product Editor Modal */}
+      {productToCreate && (
+        <ProductEditorModal
+          initialProduct={productToCreate.product}
+          state={state}
+          update={update}
+          notify={notify}
+          onClose={() => setProductToCreate(null)}
+          onSaved={(savedProduct) => {
+            if (productToCreate.targetGroupId) {
+              addChoiceItemToGroup(productToCreate.targetGroupId, savedProduct, savedProduct.options?.[0]);
+            } else {
+              toggleProduct(savedProduct);
+            }
+          }}
+        />
+      )}
+    </>
+  );
 }
 
 export function CustomerRecordsView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {

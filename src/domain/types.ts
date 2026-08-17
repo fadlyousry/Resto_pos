@@ -25,6 +25,7 @@ export interface Product {
   accent: string;
   imageDataUrl?: string;
   options?: ProductOption[];
+  isMealComponent?: boolean;
 }
 
 export interface ProductCategory {
@@ -52,12 +53,43 @@ export interface MealComponent {
   quantity: number;
 }
 
+export interface MealOption {
+  id: string;
+  name: string;
+  price: number;
+  cost?: number;
+}
+
+export interface MealChoiceItem {
+  productId: string;
+  optionId?: string;
+  optionName?: string;
+  name: string;
+  unit?: string;
+  price?: number;
+  cost?: number;
+  recipeMultiplier?: number;
+  quantity: number;
+  extraPrice?: number;
+}
+
+export interface MealChoiceGroup {
+  id: string;
+  name: string;
+  required?: boolean;
+  choices: MealChoiceItem[];
+  defaultChoiceProductId?: string;
+  defaultChoiceOptionId?: string;
+}
+
 export interface Meal {
   id: string;
   name: string;
   price: number;
   available: boolean;
   components: MealComponent[];
+  options?: MealOption[];
+  choiceGroups?: MealChoiceGroup[];
 }
 
 export interface Customer {
