@@ -94,14 +94,17 @@ function CustomerReceipt({ order, settings }: { order: Order; settings: AppState
     <div className="receipt-section-label">تفاصيل الطلب</div>
     <table className="customer-receipt-table">
       <thead><tr><th>الصنف</th><th>العدد</th><th>السعر</th><th>الإجمالي</th></tr></thead>
-      <tbody>{order.items.map((item) => (
-        <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
-          <td><strong>{item.name}</strong>{item.note && <small className="receipt-item-note">{item.note}</small>}</td>
-          <td>{item.quantity}</td>
-          <td>{money(item.price)}</td>
-          <td>{money(item.price * item.quantity)}</td>
-        </tr>
-      ))}</tbody>
+      <tbody>{order.items.map((item) => {
+        const isMeal = Boolean(item.mealId || item.mealComponents?.length || item.productId?.startsWith("meal:"));
+        return (
+          <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
+            <td><strong>{item.name}</strong>{!isMeal && item.note && <small className="receipt-item-note">{item.note}</small>}</td>
+            <td>{item.quantity}</td>
+            <td>{money(item.price)}</td>
+            <td>{money(item.price * item.quantity)}</td>
+          </tr>
+        );
+      })}</tbody>
     </table>
     <div className="receipt-totals">
       <span>المجموع <b>{money(order.subtotal)}</b></span>
