@@ -1347,7 +1347,6 @@ interface MealChoiceGroupsTabProps {
   choicePickerSection: string;
   setChoicePickerSection: (section: string) => void;
   choiceProducts: Product[];
-  onOpenProductModal: (groupId: string) => void;
 }
 
 function MealChoiceGroupsTab({
@@ -1365,37 +1364,26 @@ function MealChoiceGroupsTab({
   setChoicePickerSearch,
   choicePickerSection,
   setChoicePickerSection,
-  choiceProducts,
-  onOpenProductModal
+  choiceProducts
 }: MealChoiceGroupsTabProps) {
   return (
-    <div style={{ display: "grid", gap: "12px", padding: "4px 0" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 14px", background: "#eff6ff", borderRadius: "10px", border: "1px solid #bfdbfe", color: "#1e40af" }}>
-        <Shuffle size={20} />
-        <div style={{ display: "grid", gap: "2px" }}>
-          <strong style={{ fontSize: "12px" }}>خيارات التبديل التبادلي (إما ده أو ده)</strong>
-          <small style={{ fontSize: "11px", color: "#3b82f6" }}>
-            تتيح للكاشير اختيار صنف واحد من بين عدة بدائل أثناء أخذ الطلب (مثل: اختيار نوع المشروب: بيبسي أو سفن، أو اختيار الصوص)
-          </small>
-        </div>
-      </div>
-
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+    <div className="choice-groups-wrapper">
+      {/* Quick Add Bar */}
+      <div className="choice-group-add-bar">
         <input
-          style={{ flex: 1, minHeight: "40px", padding: "0 12px", border: "1px solid #cbd5e1", borderRadius: "8px", fontSize: "13px" }}
+          className="choice-group-add-input"
           value={newGroupTitle}
           onChange={(e) => onNewGroupTitleChange(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && onAddChoiceGroup()}
-          placeholder="اكتب اسم مجموعة الاختيار (مثال: اختر المشروب، اختر الصوص، اختر الصنف الجانبي)..."
+          placeholder="اكتب اسم مجموعة الاختيار (مثال: اختيار المشروب، اختيار الصوص، الإضافات)..."
         />
         <button
           type="button"
-          className="primary-button compact"
+          className="choice-group-add-btn"
           onClick={onAddChoiceGroup}
           disabled={!newGroupTitle.trim()}
-          style={{ minHeight: "40px", whiteSpace: "nowrap" }}
         >
-          <Plus size={16} /> إضافة مجموعة اختيار
+          <Plus size={16} /> إضافة مجموعة
         </button>
       </div>
 
@@ -1403,26 +1391,49 @@ function MealChoiceGroupsTab({
         <div style={{ display: "grid", gap: "12px" }}>
           {draft.choiceGroups.map((group, groupIndex) => (
             <div key={group.id} className="choice-group-card">
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ width: "24px", height: "24px", display: "grid", placeItems: "center", borderRadius: "50%", background: "#2563eb", color: "#fff", fontSize: "11px", fontWeight: 800 }}>
-                    {groupIndex + 1}
-                  </span>
+              {/* Header */}
+              <div className="choice-group-header">
+                <div className="choice-group-meta">
+                  <span className="choice-group-num">مجموعة {groupIndex + 1}</span>
                   <input
-                    style={{ fontWeight: 800, fontSize: "13px", border: "1px solid #cbd5e1", borderRadius: "6px", padding: "4px 8px", background: "#fff" }}
+                    className="choice-group-title-input"
                     value={group.name}
-                    onChange={(e) => onUpdateChoiceGroup(group.id, (g) => ({ ...g, name: e.target.value }))}
+                    onChange={(e) => onUpdateChoiceGroup(group.id, (g: MealChoiceGroup) => ({ ...g, name: e.target.value }))}
+                    placeholder="اسم المجموعة"
                   />
-                  <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#475569", cursor: "pointer" }}>
+                  <label className="choice-group-req-toggle" title="هل يجب على العميل اختيار صنف من هذه المجموعة؟">
                     <input
                       type="checkbox"
                       checked={group.required !== false}
-                      onChange={(e) => onUpdateChoiceGroup(group.id, (g) => ({ ...g, required: e.target.checked }))}
+                      onChange={(e) => {
+                        const isReq = e.target.checked;
+                        onUpdateChoiceGroup(group.id, (g: MealChoiceGroup) => {
+                          if (!isReq) {
+                            return { ...g, required: false, defaultChoiceProductId: undefined, defaultChoiceOptionId: undefined };
+                          } else {
+                            const first = g.choices[0];
+                            return {
+                              ...g,
+                              required: true,
+                              defaultChoiceProductId: g.defaultChoiceProductId ?? first?.productId,
+                              defaultChoiceOptionId: g.defaultChoiceOptionId ?? first?.optionId
+                            };
+                          }
+                        });
+                      }}
                     />
-                    إجباري الاختيار
+                    إجباري
+                  </label>
+                  <label className="choice-group-req-toggle" title="السماح باختيار أكثر من صنف في نفس الوقت (مثل الصوصات والإضافات)">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(group.multiple)}
+                      onChange={(e) => onUpdateChoiceGroup(group.id, (g: MealChoiceGroup) => ({ ...g, multiple: e.target.checked }))}
+                    />
+                    اختيار متعدد (أكثر من صنف)
                   </label>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <div className="choice-group-actions">
                   <button
                     type="button"
                     className="soft-button"
@@ -1434,8 +1445,9 @@ function MealChoiceGroupsTab({
                   <button
                     type="button"
                     onClick={() => onRemoveChoiceGroup(group.id)}
-                    style={{ border: 0, background: "transparent", color: "#ef4444", cursor: "pointer", padding: "4px" }}
+                    style={{ border: 0, background: "transparent", color: "#94a3b8", cursor: "pointer", padding: "4px" }}
                     title="حذف المجموعة"
+                    className="choice-item-delete"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -1444,71 +1456,74 @@ function MealChoiceGroupsTab({
 
               {/* Inline Choice Picker */}
               {addingChoiceToGroupId === group.id && (
-                <div style={{ border: "1px dashed #93c5fd", borderRadius: "8px", padding: "10px", background: "#eff6ff" }}>
-                  <div style={{ display: "flex", gap: "8px", marginBottom: "8px", flexWrap: "wrap", alignItems: "center" }}>
+                <div className="choice-group-picker-box">
+                  <div className="choice-group-picker-toolbar">
                     <input
-                      style={{ flex: 1, minHeight: "34px", padding: "0 10px", fontSize: "12px", border: "1px solid #bfdbfe", borderRadius: "6px" }}
+                      className="choice-group-picker-search"
                       value={choicePickerSearch}
                       onChange={(e) => setChoicePickerSearch(e.target.value)}
-                      placeholder="ابحث لاختيار صنف كخيار بديل..."
+                      placeholder="ابحث عن صنف بديل..."
                     />
                     <select
+                      className="choice-group-picker-select"
                       value={choicePickerSection}
                       onChange={(e) => setChoicePickerSection(e.target.value)}
-                      style={{ minHeight: "34px", fontSize: "11px", border: "1px solid #bfdbfe", borderRadius: "6px", padding: "0 8px" }}
                     >
                       <option value="all">كل الأقسام</option>
                       <option value="meal_items">أصناف الوجبات فقط</option>
                       <option value="regular">أصناف المنيو العامة</option>
                     </select>
-                    <button
-                      type="button"
-                      className="soft-button"
-                      onClick={() => onOpenProductModal(group.id)}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "5px",
-                        padding: "4px 10px",
-                        fontSize: "11px",
-                        minHeight: "34px",
-                        whiteSpace: "nowrap"
-                      }}
-                    >
-                      <PackagePlus size={14} /> + صنف جديد
-                    </button>
                   </div>
-                  <div style={{ maxHeight: "160px", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "6px" }}>
+
+                  <div style={{ maxHeight: "175px", overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "6px", padding: "2px" }}>
                     {choiceProducts.map((p) => {
                       const isAlreadyInGroup = group.choices.some((c) => c.productId === p.id);
+                      const hasOpts = Boolean(p.options && p.options.length > 0);
                       return (
-                        <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", background: isAlreadyInGroup ? "#dbeafe" : "#fff", borderRadius: "6px", border: "1px solid #e2e8f0" }}>
-                          <div style={{ display: "grid", gap: "2px", minWidth: 0 }}>
-                            <strong style={{ fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</strong>
-                            <small style={{ fontSize: "9px", color: "#64748b" }}>{p.isMealComponent ? "صنف وجبات" : p.category}</small>
+                        <div
+                          key={p.id}
+                          className={`meal-picker-card ${isAlreadyInGroup ? "is-selected" : ""}`}
+                          style={{ height: "64px", minHeight: "64px", maxHeight: "64px" }}
+                          onClick={() => {
+                            if (!hasOpts) {
+                              if (isAlreadyInGroup) {
+                                onRemoveChoiceFromGroup(group.id, p.id);
+                              } else {
+                                onAddChoiceItemToGroup(group.id, p);
+                              }
+                            }
+                          }}
+                          title={p.name}
+                        >
+                          <div className="meal-picker-card-top">
+                            <span className="meal-picker-card-name">{p.name}</span>
+                            <span className="meal-picker-card-meta">{p.isMealComponent ? "وجبات" : p.category}</span>
                           </div>
-                          {p.options?.length ? (
-                            <select
-                              style={{ fontSize: "10px", padding: "2px", border: "1px solid #cbd5e1", borderRadius: "4px" }}
-                              onChange={(e) => {
-                                const opt = p.options?.find((o) => o.id === e.target.value);
-                                if (opt) onAddChoiceItemToGroup(group.id, p, opt);
-                              }}
-                              defaultValue=""
-                            >
-                              <option value="" disabled>+ المقاس</option>
-                              {p.options.map((opt) => <option key={opt.id} value={opt.id}>{opt.name}</option>)}
-                            </select>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => onAddChoiceItemToGroup(group.id, p)}
-                              disabled={isAlreadyInGroup}
-                              style={{ padding: "3px 7px", fontSize: "10px", borderRadius: "4px", border: "1px solid #cbd5e1", background: isAlreadyInGroup ? "#94a3b8" : "#2563eb", color: "#fff", cursor: isAlreadyInGroup ? "default" : "pointer" }}
-                            >
-                              {isAlreadyInGroup ? "مضاف" : "+ إضافة"}
-                            </button>
-                          )}
+                          <div className="meal-picker-card-bottom">
+                            <b className="meal-picker-card-price">{money(p.price)} ج.م</b>
+                            {hasOpts ? (
+                              <div className="meal-picker-option-wrap" onClick={(e) => e.stopPropagation()}>
+                                <select
+                                  className="meal-picker-option-select"
+                                  defaultValue=""
+                                  onChange={(e) => {
+                                    const opt = p.options?.find((o) => o.id === e.target.value);
+                                    if (opt) onAddChoiceItemToGroup(group.id, p, opt);
+                                    e.target.value = "";
+                                  }}
+                                >
+                                  <option value="" disabled>+ المقاس</option>
+                                  {p.options!.map((opt) => (
+                                    <option key={opt.id} value={opt.id}>
+                                      {opt.name} ({money(opt.price)})
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <span className="meal-picker-unit-tag">{isAlreadyInGroup ? "مضاف ✓" : (p.unit || "قطعة")}</span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -1516,31 +1531,36 @@ function MealChoiceGroupsTab({
                 </div>
               )}
 
-              {/* Current Choices in this group */}
+              {/* Choices in this group */}
               {group.choices.length > 0 ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: "8px" }}>
+                <div className="choice-items-grid">
                   {group.choices.map((choice) => {
                     const isDefault = group.defaultChoiceProductId === choice.productId && group.defaultChoiceOptionId === choice.optionId;
                     return (
-                      <div key={`${choice.productId}:${choice.optionId ?? "base"}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", background: isDefault ? "#f0fdf4" : "#fff", borderRadius: "7px", border: `1px solid ${isDefault ? "#86efac" : "#e2e8f0"}` }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                      <div key={`${choice.productId}:${choice.optionId ?? "base"}`} className={`choice-item-card ${isDefault ? "is-default" : ""}`}>
+                        <div className="choice-item-main">
                           <button
                             type="button"
-                            onClick={() => onUpdateChoiceGroup(group.id, (g) => ({ ...g, defaultChoiceProductId: choice.productId, defaultChoiceOptionId: choice.optionId }))}
-                            title={isDefault ? "الخيار الافتراضي" : "اضغط لجعله الخيار الافتراضي"}
-                            style={{ width: "18px", height: "18px", borderRadius: "50%", border: `2px solid ${isDefault ? "#16a34a" : "#cbd5e1"}`, background: isDefault ? "#16a34a" : "#fff", cursor: "pointer", display: "grid", placeItems: "center" }}
+                            className="choice-item-radio"
+                            onClick={() => onUpdateChoiceGroup(group.id, (g: MealChoiceGroup) => ({
+                              ...g,
+                              defaultChoiceProductId: isDefault ? undefined : choice.productId,
+                              defaultChoiceOptionId: isDefault ? undefined : choice.optionId
+                            }))}
+                            title={isDefault ? "الخيار الافتراضي (اضغط لإلغاء التحديد)" : "اضغط لجعله الخيار الافتراضي"}
                           >
-                            {isDefault && <Check size={12} color="#fff" />}
+                            {isDefault && <Check size={11} color="#fff" />}
                           </button>
-                          <div style={{ display: "grid", gap: "1px" }}>
-                            <strong style={{ fontSize: "12px" }}>{choice.name}{choice.optionName ? ` (${choice.optionName})` : ""}</strong>
-                            <small style={{ fontSize: "10px", color: isDefault ? "#166534" : "#64748b" }}>{isDefault ? "الخيار التلقائي" : "خيار بديل"}</small>
+                          <div className="choice-item-info">
+                            <span className="choice-item-name">{choice.name}{choice.optionName ? ` (${choice.optionName})` : ""}</span>
+                            <small className="choice-item-sub">{isDefault ? "الافتراضي" : "بديل"}</small>
                           </div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px" }}>
-                            <span style={{ color: "#64748b" }}>+ج.م:</span>
+                        <div className="choice-item-right">
+                          <label className="choice-item-extra-price" title="سعر إضافي عند اختيار هذا الصنف">
+                            <span>+ج.م:</span>
                             <input
+                              className="choice-item-extra-input"
                               type="number"
                               min="0"
                               value={choice.extraPrice || ""}
@@ -1552,13 +1572,12 @@ function MealChoiceGroupsTab({
                                 }));
                               }}
                               placeholder="0"
-                              style={{ width: "48px", minHeight: "28px", padding: "0 4px", fontSize: "11px", textAlign: "center", border: "1px solid #cbd5e1", borderRadius: "5px" }}
                             />
                           </label>
                           <button
                             type="button"
+                            className="choice-item-delete"
                             onClick={() => onRemoveChoiceFromGroup(group.id, choice.productId, choice.optionId)}
-                            style={{ border: 0, background: "transparent", color: "#ef4444", cursor: "pointer", padding: "3px" }}
                             title="حذف هذا الخيار"
                           >
                             <Trash2 size={14} />
@@ -1569,7 +1588,7 @@ function MealChoiceGroupsTab({
                   })}
                 </div>
               ) : (
-                <div style={{ fontSize: "11px", color: "#94a3b8", textAlign: "center", padding: "12px" }}>
+                <div style={{ fontSize: "11px", color: "#94a3b8", textAlign: "center", padding: "10px", background: "#f8fafc", borderRadius: "6px" }}>
                   لم يتم إضافة أي أصناف بديلة لهذه المجموعة بعد. اضغط «إضافة بدائل للمجموعة» بالأعلى لاختيار أصناف.
                 </div>
               )}
@@ -1577,10 +1596,10 @@ function MealChoiceGroupsTab({
           ))}
         </div>
       ) : (
-        <div style={{ textAlign: "center", padding: "30px", border: "2px dashed #cbd5e1", borderRadius: "10px", color: "#64748b" }}>
-          <Shuffle size={28} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
-          <strong style={{ display: "block", fontSize: "13px" }}>لا توجد خيارات تبديل في هذه الوجبة بعد</strong>
-          <small>اكتب اسم المجموعة (مثل: اختيار المشروب) واضغط إضافة</small>
+        <div style={{ textAlign: "center", padding: "32px 16px", border: "1px dashed #cbd5e1", borderRadius: "10px", color: "#64748b", background: "#f8fafc" }}>
+          <Shuffle size={26} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
+          <strong style={{ display: "block", fontSize: "13px" }}>لا توجد خيارات تبديل في هذه الوجبة</strong>
+          <small>اكتب اسم المجموعة بالأعلى (مثل: اختيار المشروب) واضغط إضافة</small>
         </div>
       )}
     </div>
@@ -1957,8 +1976,8 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
       return {
         ...g,
         choices: updatedChoices,
-        defaultChoiceProductId: g.defaultChoiceProductId ?? product.id,
-        defaultChoiceOptionId: g.defaultChoiceOptionId ?? option?.id
+        defaultChoiceProductId: g.required !== false ? (g.defaultChoiceProductId ?? product.id) : g.defaultChoiceProductId,
+        defaultChoiceOptionId: g.required !== false ? (g.defaultChoiceOptionId ?? option?.id) : g.defaultChoiceOptionId
       };
     });
   };
@@ -1970,10 +1989,10 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
         ...g,
         choices: updatedChoices,
         defaultChoiceProductId: g.defaultChoiceProductId === productId && g.defaultChoiceOptionId === optionId
-          ? updatedChoices[0]?.productId
+          ? (g.required !== false ? updatedChoices[0]?.productId : undefined)
           : g.defaultChoiceProductId,
         defaultChoiceOptionId: g.defaultChoiceOptionId === productId && g.defaultChoiceOptionId === optionId
-          ? updatedChoices[0]?.optionId
+          ? (g.required !== false ? updatedChoices[0]?.optionId : undefined)
           : g.defaultChoiceOptionId
       };
     });
@@ -2140,7 +2159,6 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
               choicePickerSection={choicePickerSection}
               setChoicePickerSection={setChoicePickerSection}
               choiceProducts={choiceProducts}
-              onOpenProductModal={(groupId) => handleOpenAddProduct(groupId)}
             />
           )}
 

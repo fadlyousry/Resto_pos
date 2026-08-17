@@ -77,6 +77,7 @@ export interface MealChoiceGroup {
   id: string;
   name: string;
   required?: boolean;
+  multiple?: boolean;
   choices: MealChoiceItem[];
   defaultChoiceProductId?: string;
   defaultChoiceOptionId?: string;

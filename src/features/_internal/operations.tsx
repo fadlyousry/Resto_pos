@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type {
   AppState, CashTransaction, Customer, Driver, DriverSettlement, MenuSection, Order, OrderItem,
-  OrderStage, PaymentMethod, Product, ProductSection, Meal, MealComponent
+  OrderStage, PaymentMethod, Product, ProductSection, Meal, MealComponent, MealChoiceGroup, MealChoiceItem
 } from "../../domain/types";
 import { CustomerFile } from "./management";
 import { InvoiceModal } from "../orders/InvoiceModal";
@@ -975,17 +975,18 @@ function MealCustomizerModal({
   const hasOptions = Boolean(meal.options && meal.options.length > 0);
   const [selectedOptionId, setSelectedOptionId] = useState<string>(() => meal.options?.[0]?.id ?? "");
 
-  const [selectedChoices, setSelectedChoices] = useState<Record<string, { productId: string; optionId?: string }>>(() => {
-    const initial: Record<string, { productId: string; optionId?: string }> = {};
+  const [selectedChoices, setSelectedChoices] = useState<Record<string, Array<{ productId: string; optionId?: string }>>>(() => {
+    const initial: Record<string, Array<{ productId: string; optionId?: string }>> = {};
     meal.choiceGroups?.forEach((group) => {
       if (group.defaultChoiceProductId) {
-        initial[group.id] = { productId: group.defaultChoiceProductId, optionId: group.defaultChoiceOptionId };
-      } else if (group.choices.length > 0) {
-        initial[group.id] = { productId: group.choices[0].productId, optionId: group.choices[0].optionId };
+        initial[group.id] = [{ productId: group.defaultChoiceProductId, optionId: group.defaultChoiceOptionId }];
+      } else {
+        initial[group.id] = [];
       }
     });
     return initial;
   });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const selectedOption = hasOptions ? meal.options?.find((o) => o.id === selectedOptionId) : undefined;
   const basePrice = selectedOption ? selectedOption.price : meal.price;
@@ -996,8 +997,8 @@ function MealCustomizerModal({
   ];
 
   meal.choiceGroups?.forEach((group) => {
-    const sel = selectedChoices[group.id];
-    if (sel) {
+    const selections = selectedChoices[group.id] ?? [];
+    selections.forEach((sel) => {
       const choice = group.choices.find((c) => c.productId === sel.productId && c.optionId === sel.optionId)
         ?? group.choices.find((c) => c.productId === sel.productId);
       if (choice) {
@@ -1014,7 +1015,7 @@ function MealCustomizerModal({
           quantity: choice.quantity || 1
         });
       }
-    }
+    });
   });
 
   const totalMealPrice = basePrice + choiceExtraTotal;
@@ -1030,14 +1031,64 @@ function MealCustomizerModal({
 
   const notesList = [
     ...meal.components.map((c) => `${c.quantity}× ${c.name}${c.optionName ? ` (${c.optionName})` : ""}`),
-    ...Object.entries(selectedChoices).map(([groupId, sel]) => {
+    ...Object.entries(selectedChoices).map(([groupId, selections]) => {
       const group = meal.choiceGroups?.find((g) => g.id === groupId);
-      const choice = group?.choices.find((c) => c.productId === sel.productId && c.optionId === sel.optionId);
-      return choice ? `${group?.name}: ${choice.name}${choice.optionName ? ` (${choice.optionName})` : ""}` : "";
+      if (!group || !selections.length) return "";
+      const itemsStr = selections.map((sel) => {
+        const choice = group.choices.find((c) => c.productId === sel.productId && c.optionId === sel.optionId)
+          ?? group.choices.find((c) => c.productId === sel.productId);
+        return choice ? `${choice.name}${choice.optionName ? ` (${choice.optionName})` : ""}` : "";
+      }).filter(Boolean).join(" + ");
+      return itemsStr ? `${group.name}: ${itemsStr}` : "";
     }).filter(Boolean)
   ];
 
+  const handleToggleChoice = (group: MealChoiceGroup, choice: MealChoiceItem) => {
+    setSelectedChoices((prev) => {
+      const current = prev[group.id] ?? [];
+      const isSelected = current.some((c) => c.productId === choice.productId && c.optionId === choice.optionId);
+
+      if (group.multiple) {
+        // Multi-select checkbox mode
+        if (isSelected) {
+          return {
+            ...prev,
+            [group.id]: current.filter((c) => !(c.productId === choice.productId && c.optionId === choice.optionId))
+          };
+        } else {
+          return {
+            ...prev,
+            [group.id]: [...current, { productId: choice.productId, optionId: choice.optionId }]
+          };
+        }
+      } else {
+        // Single select mode
+        if (isSelected) {
+          if (group.required === false) {
+            return { ...prev, [group.id]: [] };
+          }
+          return prev;
+        } else {
+          return {
+            ...prev,
+            [group.id]: [{ productId: choice.productId, optionId: choice.optionId }]
+          };
+        }
+      }
+    });
+  };
+
   const handleConfirm = () => {
+    if (meal.choiceGroups) {
+      for (const group of meal.choiceGroups) {
+        const selections = selectedChoices[group.id] ?? [];
+        if (group.required !== false && selections.length === 0) {
+          setValidationError(`يرجى تحديد خيار لمجموعة: ${group.name}`);
+          return;
+        }
+      }
+    }
+    setValidationError(null);
     onAdd({
       mealId: meal.id,
       optionId: selectedOption?.id,
@@ -1092,23 +1143,34 @@ function MealCustomizerModal({
         {meal.choiceGroups && meal.choiceGroups.length > 0 && (
           <div style={{ display: "grid", gap: "14px" }}>
             {meal.choiceGroups.map((group, gIdx) => {
-              const currentSel = selectedChoices[group.id];
+              const currentSelections = selectedChoices[group.id] ?? [];
               return (
                 <div key={group.id} style={{ display: "grid", gap: "8px", padding: "12px", background: "#f8fafc", borderRadius: "10px", border: "1px solid #e2e8f0" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 800, fontSize: "13px", color: "#1e40af" }}>
                       <Shuffle size={16} /> {hasOptions ? `${gIdx + 2}. ` : `${gIdx + 1}. `}{group.name}:
                     </div>
-                    {group.required !== false && <span style={{ fontSize: "10px", color: "#64748b", background: "#e2e8f0", padding: "2px 6px", borderRadius: "4px" }}>إجباري</span>}
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      {group.multiple && (
+                        <span style={{ fontSize: "10px", color: "#065f46", background: "#d1fae5", padding: "2px 7px", borderRadius: "4px", fontWeight: 700 }}>
+                          اختيار متعدد
+                        </span>
+                      )}
+                      {group.required !== false ? (
+                        <span style={{ fontSize: "10px", color: "#1e40af", background: "#dbeafe", padding: "2px 7px", borderRadius: "4px", fontWeight: 700 }}>إجباري</span>
+                      ) : (
+                        <span style={{ fontSize: "10px", color: "#64748b", background: "#e2e8f0", padding: "2px 7px", borderRadius: "4px", fontWeight: 600 }}>اختياري</span>
+                      )}
+                    </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "8px" }}>
                     {group.choices.map((choice) => {
-                      const isSelected = currentSel?.productId === choice.productId && currentSel?.optionId === choice.optionId;
+                      const isSelected = currentSelections.some((c) => c.productId === choice.productId && c.optionId === choice.optionId);
                       return (
                         <button
                           type="button"
                           key={`${choice.productId}:${choice.optionId ?? "base"}`}
-                          onClick={() => setSelectedChoices((prev) => ({ ...prev, [group.id]: { productId: choice.productId, optionId: choice.optionId } }))}
+                          onClick={() => handleToggleChoice(group, choice)}
                           style={{
                             display: "flex",
                             alignItems: "center",
@@ -1126,7 +1188,13 @@ function MealCustomizerModal({
                             <strong style={{ fontSize: "12px", color: isSelected ? "#1e40af" : "#1f2937" }}>{choice.name}{choice.optionName ? ` (${choice.optionName})` : ""}</strong>
                             {choice.extraPrice ? <small style={{ fontSize: "10px", color: "#b45309", fontWeight: 700 }}>+{money(choice.extraPrice)} ج.م</small> : <small style={{ fontSize: "9px", color: "#64748b" }}>مشمل ضمن الوجبة</small>}
                           </div>
-                          {isSelected && <Check size={16} color="#2563eb" />}
+                          {isSelected ? (
+                            <div style={{ width: "20px", height: "20px", borderRadius: group.multiple ? "4px" : "50%", background: "#2563eb", display: "grid", placeItems: "center" }}>
+                              <Check size={13} color="#fff" />
+                            </div>
+                          ) : (
+                            <div style={{ width: "20px", height: "20px", borderRadius: group.multiple ? "4px" : "50%", border: "1.5px solid #cbd5e1", background: "#fff" }} />
+                          )}
                         </button>
                       );
                     })}
@@ -1134,6 +1202,12 @@ function MealCustomizerModal({
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {validationError && (
+          <div style={{ padding: "8px 12px", background: "#fef2f2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: "8px", fontSize: "12px", fontWeight: 700 }}>
+            {validationError}
           </div>
         )}
 
