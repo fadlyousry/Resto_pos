@@ -160,7 +160,12 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
 
   const addMeal = (meal: AppState["meals"][number]) => {
     const productId = `meal:${meal.id}`;
-    const cost = meal.components.reduce((sum, component) => sum + (state.products.find((product) => product.id === component.productId)?.cost ?? 0) * component.quantity, 0);
+    const cost = meal.components.reduce((sum, component) => {
+      const product = state.products.find((p) => p.id === component.productId);
+      const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
+      const compCost = option?.cost ?? component.cost ?? product?.cost ?? 0;
+      return sum + compCost * component.quantity;
+    }, 0);
     setCart((current) => {
       const exists = current.find((item) => item.productId === productId);
       return exists
@@ -170,7 +175,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           mealComponents: meal.components.map((component) => ({ ...component })),
           name: meal.name, unit: "وجبة", price: meal.price, cost, quantity: 1,
           section: MEALS_SECTION,
-          note: meal.components.map((component) => `${component.quantity}× ${component.name}`).join(" · ")
+          note: meal.components.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
         }];
     });
   };
@@ -413,7 +418,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                 <span className="food-visual meal-visual"><ShoppingBag size={26} /></span>
                 <span className="product-info">
                   <strong>{meal.name}</strong>
-                  <small>{meal.components.map((item) => `${item.quantity}× ${item.name}`).join(" · ")}</small>
+                  <small>{meal.components.map((item) => `${item.quantity}× ${item.name}${item.optionName ? ` (${item.optionName})` : ""}`).join(" · ")}</small>
                 </span>
               </div>
               <div className="product-card-footer">
@@ -845,14 +850,25 @@ function PaymentOption({ active, icon, label, method, onClick }: {
 function orderRecipeUsage(items: OrderItem[], state: AppState) {
   const usage = new Map<string, number>();
   items.forEach((item) => {
-    const components = item.mealComponents?.length
-      ? item.mealComponents
-      : [{ productId: item.productId, quantity: item.recipeMultiplier ?? 1 }];
-    components.forEach((component) => state.recipes
-      .filter((recipe) => recipe.productId === component.productId)
-      .forEach((recipe) => {
-        usage.set(recipe.ingredientId, (usage.get(recipe.ingredientId) ?? 0) + recipe.quantity * item.quantity * component.quantity);
-      }));
+    if (item.mealComponents?.length) {
+      item.mealComponents.forEach((component) => {
+        const product = state.products.find((p) => p.id === component.productId);
+        const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
+        const multiplier = component.recipeMultiplier ?? option?.recipeMultiplier ?? 1;
+        state.recipes
+          .filter((recipe) => recipe.productId === component.productId)
+          .forEach((recipe) => {
+            usage.set(recipe.ingredientId, (usage.get(recipe.ingredientId) ?? 0) + recipe.quantity * item.quantity * component.quantity * multiplier);
+          });
+      });
+    } else {
+      const multiplier = item.recipeMultiplier ?? 1;
+      state.recipes
+        .filter((recipe) => recipe.productId === item.productId)
+        .forEach((recipe) => {
+          usage.set(recipe.ingredientId, (usage.get(recipe.ingredientId) ?? 0) + recipe.quantity * item.quantity * multiplier);
+        });
+    }
   });
   return usage;
 }

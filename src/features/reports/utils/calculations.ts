@@ -22,10 +22,12 @@ export function getProductCost(productId: string, state: AppState): number {
 export function getItemCost(item: OrderItem, state: AppState): number {
   if (item.cost && item.cost > 0) return item.cost;
   if (item.mealComponents && item.mealComponents.length > 0) {
-    return item.mealComponents.reduce(
-      (sum, comp) => sum + getProductCost(comp.productId, state) * comp.quantity,
-      0
-    );
+    return item.mealComponents.reduce((sum, comp) => {
+      const product = state.products.find((p) => p.id === comp.productId);
+      const option = comp.optionId ? product?.options?.find((opt) => opt.id === comp.optionId) : null;
+      const compCost = option?.cost ?? comp.cost ?? product?.cost ?? 0;
+      return sum + compCost * comp.quantity;
+    }, 0);
   }
   return getProductCost(item.productId, state);
 }

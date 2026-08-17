@@ -42,7 +42,13 @@ export interface MenuSection {
 
 export interface MealComponent {
   productId: string;
+  optionId?: string;
+  optionName?: string;
   name: string;
+  unit?: string;
+  price?: number;
+  cost?: number;
+  recipeMultiplier?: number;
   quantity: number;
 }
 

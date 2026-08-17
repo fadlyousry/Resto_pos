@@ -512,7 +512,7 @@ function kitchenReceipt(order: Order, settings: AppState["settings"]): ReceiptDo
       column(`${item.quantity}×`, 0.24, { align: "center", size: 11, bold: true, rtl: false })
     ));
     const details = item.mealComponents?.length
-      ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}`).join(" · ")
+      ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
       : item.note;
     if (details) blocks.push(text(details, { size: 9, bold: true }));
     blocks.push(space(3));

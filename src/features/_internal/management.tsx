@@ -151,8 +151,16 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
 
   const activeSection = state.sections.find((item) => item.id === section) ?? state.sections[0];
   const availableCount = sectionProducts.filter((item) => item.available).length;
-  const visibleMeals = state.meals.filter((meal) => meal.name.includes(search.trim()) || meal.components.some((item) => item.name.includes(search.trim())));
-  const mealStandaloneTotal = (meal: Meal) => meal.components.reduce((sum, component) => sum + (state.products.find((product) => product.id === component.productId)?.price ?? 0) * component.quantity, 0);
+  const visibleMeals = state.meals.filter((meal) =>
+    meal.name.includes(search.trim()) ||
+    meal.components.some((item) => item.name.includes(search.trim()) || (item.optionName && item.optionName.includes(search.trim())))
+  );
+  const mealStandaloneTotal = (meal: Meal) => meal.components.reduce((sum, component) => {
+    const product = state.products.find((p) => p.id === component.productId);
+    const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
+    const price = option?.price ?? component.price ?? product?.price ?? 0;
+    return sum + price * component.quantity;
+  }, 0);
 
   return <div className="management-page products-admin-page">
     <div className="products-menu-switch">
@@ -187,7 +195,7 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
         <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span className="meal-actions-heading">الإجراءات</span></div>
         {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
           <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong></div></div>
-          <div className="meal-admin-components">{meal.components.map((component) => <span key={component.productId}><b>{component.quantity}×</b> {component.name}</span>)}</div>
+          <div className="meal-admin-components">{meal.components.map((component) => <span key={`${component.productId}:${component.optionId ?? "base"}`}><b>{component.quantity}×</b> {component.name}{component.optionName ? ` (${component.optionName})` : ""}</span>)}</div>
           <span className="meal-standalone-price"><b>{money(mealStandaloneTotal(meal))}</b></span>
           <span className="meal-selling-price"><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</span>
           <div className="product-row-actions">
@@ -573,7 +581,6 @@ function SectionManager({ state, update, notify, onClose }: ViewProps & { onClos
   </Modal>}
   </>;
 }
-
 function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps & { initialMeal: Meal | null; onClose: () => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState<Meal>(() => initialMeal
@@ -582,23 +589,86 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
   const [productSearch, setProductSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState("all");
   const [mealCategoryFilter, setMealCategoryFilter] = useState("all");
+  const [selectedOptionByProduct, setSelectedOptionByProduct] = useState<Record<string, string>>({});
+
   const selected = (productId: string) => draft.components.find((item) => item.productId === productId);
+
+  const getActiveOption = (product: Product) => {
+    if (!product.options?.length) return undefined;
+    const comp = selected(product.id);
+    const optId = comp?.optionId ?? selectedOptionByProduct[product.id] ?? product.options[0]?.id;
+    return product.options.find((opt) => opt.id === optId) ?? product.options[0];
+  };
+
   const toggleProduct = (product: Product) => {
     const exists = selected(product.id);
+    if (exists) {
+      setDraft({
+        ...draft,
+        components: draft.components.filter((item) => item.productId !== product.id)
+      });
+    } else {
+      const activeOption = getActiveOption(product);
+      setDraft({
+        ...draft,
+        components: [
+          ...draft.components,
+          {
+            productId: product.id,
+            optionId: activeOption?.id,
+            optionName: activeOption?.name,
+            name: product.name,
+            unit: activeOption?.unit ?? product.unit,
+            price: activeOption?.price ?? product.price,
+            cost: activeOption?.cost ?? product.cost,
+            recipeMultiplier: activeOption?.recipeMultiplier ?? 1,
+            quantity: 1
+          }
+        ]
+      });
+    }
+  };
+
+  const handleOptionChange = (product: Product, newOptionId: string) => {
+    setSelectedOptionByProduct((prev) => ({ ...prev, [product.id]: newOptionId }));
+    const exists = selected(product.id);
+    if (exists && product.options?.length) {
+      const newOption = product.options.find((opt) => opt.id === newOptionId);
+      setDraft({
+        ...draft,
+        components: draft.components.map((item) =>
+          item.productId === product.id
+            ? {
+                ...item,
+                optionId: newOption?.id,
+                optionName: newOption?.name,
+                unit: newOption?.unit ?? product.unit,
+                price: newOption?.price ?? product.price,
+                cost: newOption?.cost ?? product.cost,
+                recipeMultiplier: newOption?.recipeMultiplier ?? 1
+              }
+            : item
+        )
+      });
+    }
+  };
+
+  const changeQuantity = (productId: string, quantity: number) => {
     setDraft({
       ...draft,
-      components: exists
-        ? draft.components.filter((item) => item.productId !== product.id)
-        : [...draft.components, { productId: product.id, name: product.name, quantity: 1 }]
+      components: draft.components.map((item) =>
+        item.productId === productId ? { ...item, quantity: Math.max(1, quantity) } : item
+      )
     });
   };
-  const changeQuantity = (productId: string, quantity: number) => {
-    setDraft({ ...draft, components: draft.components.map((item) => item.productId === productId ? { ...item, quantity: Math.max(1, quantity) } : item) });
-  };
+
   const componentTotal = draft.components.reduce((sum, component) => {
     const product = state.products.find((item) => item.id === component.productId);
-    return sum + (product?.price ?? 0) * component.quantity;
+    const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
+    const price = option?.price ?? component.price ?? product?.price ?? 0;
+    return sum + price * component.quantity;
   }, 0);
+
   const availableProducts = state.products.filter((product) => product.available);
   const sectionProducts = availableProducts.filter((product) =>
     sectionFilter === "all"
@@ -606,10 +676,14 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
   );
   const mealCategories = [...new Set(sectionProducts.map((product) => product.category))];
   const normalizedProductSearch = productSearch.trim().toLocaleLowerCase("ar");
-  const filteredProducts = sectionProducts.filter((product) =>
-    (mealCategoryFilter === "all" || product.category === mealCategoryFilter)
-    && (!normalizedProductSearch || product.name.toLocaleLowerCase("ar").includes(normalizedProductSearch))
-  );
+  const filteredProducts = sectionProducts.filter((product) => {
+    if (mealCategoryFilter !== "all" && product.category !== mealCategoryFilter) return false;
+    if (!normalizedProductSearch) return true;
+    const matchName = product.name.toLocaleLowerCase("ar").includes(normalizedProductSearch);
+    const matchOption = product.options?.some((opt) => opt.name.toLocaleLowerCase("ar").includes(normalizedProductSearch));
+    return matchName || matchOption;
+  });
+
   const save = () => {
     if (!draft.name.trim() || draft.price < 0 || !draft.components.length) return;
     const meal = { ...draft, name: draft.name.trim() };
@@ -632,7 +706,7 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
           <label className="check-label"><input type="checkbox" checked={draft.available} onChange={(event) => setDraft({ ...draft, available: event.target.checked })} /> متاحة للبيع</label>
         </div>
         <div className="meal-product-filters">
-          <label className="search-box meal-product-search"><Search /><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="ابحث عن صنف بالاسم..." /></label>
+          <label className="search-box meal-product-search"><Search /><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="ابحث عن صنف أو مقاس بالاسم..." /></label>
           <label className="meal-filter-select"><span><SlidersHorizontal /> القسم</span><select value={sectionFilter} onChange={(event) => { setSectionFilter(event.target.value); setMealCategoryFilter("all"); }}>
             <option value="all">كل الأقسام ({availableProducts.length})</option>
             {state.sections.map((section) => <option key={section.id} value={section.id}>{section.name} ({availableProducts.filter((product) => product.section === section.id).length})</option>)}
@@ -646,9 +720,44 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
         </div>
         <div className="meal-product-picker">{filteredProducts.map((product) => {
           const component = selected(product.id);
+          const hasOptions = Boolean(product.options && product.options.length > 0);
+          const activeOption = getActiveOption(product);
+          const currentPrice = activeOption ? activeOption.price : product.price;
+
           return <div className={component ? "selected" : ""} key={product.id}>
-            <button className="meal-product-toggle" onClick={() => toggleProduct(product)}><span>{component && <Check />}</span><div><strong>{product.name}</strong><small>{state.sections.find((item) => item.id === product.section)?.name ?? product.section} · {product.category}</small></div><b className="meal-product-price">{money(product.price)}</b></button>
-            {component && <div className="meal-quantity"><button onClick={() => changeQuantity(product.id, component.quantity - 1)}><Minus /></button><b>{component.quantity}</b><button onClick={() => changeQuantity(product.id, component.quantity + 1)}><Plus /></button></div>}
+            <button type="button" className="meal-product-toggle" onClick={() => toggleProduct(product)}>
+              <span>{component && <Check />}</span>
+              <div className="meal-product-text-wrap">
+                <div className="meal-product-name-row">
+                  <strong>{product.name}</strong>
+                  {hasOptions && (
+                    <select
+                      className="meal-product-size-select"
+                      value={activeOption?.id}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleOptionChange(product, e.target.value);
+                      }}
+                      title="اختر المقاس"
+                    >
+                      {product.options!.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <small>{state.sections.find((item) => item.id === product.section)?.name ?? product.section} · {product.category}</small>
+              </div>
+              <b className="meal-product-price">{money(currentPrice)}</b>
+            </button>
+            {component && <div className="meal-quantity">
+              <button type="button" onClick={() => changeQuantity(product.id, component.quantity - 1)}><Minus /></button>
+              <b>{component.quantity}</b>
+              <button type="button" onClick={() => changeQuantity(product.id, component.quantity + 1)}><Plus /></button>
+            </div>}
           </div>;
         })}{!filteredProducts.length && <div className="meal-picker-empty"><Search /><strong>لا توجد أصناف مطابقة</strong><small>غيّر القسم أو التصنيف أو كلمة البحث</small></div>}</div>
         <div className="meal-editor-summary"><span><small>مجموع أسعار الأصناف منفردة</small><b>{money(componentTotal)}</b></span><span><small>سعر الوجبة</small><b>{money(draft.price)}</b></span><span className={componentTotal > draft.price ? "saving" : ""}><small>فرق السعر للعميل</small><b>{componentTotal > draft.price ? `توفير ${money(componentTotal - draft.price)}` : money(draft.price - componentTotal)}</b></span></div>

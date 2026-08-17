@@ -1923,13 +1923,19 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .meal-filter-select select:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px #2e60491a; }
 .meal-filter-count { min-height: 45px; display: flex; align-items: center; justify-content: center; white-space: nowrap; color: #66736c; font-size: 10px; font-weight: 700; }
 .meal-filter-count b { margin-inline: 3px; color: var(--green-800); font-size: 13px; }
-.meal-editor-modal .meal-product-picker { max-height: clamp(205px, 31vh, 360px); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding: 2px 4px 4px; }
-.meal-editor-modal .meal-product-picker > div { min-height: 68px; border-radius: 11px; }
-.meal-editor-modal .meal-product-toggle { min-height: 66px; grid-template-columns: 29px minmax(0, 1fr) auto; gap: 9px; padding: 9px 10px; }
-.meal-editor-modal .meal-product-toggle > span { width: 27px; height: 27px; }
-.meal-editor-modal .meal-product-toggle strong { font-size: 12px; }
+.meal-editor-modal .meal-product-picker { max-height: clamp(230px, 36vh, 420px); grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; padding: 2px 4px 4px; }
+.meal-editor-modal .meal-product-picker > div { min-height: 68px; display: grid; grid-template-columns: 1fr auto; align-items: center; border: 1px solid #dfe4e0; border-radius: 11px; background: #fff; }
+.meal-editor-modal .meal-product-picker > div.selected { border-color: #78a28d; background: #f0f7f3; }
+.meal-editor-modal .meal-product-toggle { min-height: 66px; display: grid; grid-template-columns: 29px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 9px 10px; border: 0; background: transparent; color: inherit; text-align: right; cursor: pointer; }
+.meal-editor-modal .meal-product-toggle > span { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid #bdc9c2; border-radius: 6px; color: #fff; }
+.meal-product-text-wrap { min-width: 0; display: grid; gap: 2px; }
+.meal-product-name-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.meal-product-name-row strong { overflow: hidden; font-size: 12px; font-weight: 800; color: #1e2d24; text-overflow: ellipsis; white-space: nowrap; }
+.meal-product-size-select { height: 24px; padding: 0 6px; border: 1px solid #c2d1c8; border-radius: 6px; background: #fff; color: #1c382b; font-family: inherit; font-size: 11px; font-weight: 700; cursor: pointer; outline: 0; }
+.meal-product-size-select:focus { border-color: var(--green-700); box-shadow: 0 0 0 2px #2e604918; }
+.meal-product-size-select:hover { border-color: var(--green-700); }
 .meal-editor-modal .meal-product-toggle small { font-size: 9px; }
-.meal-product-price { color: #ad632b; font-size: 15px; font-weight: 900; white-space: nowrap; }
+.meal-product-price { color: #ad632b; font-size: 14px; font-weight: 900; white-space: nowrap; margin-inline-start: 6px; }
 .meal-editor-modal .meal-quantity { gap: 6px; padding-left: 9px; }
 .meal-editor-modal .meal-quantity button { width: 29px; height: 29px; }
 .meal-editor-modal .meal-quantity b { min-width: 18px; font-size: 11px; }
