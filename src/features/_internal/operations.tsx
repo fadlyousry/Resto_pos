@@ -774,56 +774,6 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                 </button>
               </div>
 
-              {customerQuery.trim().length > 0 && (
-                <div
-                  className="customer-register-banner"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openNewCustomerForm()}
-                  onKeyDown={(e) => { if (e.key === "Enter") openNewCustomerForm(); }}
-                >
-                  <span
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "9px",
-                      background: "#22c55e",
-                      color: "#fff",
-                      display: "grid",
-                      placeItems: "center",
-                      flexShrink: 0
-                    }}
-                  >
-                    <UserPlus size={19} />
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0, display: "grid", gap: "2px" }}>
-                    <strong style={{ fontSize: "13px", color: "#14532d", fontWeight: 800 }}>
-                      {/^[\d+\s-]+$/.test(customerQuery.trim()) && customerQuery.trim().replace(/\D/g, "").length > 0
-                        ? `تسجيل عميل جديد برقم: ${customerQuery.trim()}`
-                        : `تسجيل عميل جديد باسم: "${customerQuery.trim()}"`}
-                    </strong>
-                    <small style={{ fontSize: "11px", color: "#15803d", fontWeight: 600 }}>
-                      اضغط هنا لتسجيل بيانات عميل جديد واختياره للطلب مباشرة
-                    </small>
-                  </div>
-                  <span
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      background: "#dcfce7",
-                      color: "#15803d",
-                      padding: "5px 10px",
-                      borderRadius: "7px",
-                      fontSize: "11px",
-                      fontWeight: 800
-                    }}
-                  >
-                    تسجيل الآن <ChevronLeft size={14} />
-                  </span>
-                </div>
-              )}
-
               <div className="customer-results">
                 {customerResults.length > 0 && (
                   <div style={{ fontSize: "11px", fontWeight: 800, color: "#6b7280", margin: "2px 0 4px" }}>

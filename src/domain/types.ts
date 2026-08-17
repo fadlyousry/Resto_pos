@@ -304,6 +304,7 @@ export interface AppState {
   products: Product[];
   sections: MenuSection[];
   meals: Meal[];
+  savedChoiceGroups?: MealChoiceGroup[];
   categories: ProductCategory[];
   customers: Customer[];
   orders: Order[];

@@ -129,6 +129,7 @@ export function normalizeAppState(parsed: Partial<AppState>, fallback: AppState)
     products,
     sections,
     meals: isArray(parsed.meals) ? parsed.meals : (isArray(fallback.meals) ? fallback.meals : []),
+    savedChoiceGroups: isArray(parsed.savedChoiceGroups) ? parsed.savedChoiceGroups : (isArray(fallback.savedChoiceGroups) ? fallback.savedChoiceGroups : []),
     categories: isArray(parsed.categories) ? parsed.categories : fallback.categories,
     customers: isArray(parsed.customers) ? parsed.customers.map(cleanCustomer) : fallback.customers,
     orders,

@@ -4,7 +4,8 @@ import {
   BadgeDollarSign, Boxes, Check, ChevronLeft, ClipboardList, CookingPot, DatabaseBackup, Edit3, ImagePlus,
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
   ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
-  PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2, Monitor, Shuffle, Layers
+  PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2, Monitor, Shuffle, Layers,
+  Bookmark, BookmarkCheck
 } from "lucide-react";
 import type {
   AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo,
@@ -1347,6 +1348,10 @@ interface MealChoiceGroupsTabProps {
   choicePickerSection: string;
   setChoicePickerSection: (section: string) => void;
   choiceProducts: Product[];
+  savedChoiceGroups: MealChoiceGroup[];
+  onSaveChoiceGroupTemplate: (group: MealChoiceGroup) => void;
+  onImportSavedChoiceGroup: (savedGroup: MealChoiceGroup) => void;
+  onDeleteSavedChoiceGroup: (savedGroupId: string) => void;
 }
 
 function MealChoiceGroupsTab({
@@ -1364,8 +1369,14 @@ function MealChoiceGroupsTab({
   setChoicePickerSearch,
   choicePickerSection,
   setChoicePickerSection,
-  choiceProducts
+  choiceProducts,
+  savedChoiceGroups,
+  onSaveChoiceGroupTemplate,
+  onImportSavedChoiceGroup,
+  onDeleteSavedChoiceGroup
 }: MealChoiceGroupsTabProps) {
+  const [showSavedModal, setShowSavedModal] = useState(false);
+
   return (
     <div className="choice-groups-wrapper">
       {/* Quick Add Bar */}
@@ -1384,6 +1395,26 @@ function MealChoiceGroupsTab({
           disabled={!newGroupTitle.trim()}
         >
           <Plus size={16} /> إضافة مجموعة
+        </button>
+        <button
+          type="button"
+          className="soft-button"
+          onClick={() => setShowSavedModal(true)}
+          style={{
+            height: "36px",
+            fontSize: "11.5px",
+            padding: "0 12px",
+            whiteSpace: "nowrap",
+            gap: "6px",
+            display: "inline-flex",
+            alignItems: "center",
+            color: "#166534",
+            background: "#f0fdf4",
+            borderColor: "#bbf7d0"
+          }}
+          title="استعراض واستيراد مجموعات الاختيار المحفوظة مسبقاً"
+        >
+          <Bookmark size={15} /> القوالب المحفوظة {savedChoiceGroups?.length ? `(${savedChoiceGroups.length})` : ""}
         </button>
       </div>
 
@@ -1434,6 +1465,15 @@ function MealChoiceGroupsTab({
                   </label>
                 </div>
                 <div className="choice-group-actions">
+                  <button
+                    type="button"
+                    className="soft-button"
+                    onClick={() => onSaveChoiceGroupTemplate(group)}
+                    style={{ fontSize: "11px", padding: "4px 8px", minHeight: "32px", color: "#166534" }}
+                    title="حفظ هذه المجموعة مع خياراتها لاستخدامها في أي وجبة أخرى بضغطة زر"
+                  >
+                    <BookmarkCheck size={14} /> حفظ كقالب
+                  </button>
                   <button
                     type="button"
                     className="soft-button"
@@ -1599,8 +1639,90 @@ function MealChoiceGroupsTab({
         <div style={{ textAlign: "center", padding: "32px 16px", border: "1px dashed #cbd5e1", borderRadius: "10px", color: "#64748b", background: "#f8fafc" }}>
           <Shuffle size={26} style={{ margin: "0 auto 8px", opacity: 0.4 }} />
           <strong style={{ display: "block", fontSize: "13px" }}>لا توجد خيارات تبديل في هذه الوجبة</strong>
-          <small>اكتب اسم المجموعة بالأعلى (مثل: اختيار المشروب) واضغط إضافة</small>
+          <small>اكتب اسم المجموعة بالأعلى (مثل: اختيار المشروب) أو اختر من القوالب المحفوظة</small>
         </div>
+      )}
+
+      {/* Saved Groups Modal */}
+      {showSavedModal && (
+        <Modal title="قوالب مجموعات الاختيار المحفوظة" onClose={() => setShowSavedModal(false)} size="wide">
+          <div style={{ display: "grid", gap: "14px", padding: "6px" }}>
+            {savedChoiceGroups && savedChoiceGroups.length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "10px" }}>
+                {savedChoiceGroups.map((savedGroup) => (
+                  <div
+                    key={savedGroup.id}
+                    style={{
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      background: "#ffffff",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      gap: "10px"
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <strong style={{ fontSize: "13px", color: "#0f172a" }}>{savedGroup.name}</strong>
+                        <div style={{ display: "flex", gap: "4px" }}>
+                          {savedGroup.multiple && (
+                            <span style={{ fontSize: "9.5px", background: "#d1fae5", color: "#065f46", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
+                              متعدد
+                            </span>
+                          )}
+                          <span style={{ fontSize: "9.5px", background: savedGroup.required !== false ? "#dbeafe" : "#f1f5f9", color: savedGroup.required !== false ? "#1e40af" : "#64748b", padding: "1px 5px", borderRadius: "4px", fontWeight: 700 }}>
+                            {savedGroup.required !== false ? "إجباري" : "اختياري"}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", maxHeight: "80px", overflowY: "auto" }}>
+                        {savedGroup.choices.map((c) => (
+                          <span
+                            key={`${c.productId}:${c.optionId ?? "base"}`}
+                            style={{ fontSize: "10.5px", padding: "2px 6px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "5px", color: "#334155" }}
+                          >
+                            {c.name} {c.extraPrice ? `(+${c.extraPrice} ج.م)` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: "8px", borderTop: "1px solid #f1f5f9" }}>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteSavedChoiceGroup(savedGroup.id)}
+                        style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", padding: "4px", display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px" }}
+                        title="حذف هذا القالب من المحفوظات"
+                      >
+                        <Trash2 size={14} /> حذف
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        onClick={() => {
+                          onImportSavedChoiceGroup(savedGroup);
+                          setShowSavedModal(false);
+                        }}
+                        style={{ padding: "5px 12px", fontSize: "11.5px", background: "var(--green-800)" }}
+                      >
+                        <Plus size={14} /> إدراج في الوجبة
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "36px 16px", color: "#64748b" }}>
+                <Bookmark size={32} style={{ margin: "0 auto 10px", opacity: 0.35 }} />
+                <strong style={{ display: "block", fontSize: "13.5px", marginBottom: "4px" }}>لا توجد قوالب مجموعات محفوظة بعد</strong>
+                <small style={{ display: "block", maxWidth: "400px", margin: "0 auto", lineHeight: 1.5 }}>
+                  عند إنشاء أي مجموعة داخل أي وجبة وإضافة خياراتها، اضغط على زر <b>«حفظ كقالب»</b> الموجود على بطاقة المجموعة ليتم حفظها هنا، وتتمكن من إدراجها في أي وجبة أخرى بضغطة زر واحدة.
+                </small>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -1998,6 +2120,45 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
     });
   };
 
+  const handleSaveChoiceGroupTemplate = (group: MealChoiceGroup) => {
+    if (!group.name.trim()) return;
+    update((current) => {
+      const existing = current.savedChoiceGroups ?? [];
+      const index = existing.findIndex((g) => g.id === group.id || g.name.trim() === group.name.trim());
+      const template: MealChoiceGroup = {
+        ...group,
+        id: group.id || uid(),
+        choices: group.choices.map((c) => ({ ...c }))
+      };
+      const updated = index >= 0
+        ? existing.map((g, idx) => idx === index ? template : g)
+        : [...existing, template];
+      return { ...current, savedChoiceGroups: updated };
+    });
+    notify(`تم حفظ مجموعة «${group.name}» في القوالب المحفوظة للاستخدام في أي وجبة`);
+  };
+
+  const handleImportSavedChoiceGroup = (savedGroup: MealChoiceGroup) => {
+    const clonedGroup: MealChoiceGroup = {
+      ...savedGroup,
+      id: uid(),
+      choices: savedGroup.choices.map((c) => ({ ...c }))
+    };
+    setDraft((prev) => ({
+      ...prev,
+      choiceGroups: [...(prev.choiceGroups ?? []), clonedGroup]
+    }));
+    notify(`تم إدراج مجموعة «${savedGroup.name}» في الوجبة بنجاح`);
+  };
+
+  const handleDeleteSavedChoiceGroup = (savedGroupId: string) => {
+    update((current) => ({
+      ...current,
+      savedChoiceGroups: (current.savedChoiceGroups ?? []).filter((g) => g.id !== savedGroupId)
+    }));
+    notify("تم حذف القالب المحفوظ");
+  };
+
   // Size option helpers
   const addMealSize = () => {
     const newOption: MealOption = {
@@ -2159,6 +2320,10 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
               choicePickerSection={choicePickerSection}
               setChoicePickerSection={setChoicePickerSection}
               choiceProducts={choiceProducts}
+              savedChoiceGroups={state.savedChoiceGroups ?? []}
+              onSaveChoiceGroupTemplate={handleSaveChoiceGroupTemplate}
+              onImportSavedChoiceGroup={handleImportSavedChoiceGroup}
+              onDeleteSavedChoiceGroup={handleDeleteSavedChoiceGroup}
             />
           )}
 

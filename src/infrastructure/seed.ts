@@ -42,6 +42,7 @@ export const initialState: AppState = {
   products,
   sections,
   meals: [],
+  savedChoiceGroups: [],
   categories,
   customers: [
     { id: "c1", name: "منى أحمد", phone: "01012345678", address: "شارع التحرير، الدقي، الدور الثالث", zone: "الدقي", ordersCount: 8, totalSpent: 2460, lastOrder: new Date(Date.now() - 86400000 * 2).toISOString() },

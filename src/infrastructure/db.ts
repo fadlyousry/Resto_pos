@@ -272,6 +272,7 @@ export async function loadState(): Promise<AppState> {
       ? JSON.parse(setting.menuSections)
       : structuredClone(initialState.sections),
     meals: setting.menuMeals ? JSON.parse(setting.menuMeals) : [],
+    savedChoiceGroups: setting.savedChoiceGroups ? JSON.parse(setting.savedChoiceGroups) : [],
     categories: categories.length ? categories : structuredClone(initialState.categories),
     customers, orders, drivers: drivers.length ? drivers : structuredClone(initialState.drivers),
     driverSettlements,
@@ -443,6 +444,7 @@ export async function saveState(state: AppState): Promise<string> {
     nextPurchaseInvoiceNumber: String(state.nextPurchaseInvoiceNumber),
     menuSections: JSON.stringify(state.sections),
     menuMeals: JSON.stringify(state.meals),
+    savedChoiceGroups: JSON.stringify(state.savedChoiceGroups ?? []),
     appLicense: JSON.stringify(state.license),
     restaurantSettings: JSON.stringify(state.settings),
     treasuries: JSON.stringify(state.treasuries),
