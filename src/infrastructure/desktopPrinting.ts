@@ -88,7 +88,7 @@ const band = (rightText: string, leftText: string, size = 9, filled = false): Re
   size,
   filled
 });
-const imageBlock = (src: string, width = 70, height = 70): ReceiptBlock => ({ kind: "image", src, width, height });
+const imageBlock = (src: string, width = 230, height = 180): ReceiptBlock => ({ kind: "image", src, width, height });
 const sectionLabel = (value: string): ReceiptBlock => ({ kind: "section", text: value });
 const customerCard = (name: string, phone: string, address: string): ReceiptBlock => ({
   kind: "customer", name, phone, address
@@ -186,11 +186,16 @@ async function renderReceiptCanvas(receipt: ReceiptDocument) {
     if (block.kind === "image") {
       const receiptImage = await loadReceiptImage(block.src).catch(() => null);
       if (receiptImage) {
-        const width = Math.min(contentWidth, block.width);
-        const height = block.height;
+        const maxWidth = Math.min(contentWidth, block.width);
+        const maxHeight = block.height;
+        const naturalWidth = receiptImage.naturalWidth || receiptImage.width || maxWidth;
+        const naturalHeight = receiptImage.naturalHeight || receiptImage.height || maxHeight;
+        const scale = Math.min(maxWidth / naturalWidth, maxHeight / naturalHeight);
+        const width = Math.max(10, Math.round(naturalWidth * scale));
+        const height = Math.max(10, Math.round(naturalHeight * scale));
         const imageX = margin + (contentWidth - width) / 2;
         context.drawImage(receiptImage, imageX, y, width, height);
-        y += height + 7;
+        y += height + 8;
       }
       continue;
     }
@@ -535,7 +540,7 @@ function kitchenReceipt(order: Order, settings: AppState["settings"]): ReceiptDo
 
 function brandBlocks(settings: AppState["settings"]): ReceiptBlock[] {
   return [
-    ...(settings.logoDataUrl ? [imageBlock(settings.logoDataUrl, 110, 110)] : []),
+    ...(settings.logoDataUrl ? [imageBlock(settings.logoDataUrl, 240, 200)] : []),
     text(settings.restaurantName, { align: "center", size: 13, bold: true }),
     ...(settings.subtitle ? [text(settings.subtitle, { align: "center", size: 8.5 })] : []),
     ...(settings.phone ? [text(settings.phone, { align: "center", size: 7, rtl: false })] : []),
