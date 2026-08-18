@@ -3,7 +3,7 @@ import {
   ArrowLeftRight, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
   Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
-  ReceiptText, Save, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
+  ReceiptText, Save, Scale, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
   Utensils, WalletCards, X, Shuffle, BadgeDollarSign
 } from "lucide-react";
 import type {
@@ -2947,6 +2947,8 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     isInCashDateRange(shift.openedAt)
     && matchesSelectedTreasury(shift.treasuryId, currentSalesTreasuryId)
   );
+  const closedSelectedShifts = selectedShifts.filter((shift) => Boolean(shift.closedAt));
+  const totalDailyShiftDifference = closedSelectedShifts.reduce((sum, shift) => sum + (shift.difference ?? 0), 0);
   const selectedOpeningBalance = selectedShifts.reduce((sum, shift) => sum + shift.openingBalance, 0);
   const dailyRevenueTransactions = selectedTransactions.filter((transaction) =>
     transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection" || (transaction.type === "deposit" && transaction.orderId))
@@ -3244,6 +3246,32 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     setOpeningAmount(0);
     notify("تم فتح الوردية بنجاح");
   };
+  const [editingShift, setEditingShift] = useState<AppState["cashShifts"][number] | null>(null);
+  const [editShiftData, setEditShiftData] = useState<{ actualCash: number; note: string }>({ actualCash: 0, note: "" });
+  const openEditShiftModal = (shift: AppState["cashShifts"][number]) => {
+    setEditingShift(shift);
+    setEditShiftData({
+      actualCash: shift.actualCash ?? shift.expectedCash ?? 0,
+      note: shift.note ?? ""
+    });
+  };
+  const saveEditShift = () => {
+    if (!editingShift) return;
+    const actualCash = Math.max(0, editShiftData.actualCash);
+    const expectedCash = editingShift.expectedCash ?? 0;
+    const difference = actualCash - expectedCash;
+    const note = editShiftData.note.trim() || undefined;
+    update((current) => ({
+      ...current,
+      cashShifts: current.cashShifts.map((shift) =>
+        shift.id === editingShift.id
+          ? { ...shift, actualCash, difference, note }
+          : shift
+      )
+    }));
+    setEditingShift(null);
+    notify("تم تعديل نتيجة تقفيل الوردية بنجاح");
+  };
   const closeShift = () => {
     if (!activeShift) return;
     const actualCash = Math.max(0, closingData.actualCash);
@@ -3487,7 +3515,33 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
           }}><Minus /> تسجيل مصروف</button>}
           {cashTab === "shift" && (activeShift
             ? <button className="light-button close-shift-button" onClick={() => { setClosingData({ actualCash: 0, note: "" }); setClosingShift(true); }}><X /> إغلاق الوردية</button>
-            : <button className="light-button open-shift-button" onClick={() => setOpeningShift(true)}><Plus /> فتح وردية</button>)}
+            : <>
+                <button className="light-button open-shift-button" onClick={() => setOpeningShift(true)}><Plus /> فتح وردية</button>
+                {viewedShift?.closedAt && (
+                  <button className="light-button" onClick={() => openEditShiftModal(viewedShift)}><Edit3 /> تعديل تقفيل الوردية</button>
+                )}
+              </>)}
+          {cashTab === "daily" && (
+            <div className="daily-discrepancy-card">
+              <div className="daily-discrepancy-header">
+                <Scale size={16} />
+                <div>
+                  <strong>فروق جرد الورديات</strong>
+                  <small>إحصائية رقابية (لا تؤثر على المبيعات)</small>
+                </div>
+              </div>
+              <div className={`daily-discrepancy-amount ${totalDailyShiftDifference === 0 ? "balanced" : totalDailyShiftDifference > 0 ? "surplus" : "shortage"}`}>
+                <strong>
+                  {totalDailyShiftDifference > 0
+                    ? `+${money(totalDailyShiftDifference)}`
+                    : totalDailyShiftDifference < 0
+                    ? `-${money(Math.abs(totalDailyShiftDifference))}`
+                    : money(0)}
+                </strong>
+                <span>ج.م</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {cashTab === "shift" && !viewedShift && <div className="shift-empty-state"><Clock3 /><div><strong>لم تبدأ أي وردية بعد</strong><small>افتح أول وردية وحدد الرصيد النقدي الموجود في الدرج.</small></div><button className="primary-button compact" onClick={() => setOpeningShift(true)}><Plus /> فتح وردية</button></div>}
@@ -3590,6 +3644,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         deliveryFees={dailyDeliveryFees}
         revenueChange={revenueChangePercent}
         yesterdayRevenue={yesterdayRevenue}
+        onEditShift={openEditShiftModal}
       />}
       {treasuryManagerOpen && <Modal title="إدارة الخزن المتعددة" onClose={() => setTreasuryManagerOpen(false)} size="wide">
         <div className="treasury-manager">
@@ -3724,6 +3779,26 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         <label>ملاحظات الإغلاق<textarea value={closingData.note} onChange={(event) => setClosingData({ ...closingData, note: event.target.value })} placeholder="سبب العجز أو الزيادة إن وجد" /></label>
         <button className="primary-button close-shift-confirm" onClick={closeShift}><Check /> اعتماد وإغلاق الوردية</button>
       </div></Modal>}
+      {editingShift && <Modal title="تعديل تقفيل الوردية" onClose={() => setEditingShift(null)}><div className="shift-operation-modal">
+        <div className="shift-operation-hero close"><span><Edit3 /></span><div><strong>تعديل جرد وتقفيل الوردية</strong><small>فتحت: {shortDate(editingShift.openedAt)} · أغلقت: {editingShift.closedAt ? shortDate(editingShift.closedAt) : "غير محدد"}</small></div></div>
+        <div className="shift-closing-summary" style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
+          <span><small>رصيد بداية الوردية</small><b>{money(editingShift.openingBalance)}</b></span>
+          <span><small>الرصيد النقدي المتوقع</small><b>{money(editingShift.expectedCash ?? 0)}</b></span>
+        </div>
+        <label><span>النقدي الفعلي في الدرج (المعدود)</span><input autoFocus type="number" min="0" value={editShiftData.actualCash || ""} onChange={(event) => setEditShiftData({ ...editShiftData, actualCash: Number(event.target.value) })} /></label>
+        <div className={`shift-difference ${(editShiftData.actualCash - (editingShift.expectedCash ?? 0)) === 0 ? "matched" : ""}`}>
+          <span>فرق الجرد بعد التعديل</span>
+          <strong>
+            {(editShiftData.actualCash - (editingShift.expectedCash ?? 0)) > 0
+              ? `+ ${money(editShiftData.actualCash - (editingShift.expectedCash ?? 0))}`
+              : (editShiftData.actualCash - (editingShift.expectedCash ?? 0)) < 0
+              ? `- ${money(Math.abs(editShiftData.actualCash - (editingShift.expectedCash ?? 0)))}`
+              : money(0)}
+          </strong>
+        </div>
+        <label><span>ملاحظات التعديل والإغلاق</span><textarea value={editShiftData.note} onChange={(event) => setEditShiftData({ ...editShiftData, note: event.target.value })} placeholder="اكتب سبب تعديل المبلغ الفعلي أو تفاصيل العجز/الزيادة المكتشفة" /></label>
+        <button className="primary-button close-shift-confirm" onClick={saveEditShift}><Save /> حفظ تعديل تقفيل الوردية</button>
+      </div></Modal>}
     </div>
   );
 }
@@ -3741,7 +3816,7 @@ function CashMethodCard({ icon, label, summary, tone }: {
   </article>;
 }
 
-function DailyRevenueView({ date, revenue, sales, collections, editDeposits, editWithdrawals, expenses, net, methods, shifts, transactions, withdrawalTransactions, methodFilter, onMethodFilter, orderNumberById, transactionTypeLabels, orderCount, avgOrder, pending, discounts, deliveryFees, revenueChange }: {
+function DailyRevenueView({ date, revenue, sales, collections, editDeposits, editWithdrawals, expenses, net, methods, shifts, transactions, withdrawalTransactions, methodFilter, onMethodFilter, orderNumberById, transactionTypeLabels, orderCount, avgOrder, pending, discounts, deliveryFees, revenueChange, onEditShift }: {
   date: string;
   revenue: number;
   sales: number;
@@ -3774,6 +3849,7 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
   deliveryFees: number;
   revenueChange: number | null;
   yesterdayRevenue: number;
+  onEditShift: (shift: AppState["cashShifts"][number]) => void;
 }) {
   const filteredIn = methodFilter === "all" ? transactions : transactions.filter((transaction) => transaction.method === methodFilter);
   const filteredOut = methodFilter === "all" ? withdrawalTransactions : withdrawalTransactions.filter((transaction) => transaction.method === methodFilter);
@@ -3822,14 +3898,38 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
     <section className="daily-shifts-panel">
       <div className="daily-section-heading"><div><Clock3 /><span><strong>إيراد كل وردية</strong><small>{shifts.length ? `${shifts.length} وردية مسجلة خلال ${date}` : "لا توجد ورديات في الفترة المحددة"}</small></span></div><b>{money(totalShiftRevenue)}</b></div>
       {!!shifts.length && <div className="daily-shifts-table-scroll">
-        <div className="daily-shifts-table-head"><span>الوردية</span><span>الفترة</span><span>نقدي</span><span>إنستاباي</span><span>فودافون كاش</span><span>المصروفات</span><span>الإيراد</span><span>الصافي</span></div>
+        <div className="daily-shifts-table-head"><span>الوردية</span><span>الفترة</span><span>نقدي</span><span>إنستاباي</span><span>فودافون كاش</span><span>المصروفات</span><span>الإيراد</span><span>الصافي</span><span>فرق الجرد</span><span>إجراءات</span></div>
         {shifts.map(({ shift, cash, instapay, vodafone, revenue: sr, expenses: se, net: sn }, index) => {
           const mins = shift.closedAt ? Math.round((new Date(shift.closedAt).getTime() - new Date(shift.openedAt).getTime()) / 60000) : Math.round((Date.now() - new Date(shift.openedAt).getTime()) / 60000);
           const dur = mins >= 60 ? `${Math.floor(mins / 60)} ساعة ${mins % 60 ? `${mins % 60} د` : ""}` : `${mins} دقيقة`;
+          const diff = shift.difference ?? 0;
           return <div className="daily-shift-row" key={shift.id}>
             <span><strong>وردية {index + 1}</strong><small className={`cash-shift-status ${shift.closedAt ? "closed" : "open"}`}>{shift.closedAt ? "مغلقة" : "مفتوحة"}</small><small className="shift-duration">{dur}</small></span>
             <span><b>{new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "numeric", minute: "2-digit" }).format(new Date(shift.openedAt))}</b><small>إلى {shift.closedAt ? new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "numeric", minute: "2-digit" }).format(new Date(shift.closedAt)) : "الآن"}</small></span>
             <b>{money(cash)}</b><b>{money(instapay)}</b><b>{money(vodafone)}</b><b className="out">{money(se)}</b><b>{money(sr)}</b><b className={sn >= 0 ? "net" : "out"}>{money(sn)}</b>
+            <span>
+              {!shift.closedAt ? (
+                <small className="shift-diff-open">مفتوحة</small>
+              ) : diff === 0 ? (
+                <small className="shift-diff-match">مطابق</small>
+              ) : diff > 0 ? (
+                <strong className="shift-diff-surplus">+{money(diff)}</strong>
+              ) : (
+                <strong className="shift-diff-shortage">-{money(Math.abs(diff))}</strong>
+              )}
+            </span>
+            <span>
+              {shift.closedAt && (
+                <button
+                  type="button"
+                  className="daily-shift-edit-btn"
+                  title="تعديل تقفيل الوردية"
+                  onClick={() => onEditShift(shift)}
+                >
+                  <Edit3 size={11} /> تعديل
+                </button>
+              )}
+            </span>
             <div className="shift-bar"><i style={{ width: `${(sr / maxShiftRevenue) * 100}%` }} /></div>
           </div>;
         })}
@@ -3841,6 +3941,18 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
           <b className="out">{money(shifts.reduce((s, r) => s + r.expenses, 0))}</b>
           <b>{money(totalShiftRevenue)}</b>
           <b className={shifts.reduce((s, r) => s + r.net, 0) >= 0 ? "net" : "out"}>{money(shifts.reduce((s, r) => s + r.net, 0))}</b>
+          <span>
+            {shifts.some((r) => r.shift.closedAt) ? (
+              shifts.reduce((sum, r) => sum + (r.shift.closedAt ? (r.shift.difference ?? 0) : 0), 0) === 0 ? (
+                <small className="shift-diff-match">مطابق</small>
+              ) : shifts.reduce((sum, r) => sum + (r.shift.closedAt ? (r.shift.difference ?? 0) : 0), 0) > 0 ? (
+                <strong className="shift-diff-surplus">+{money(shifts.reduce((sum, r) => sum + (r.shift.closedAt ? (r.shift.difference ?? 0) : 0), 0))}</strong>
+              ) : (
+                <strong className="shift-diff-shortage">-{money(Math.abs(shifts.reduce((sum, r) => sum + (r.shift.closedAt ? (r.shift.difference ?? 0) : 0), 0)))}</strong>
+              )
+            ) : "—"}
+          </span>
+          <span />
         </div>
         {outsideShiftRevenue > 0 && <div className="daily-shift-outside-note"><Info size={14} /><span>يوجد {money(outsideShiftRevenue)} إيراد مسجل خارج نطاق الورديات</span></div>}
       </div>}

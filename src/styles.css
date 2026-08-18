@@ -2595,9 +2595,8 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .daily-method-card > footer span { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 0 10px; color: #637068; font-size: 8px; font-weight: 700; }
 .daily-method-card > footer span + span { border-right: 1px solid #e7ebe8; }
 .daily-method-card > footer b { color: #17231e; font-size: 9px; }
-.daily-shifts-table-scroll { max-height: 420px; overflow: auto; }
 .daily-shifts-table-head,
-.daily-shift-row { min-width: 1000px; display: grid; grid-template-columns: 115px 145px repeat(3, 105px) 105px 115px 115px; align-items: center; gap: 9px; padding: 0 14px; }
+.daily-shift-row { min-width: 1120px; display: grid; grid-template-columns: 110px 135px repeat(3, 95px) 95px 105px 105px 110px 115px; align-items: center; gap: 9px; padding: 0 14px; }
 .daily-shifts-table-head { min-height: 41px; position: sticky; top: 0; z-index: 2; background: #f3f5f2; color: #4e5b54; font-size: 8px; font-weight: 800; }
 .daily-shift-row { min-height: 67px; border-top: 1px solid #edf0ed; }
 .daily-shift-row:nth-child(even):not(.daily-shift-totals) { background: #fafcf9; }
@@ -2611,6 +2610,24 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .daily-shift-row > b { color: #17231e; font-size: 10px; }
 .daily-shift-row > b.out { color: #a64a41; }
 .daily-shift-row > b.net { color: #27714b; }
+.daily-shift-edit-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 9px; font-size: 10px; font-weight: 800; border-radius: 7px; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; cursor: pointer; transition: all 0.15s ease; font-family: inherit; width: fit-content; }
+.daily-shift-edit-btn:hover { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; transform: translateY(-1px); }
+.shift-diff-match { color: #16a34a; font-size: 10px; font-weight: 800; }
+.shift-diff-surplus { color: #15803d; font-size: 10px; font-weight: 800; direction: ltr; display: inline-block; }
+.shift-diff-shortage { color: #dc2626; font-size: 10px; font-weight: 800; direction: ltr; display: inline-block; }
+.shift-diff-open { color: #64748b; font-size: 9px; font-weight: 700; }
+.cash-hero.daily .cash-hero-actions { display: flex !important; flex-direction: column; justify-content: stretch; padding: 10px; background: #f8fafc; }
+.daily-discrepancy-card { width: 100%; height: 100%; min-height: 100px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 12px 16px; display: flex; flex-direction: column; justify-content: center; gap: 10px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04); }
+.daily-discrepancy-header { display: flex; align-items: center; gap: 7px; }
+.daily-discrepancy-header svg { color: #475569; flex-shrink: 0; }
+.daily-discrepancy-header strong { font-size: 12.5px; font-weight: 800; color: #0f172a; display: block; }
+.daily-discrepancy-header small { font-size: 9px; color: #64748b; font-weight: 600; display: block; }
+.daily-discrepancy-amount { display: flex; align-items: baseline; gap: 6px; direction: ltr; justify-content: flex-end; }
+.daily-discrepancy-amount strong { font-size: 24px; font-weight: 800; line-height: 1; }
+.daily-discrepancy-amount.balanced strong { color: #16a34a; }
+.daily-discrepancy-amount.surplus strong { color: #15803d; }
+.daily-discrepancy-amount.shortage strong { color: #dc2626; }
+.daily-discrepancy-amount span { font-size: 10px; font-weight: 800; color: #64748b; }
 .shift-bar { grid-column: 1 / -1; height: 4px; margin: -6px 14px 6px; border-radius: 99px; background: #eaeeed; overflow: hidden; }
 .shift-bar i { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #3d7c5e, #6bb88e); transition: width 0.5s ease; }
 .daily-shift-totals { background: #f0f4f1 !important; border-top: 2px solid #c8d4cd !important; min-height: 56px; }
