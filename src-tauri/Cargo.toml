@@ -1,6 +1,6 @@
 [package]
 name = "beitna-pos"
-version = "0.1.9"
+version = "0.1.10"
 description = "نظام إدارة مطعم بيتنا"
 authors = ["Beitna"]
 edition = "2021"
