@@ -37,6 +37,7 @@ function cleanOrder(order: Order): Order {
     customerName: order.customerName,
     customerPhone: order.customerPhone,
     address: order.address,
+    customerNotes: order.customerNotes,
     items: order.items.map((item) => {
       const { packed: _packed, ...cleanItem } = item as typeof item & { packed?: boolean };
       return cleanItem;

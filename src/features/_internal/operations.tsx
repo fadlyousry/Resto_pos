@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeftRight, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
-  ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, Clock3, CookingPot, CreditCard,
+  ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, ClipboardList, Clock3, CookingPot, CreditCard,
   Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Scale, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
   Utensils, WalletCards, X, Shuffle, BadgeDollarSign
@@ -75,6 +75,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       phone: editingOrder.customerPhone,
       address: editingOrder.address,
       zone: "",
+      notes: editingOrder.customerNotes,
       ordersCount: 1,
       totalSpent: editingOrder.total
     });
@@ -164,7 +165,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       ...customerCandidate,
       name,
       phone,
-      address
+      address,
+      notes: customerCandidate.notes ? customerCandidate.notes.trim() : undefined
     };
 
     update((current) => ({
@@ -174,7 +176,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         ...order,
         customerName: updatedCandidate.name,
         customerPhone: updatedCandidate.phone,
-        address: updatedCandidate.address
+        address: updatedCandidate.address,
+        customerNotes: updatedCandidate.notes
       } : order)
     }));
     setCustomer(updatedCandidate);
@@ -355,6 +358,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       customerName: customer.name,
       customerPhone: customer.phone,
       address: customer.address,
+      customerNotes: customer.notes || undefined,
       items: cart,
       subtotal,
       deliveryFee: details.deliveryFee,
@@ -461,6 +465,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     const order: Order = {
       id: orderId, number: state.nextOrderNumber, shiftNumber, shiftId: activeShift.id, customerId: customer.id,
       customerName: customer.name, customerPhone: customer.phone, address: customer.address,
+      customerNotes: customer.notes || undefined,
       items: cart, subtotal, deliveryFee: details.deliveryFee, discount: details.discount, total,
       paymentMethod: details.paymentMethod, paymentStatus: details.paymentStatus,
       stage: "preparing", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
@@ -491,7 +496,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     notify(`تم تسجيل الطلب #${orderDisplayNumber(order)}`);
     if (state.settings.printCustomerReceipt !== false || state.settings.printKitchenReceipt !== false) {
       if (isDesktopRuntime()) {
-        void printOrderReceipts(order, state.settings).catch((error) => {
+        void printOrderReceipts(order, state.settings, state.customers).catch((error) => {
           notify(`تم تسجيل الطلب #${orderDisplayNumber(order)} لكن تعذرت الطباعة: ${errorMessage(error)}`);
         });
       } else {
@@ -589,7 +594,12 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
             {customer ? (
               <div className="selected-customer">
                 <span className="customer-avatar">{customer.name.charAt(0)}</span>
-                <div><strong>{customer.name}</strong><small><Phone size={12} /> {customer.phone}</small><p>{customer.address}</p></div>
+                <div>
+                  <strong>{customer.name}</strong>
+                  <small><Phone size={12} /> {customer.phone}</small>
+                  <p>{customer.address}</p>
+                  {customer.notes && <small style={{ color: "#4b5563", fontWeight: 600, display: "block", marginTop: "2px" }}>ملاحظات: {customer.notes}</small>}
+                </div>
                 <span className="selected-customer-actions">
                   <button title="تعديل عنوان التوصيل" onClick={() => { setCustomerCandidate({ ...customer }); setShowCustomers(true); }}><MapPin size={16} /></button>
                   <button title="إلغاء اختيار العميل" onClick={() => setCustomer(null)}><X size={17} /></button>
@@ -734,6 +744,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                 <label>اسم العميل<input value={customerCandidate.name} onChange={(event) => setCustomerCandidate({ ...customerCandidate, name: event.target.value })} /></label>
                 <label>رقم الهاتف<input value={customerCandidate.phone} onChange={(event) => setCustomerCandidate({ ...customerCandidate, phone: event.target.value })} /></label>
                 <label className="full-field">العنوان بالتفصيل<textarea autoFocus value={customerCandidate.address} onChange={(event) => setCustomerCandidate({ ...customerCandidate, address: event.target.value })} placeholder="اكتب عنوان التوصيل بالتفصيل" /></label>
+                <label className="full-field">ملاحظات إضافية <i style={{ color: "#6b7280", fontStyle: "normal", fontSize: "11px" }}>(اختياري)</i><input value={customerCandidate.notes ?? ""} onChange={(event) => setCustomerCandidate({ ...customerCandidate, notes: event.target.value })} placeholder="أي تعليمات خاصة بالتوصيل أو الاتصال" /></label>
               </div>
               <p className="address-save-note"><MapPin /> العنوان المعدل هيُحفظ في ملف العميل ويُستخدم للطلب الحالي.</p>
               <button type="button" className="primary-button customer-confirm-button" onClick={confirmExistingCustomer}>
@@ -903,7 +914,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           update((current) => ({
             ...current,
             customers: current.customers.map((customerItem) => customerItem.id === item.id ? item : customerItem),
-            orders: current.orders.map((order) => order.customerId === item.id ? { ...order, customerName: item.name, customerPhone: item.phone, address: item.address } : order)
+            orders: current.orders.map((order) => order.customerId === item.id ? { ...order, customerName: item.name, customerPhone: item.phone, address: item.address, customerNotes: item.notes } : order)
           }));
           setHistoryCustomer(item);
           setCustomer((current) => current?.id === item.id ? item : current);
@@ -916,7 +927,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         }}
       />}
       {checkout && customer && <CheckoutModal subtotal={subtotal} customer={customer} editingOrder={editingOrder} drivers={state.drivers} defaultFee={state.settings.defaultDeliveryFee} onClose={() => setCheckout(false)} onComplete={completeOrder} />}
-      {receiptOrder && <InvoiceModal order={receiptOrder} settings={state.settings} autoPrint onClose={() => setReceiptOrder(null)} />}
+      {receiptOrder && <InvoiceModal order={receiptOrder} settings={state.settings} customers={state.customers} autoPrint onClose={() => setReceiptOrder(null)} />}
     </div>
   );
 }
@@ -1253,6 +1264,7 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, defaultFee, 
                 <span><MapPin size={13} /> {customer.address || "بدون عنوان مخصص"}</span>
                 {customer.phone && <span><Phone size={13} /> {customer.phone}</span>}
               </div>
+              {customer.notes && <div style={{ fontSize: "11px", color: "#4b5563", marginTop: "3px", fontWeight: 600 }}>ملاحظات: {customer.notes}</div>}
             </div>
           </div>
 
@@ -1851,13 +1863,15 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
               ...item,
               name: customer.name,
               phone: customer.phone,
-              address: customer.address
+              address: customer.address,
+              notes: customer.notes
             } : item),
             orders: current.orders.map((item) => item.customerId === detailsOrder.customerId ? {
               ...item,
               customerName: customer.name,
               customerPhone: customer.phone,
-              address: customer.address
+              address: customer.address,
+              customerNotes: customer.notes
             } : item)
           }));
           notify("تم تحديث بيانات العميل");
@@ -1892,7 +1906,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
           </footer>
         </div>
       </Modal>}
-      {invoice && <InvoiceModal order={invoice} settings={state.settings} onClose={() => setInvoice(null)} />}
+      {invoice && <InvoiceModal order={invoice} settings={state.settings} customers={state.customers} onClose={() => setInvoice(null)} />}
     </div>
   );
 }
@@ -1905,7 +1919,7 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
   onPrint: () => void;
   onEdit: () => void;
   onWhatsApp: () => void;
-  onUpdateCustomer: (customer: { name: string; phone: string; address: string }) => void;
+  onUpdateCustomer: (customer: { name: string; phone: string; address: string; notes?: string }) => void;
   onAssignDriver: (driver: Driver) => void;
   onChangeStage: (stage: OrderStage) => void;
   onDelete: () => void;
@@ -1916,21 +1930,23 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
   const [customerForm, setCustomerForm] = useState({
     name: order.customerName,
     phone: order.customerPhone,
-    address: order.address
+    address: order.address,
+    notes: order.customerNotes ?? ""
   });
   const [selectedDriverId, setSelectedDriverId] = useState(order.driverId ?? "");
   const [selectedStage, setSelectedStage] = useState<OrderStage>(order.stage);
   const activeDrivers = drivers.filter((driver) => driver.active);
   useEffect(() => setSelectedStage(order.stage), [order.stage]);
   const cancelCustomerEdit = () => {
-    setCustomerForm({ name: order.customerName, phone: order.customerPhone, address: order.address });
+    setCustomerForm({ name: order.customerName, phone: order.customerPhone, address: order.address, notes: order.customerNotes ?? "" });
     setEditingCustomer(false);
   };
   const saveCustomer = () => {
     const customer = {
       name: customerForm.name.trim(),
       phone: customerForm.phone.trim(),
-      address: customerForm.address.trim()
+      address: customerForm.address.trim(),
+      notes: customerForm.notes.trim() || undefined
     };
     if (!customer.name || !customer.phone || !customer.address) return;
     onUpdateCustomer(customer);
@@ -1998,6 +2014,7 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
                 <label>اسم العميل<input autoFocus value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} /></label>
                 <label>رقم الهاتف<input value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} /></label>
                 <label>العنوان بالتفصيل<textarea value={customerForm.address} onChange={(event) => setCustomerForm({ ...customerForm, address: event.target.value })} /></label>
+                <label>ملاحظات إضافية<input value={customerForm.notes} onChange={(event) => setCustomerForm({ ...customerForm, notes: event.target.value })} placeholder="أي ملاحظات خاصة بالعميل" /></label>
                 <div>
                   <button type="submit" className="customer-details-save"><Save /> حفظ</button>
                   <button type="button" className="customer-details-cancel" onClick={cancelCustomerEdit}>إلغاء</button>
@@ -2006,6 +2023,7 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
                 <span><b>{order.customerName}</b></span>
                 <span><Phone /> {order.customerPhone}</span>
                 <span><MapPin /> {order.address}</span>
+                {order.customerNotes && <span><ClipboardList /> {order.customerNotes}</span>}
               </>}
             </div>
             <div className="order-info-card">

@@ -132,6 +132,7 @@ export interface Order {
   customerName: string;
   customerPhone: string;
   address: string;
+  customerNotes?: string;
   items: OrderItem[];
   subtotal: number;
   deliveryFee: number;

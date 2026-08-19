@@ -5,9 +5,10 @@ import { money, orderDisplayNumber, shortDate } from "../../shared/format";
 import { Modal } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 
-export function InvoiceModal({ order, settings, onClose, autoPrint = false }: {
+export function InvoiceModal({ order, settings, customers, onClose, autoPrint = false }: {
   order: Order;
   settings: AppState["settings"];
+  customers?: AppState["customers"];
   onClose: () => void;
   autoPrint?: boolean;
 }) {
@@ -24,7 +25,7 @@ export function InvoiceModal({ order, settings, onClose, autoPrint = false }: {
       setPrinting(true);
       setPrintError("");
       try {
-        await printOrderReceipts(order, settings);
+        await printOrderReceipts(order, settings, customers);
       } catch (error) {
         setPrintError(errorMessage(error));
       } finally {
@@ -51,7 +52,7 @@ export function InvoiceModal({ order, settings, onClose, autoPrint = false }: {
       <div className="receipt-print-stack">
         {printCustomerReceipt && <section className="receipt-preview">
           <span className="receipt-preview-label"><ReceiptText /> فاتورة العميل</span>
-          <CustomerReceipt order={order} settings={settings} />
+          <CustomerReceipt order={order} settings={settings} customers={customers} />
         </section>}
         {printKitchenReceipt && <section className="receipt-preview">
           <span className="receipt-preview-label kitchen"><CookingPot /> ريسيت المطبخ</span>
@@ -78,7 +79,9 @@ function ReceiptBrand({ settings, kind }: { settings: AppState["settings"]; kind
   </header>;
 }
 
-function CustomerReceipt({ order, settings }: { order: Order; settings: AppState["settings"] }) {
+function CustomerReceipt({ order, settings, customers }: { order: Order; settings: AppState["settings"]; customers?: AppState["customers"] }) {
+  const customerNotes = order.customerNotes || customers?.find((c) => c.id === order.customerId)?.notes;
+
   return <div className="receipt-paper customer-receipt">
     <ReceiptBrand settings={settings} />
     <div className="receipt-order-hero">
@@ -90,6 +93,7 @@ function CustomerReceipt({ order, settings }: { order: Order; settings: AppState
     <div className="receipt-customer">
       <strong className="receipt-customer-line">{order.customerName}<span dir="ltr">{order.customerPhone}</span></strong>
       <p>{order.address}</p>
+      {customerNotes && <p className="receipt-customer-notes">ملاحظات: {customerNotes}</p>}
     </div>
     <div className="receipt-section-label">تفاصيل الطلب</div>
     <table className="customer-receipt-table">
@@ -123,25 +127,39 @@ function KitchenReceipt({ order, settings }: { order: Order; settings: AppState[
   return <div className="receipt-paper kitchen-receipt">
     <ReceiptBrand settings={settings} kind={null} />
     <div className="kitchen-order-hero">
-      <div><span>رقم الطلب</span><strong>#{orderDisplayNumber(order)}</strong></div>
-      <time><span>وقت الطلب</span><b>{shortDate(order.createdAt)}</b></time>
+      <strong>#{orderDisplayNumber(order)}</strong>
     </div>
-    {order.scheduledFor && <div className="kitchen-scheduled"><span>موعد التجهيز</span><b>{shortDate(order.scheduledFor)}</b></div>}
+    <div className="kitchen-order-meta">
+      <div><span>وقت الطلب:</span><b>{shortDate(order.createdAt)}</b></div>
+      {order.scheduledFor && <div><span>موعد التجهيز:</span><b>{shortDate(order.scheduledFor)}</b></div>}
+    </div>
     <div className="kitchen-customer"><span>العميل</span><strong>{order.customerName}</strong></div>
     <div className="receipt-section-label kitchen-section-label">الأصناف المطلوبة</div>
     <table className="kitchen-receipt-table">
-      <thead><tr><th>الكمية</th><th>الصنف والتفاصيل</th></tr></thead>
-      <tbody>{order.items.map((item) => {
-        const details = item.mealComponents?.length
-          ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
-          : item.note;
-        return <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
-          <td><b>{item.quantity}×</b></td>
-          <td><strong>{item.name}</strong>{details && <small className="receipt-item-note">{details}</small>}</td>
-        </tr>;
-      })}</tbody>
+      <thead>
+        <tr>
+          <th>الصنف والتفاصيل</th>
+          <th>الكمية</th>
+        </tr>
+      </thead>
+      <tbody>
+        {order.items.map((item) => {
+          const details = item.mealComponents?.length
+            ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
+            : item.note;
+          return <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
+            <td>
+              <strong>{item.name}</strong>
+              {details && <div className="receipt-item-note">{details}</div>}
+            </td>
+            <td><b>{item.quantity}×</b></td>
+          </tr>;
+        })}
+      </tbody>
     </table>
-    <div className="kitchen-receipt-summary"><span>إجمالي الوحدات</span><b>{order.items.reduce((sum, item) => sum + item.quantity, 0)}</b></div>
-    {order.note && <div className="kitchen-receipt-note"><strong>ملاحظة الطلب</strong><p>{order.note}</p></div>}
+    {order.note && <div className="kitchen-receipt-note">
+      <div className="kitchen-note-badge">ملاحظة الطلب</div>
+      <p>{order.note}</p>
+    </div>}
   </div>;
 }

@@ -2465,7 +2465,7 @@ export function CustomerRecordsView({ state, update, notify, onEditOrder }: View
         ...current,
         customers: current.customers.map((item) => item.id === customer.id ? customer : item),
         orders: current.orders.map((order) => order.customerId === customer.id ? {
-          ...order, customerName: customer.name, customerPhone: customer.phone, address: customer.address
+          ...order, customerName: customer.name, customerPhone: customer.phone, address: customer.address, customerNotes: customer.notes
         } : order)
       }));
       setSelected(customer); notify("تم تحديث بيانات العميل");
@@ -2608,14 +2608,14 @@ export function CustomerFile({ customer, state, onClose, onEdit, onDelete, onOrd
       </div>
     </div>
   </Modal>
-    {viewingOrder && <CustomerOrderPreview order={viewingOrder} settings={state.settings} onClose={() => setViewingOrder(null)} onEdit={() => {
+    {viewingOrder && <CustomerOrderPreview order={viewingOrder} settings={state.settings} customers={state.customers} onClose={() => setViewingOrder(null)} onEdit={() => {
       setViewingOrder(null);
       onOrder(viewingOrder);
     }} />}
   </>;
 }
 
-function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Order; settings: AppState["settings"]; onClose: () => void; onEdit: () => void }) {
+function CustomerOrderPreview({ order, settings, customers, onClose, onEdit }: { order: Order; settings: AppState["settings"]; customers?: AppState["customers"]; onClose: () => void; onEdit: () => void }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const stageLabel = stageLabels[order.stage];
   const paymentLabel = order.paymentMethod === "cash" ? "نقدي"
@@ -2657,7 +2657,7 @@ function CustomerOrderPreview({ order, settings, onClose, onEdit }: { order: Ord
       </div>
     </div>
   </Modal>
-  {invoiceOpen && <InvoiceModal order={order} settings={settings} onClose={() => setInvoiceOpen(false)} />}
+  {invoiceOpen && <InvoiceModal order={order} settings={settings} customers={customers} onClose={() => setInvoiceOpen(false)} />}
   </>;
 }
 
