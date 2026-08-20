@@ -89,6 +89,7 @@ export interface Meal {
   price: number;
   available: boolean;
   components: MealComponent[];
+  description?: string;
   options?: MealOption[];
   choiceGroups?: MealChoiceGroup[];
 }
@@ -182,6 +183,7 @@ export interface RestaurantSettings {
   defaultDeliveryFee: number;
   kitchenWarningMinutes: number;
   kitchenLateMinutes: number;
+  mealEditorMode?: "simple" | "advanced";
 }
 
 export interface Driver {

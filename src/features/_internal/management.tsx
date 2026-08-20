@@ -5,7 +5,7 @@ import {
   MapPin, Minus, Network, PackagePlus, Phone, Plus, Printer, ReceiptText, RefreshCw, Save, Search, Server,
   ShoppingBasket, SlidersHorizontal, Store, Trash2, UserPlus, Users, Headphones, MessageSquare, ShieldCheck,
   PhoneCall, ExternalLink, Clock, Download, KeyRound, Copy, CheckCircle2, Monitor, Shuffle, Layers,
-  Bookmark, BookmarkCheck
+  Bookmark, BookmarkCheck, Sparkles
 } from "lucide-react";
 import type {
   AppState, Customer, Meal, MenuSection, Order, Product, ProductCategory, ProductSection, LicenseInfo,
@@ -424,6 +424,7 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [sectionsOpen, setSectionsOpen] = useState(false);
   const [mealsOpen, setMealsOpen] = useState(false);
+  const [mealEditorModeOverride, setMealEditorModeOverride] = useState<"simple" | "advanced" | null>(null);
   const [mealToEdit, setMealToEdit] = useState<Meal | null>(null);
   const [mealToDelete, setMealToDelete] = useState<Meal | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
@@ -495,14 +496,18 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
   );
   const visibleMeals = state.meals.filter((meal) =>
     meal.name.includes(search.trim()) ||
-    meal.components.some((item) => item.name.includes(search.trim()) || (item.optionName && item.optionName.includes(search.trim())))
+    (meal.description && meal.description.includes(search.trim())) ||
+    (meal.components || []).some((item) => item.name.includes(search.trim()) || (item.optionName && item.optionName.includes(search.trim())))
   );
-  const mealStandaloneTotal = (meal: Meal) => meal.components.reduce((sum, component) => {
-    const product = state.products.find((p) => p.id === component.productId);
-    const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
-    const price = option?.price ?? component.price ?? product?.price ?? 0;
-    return sum + price * component.quantity;
-  }, 0);
+  const mealStandaloneTotal = (meal: Meal) => {
+    if (!meal.components || !meal.components.length) return meal.price;
+    return meal.components.reduce((sum, component) => {
+      const product = state.products.find((p) => p.id === component.productId);
+      const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
+      const price = option?.price ?? component.price ?? product?.price ?? 0;
+      return sum + price * component.quantity;
+    }, 0);
+  };
 
   return <div className="management-page products-admin-page">
     <div className="products-menu-switch">
@@ -544,13 +549,37 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
 
         <div className="meals-panel-actions workspace-section-actions">
           {mealsSubTab === "meals" ? (
-            <button
-              type="button"
-              className="primary-button compact"
-              onClick={() => { setMealToEdit(null); setMealsOpen(true); }}
-            >
-              <Plus /> إضافة وجبة جديدة
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <button
+                type="button"
+                className="soft-button compact"
+                onClick={() => {
+                  setMealToEdit(null);
+                  const mode = (state.settings.mealEditorMode ?? "simple") === "simple" ? "advanced" : "simple";
+                  setMealEditorModeOverride(mode);
+                  setMealsOpen(true);
+                }}
+                title="إنشاء وجبة بالنمط الآخر"
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+              >
+                {(state.settings.mealEditorMode ?? "simple") === "simple" ? (
+                  <><SlidersHorizontal size={14} /> إضافة وجبة متقدمة</>
+                ) : (
+                  <><Sparkles size={14} color="#166534" /> إضافة وجبة مبسطة</>
+                )}
+              </button>
+              <button
+                type="button"
+                className="primary-button compact"
+                onClick={() => {
+                  setMealToEdit(null);
+                  setMealEditorModeOverride(state.settings.mealEditorMode ?? "simple");
+                  setMealsOpen(true);
+                }}
+              >
+                <Plus /> إضافة وجبة جديدة
+              </button>
+            </div>
           ) : (
             <>
               {priceChangesCount > 0 && (
@@ -592,23 +621,54 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
           <div className="meal-management-table">
             <div className="meal-manage-table-head"><span>الوجبة</span><span>المكونات والخيارات</span><span>سعر الأصناف منفردة</span><span>سعر الوجبة</span><span className="meal-actions-heading">الإجراءات</span></div>
             {visibleMeals.map((meal) => <div className={meal.available ? "meal-manage-row" : "meal-manage-row unavailable"} key={meal.id}>
-              <div className="meal-admin-name"><span><ShoppingBasket /></span><div><strong>{meal.name}</strong></div></div>
+              <div className="meal-admin-name">
+                <span><ShoppingBasket /></span>
+                <div>
+                  <strong>{meal.name}</strong>
+                  {meal.description ? <small style={{ color: "#166534", fontWeight: 700 }}>وجبة مبسطة (ملاحظات)</small> : <small style={{ color: "#2563eb", fontWeight: 700 }}>وجبة متقدمة (أصناف)</small>}
+                </div>
+              </div>
               <div className="meal-admin-components">
-                {meal.components.map((component) => <span key={`${component.productId}:${component.optionId ?? "base"}`}><b>{component.quantity}×</b> {component.name}{component.optionName ? ` (${component.optionName})` : ""}</span>)}
+                {meal.description && (
+                  <span className="meal-freeform-description-tag" title={meal.description} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "4px 8px", borderRadius: "6px", background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0", fontSize: "11.5px", maxWidth: "340px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <Sparkles size={13} /> {meal.description}
+                  </span>
+                )}
+                {meal.components?.map((component) => <span key={`${component.productId}:${component.optionId ?? "base"}`}><b>{component.quantity}×</b> {component.name}{component.optionName ? ` (${component.optionName})` : ""}</span>)}
                 {meal.choiceGroups?.map((group) => <span className="choice-group-badge" key={group.id} style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "#eef4ff", color: "#1e40af", borderColor: "#bfdbfe" }}><Shuffle size={11} /> {group.name} ({group.choices.length} خيارات)</span>)}
               </div>
-              <span className="meal-standalone-price"><b>{money(mealStandaloneTotal(meal))}</b></span>
+              <span className="meal-standalone-price">
+                {meal.components?.length ? <b>{money(mealStandaloneTotal(meal))}</b> : <span style={{ color: "var(--muted)", fontSize: "11px" }}>— (وجبة حرة)</span>}
+              </span>
               <span className="meal-selling-price">
                 {meal.options?.length ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
                     {meal.options.map((opt) => <span key={opt.id} style={{ fontSize: "11px", background: "#f0fdf4", color: "#166534", padding: "2px 6px", borderRadius: "5px", border: "1px solid #bbf7d0" }}><b>{opt.name}:</b> {money(opt.price)}</span>)}
                   </div>
                 ) : (
-                  <><b>{money(meal.price)}</b>{mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</>
+                  <><b>{money(meal.price)}</b>{meal.components?.length > 0 && mealStandaloneTotal(meal) > meal.price && <em>توفير {money(mealStandaloneTotal(meal) - meal.price)}</em>}</>
                 )}
               </span>
               <div className="product-row-actions">
-                <button className="product-icon-action edit" type="button" title="تعديل الوجبة" aria-label={`تعديل وجبة ${meal.name}`} onClick={() => { setMealToEdit({ ...meal, components: meal.components.map((item) => ({ ...item })), options: meal.options?.map((opt) => ({ ...opt })), choiceGroups: meal.choiceGroups?.map((cg) => ({ ...cg, choices: cg.choices.map((c) => ({ ...c })) })) }); setMealsOpen(true); }}><Edit3 /></button>
+                <button
+                  className="product-icon-action edit"
+                  type="button"
+                  title="تعديل الوجبة"
+                  aria-label={`تعديل وجبة ${meal.name}`}
+                  onClick={() => {
+                    const isAdv = Boolean(meal.choiceGroups?.length || meal.options?.length || (meal.components?.length > 0 && !meal.description));
+                    setMealToEdit({
+                      ...meal,
+                      components: meal.components?.map((item) => ({ ...item })) || [],
+                      options: meal.options?.map((opt) => ({ ...opt })),
+                      choiceGroups: meal.choiceGroups?.map((cg) => ({ ...cg, choices: cg.choices.map((c) => ({ ...c })) }))
+                    });
+                    setMealEditorModeOverride(isAdv ? "advanced" : "simple");
+                    setMealsOpen(true);
+                  }}
+                >
+                  <Edit3 />
+                </button>
                 <button className={meal.available ? "product-icon-action availability active" : "product-icon-action availability"} type="button" title={meal.available ? "إيقاف الوجبة" : "إتاحة الوجبة"} aria-label={meal.available ? `إيقاف وجبة ${meal.name}` : `إتاحة وجبة ${meal.name}`} onClick={() => update((current) => ({ ...current, meals: current.meals.map((item) => item.id === meal.id ? { ...item, available: !item.available } : item) }))}>{meal.available ? <CheckCircle2 /> : <Minus />}</button>
                 <button className="product-icon-action delete" type="button" title="حذف الوجبة" aria-label={`حذف وجبة ${meal.name}`} onClick={() => setMealToDelete(meal)}><Trash2 /></button>
               </div>
@@ -726,7 +786,29 @@ export function ProductCatalogView({ state, update, notify }: ViewProps) {
     )}
     {categoriesOpen && <CategoryManager state={state} update={update} notify={notify} initialSection={section === MEALS_SECTION ? MEAL_ITEMS_SECTION : section} onClose={() => setCategoriesOpen(false)} />}
     {sectionsOpen && <SectionManager state={state} update={update} notify={notify} onClose={() => setSectionsOpen(false)} />}
-    {mealsOpen && <MealManager state={state} update={update} notify={notify} initialMeal={mealToEdit} onClose={() => { setMealsOpen(false); setMealToEdit(null); }} />}
+    {mealsOpen && (
+      (mealEditorModeOverride ?? (mealToEdit ? (mealToEdit.choiceGroups?.length || mealToEdit.options?.length || (mealToEdit.components?.length > 0 && !mealToEdit.description) ? "advanced" : "simple") : (state.settings.mealEditorMode ?? "simple"))) === "simple" ? (
+        <SimpleMealManager
+          state={state}
+          update={update}
+          notify={notify}
+          initialMeal={mealToEdit}
+          onClose={() => { setMealsOpen(false); setMealToEdit(null); setMealEditorModeOverride(null); }}
+        />
+      ) : (
+        <MealManager
+          state={state}
+          update={update}
+          notify={notify}
+          initialMeal={mealToEdit}
+          onClose={() => { setMealsOpen(false); setMealToEdit(null); setMealEditorModeOverride(null); }}
+          onSwitchToSimple={(draftMeal) => {
+            setMealToEdit(draftMeal);
+            setMealEditorModeOverride("simple");
+          }}
+        />
+      )
+    )}
     {mealToDelete && <Modal title="تأكيد حذف الوجبة" onClose={() => setMealToDelete(null)}>
       <div className="delete-order-confirm">
         <span className="delete-order-icon"><Trash2 /></span>
@@ -999,13 +1081,14 @@ interface MealHeaderFieldsProps {
   name: string;
   onNameChange: (name: string) => void;
   onAddNewProduct: () => void;
+  onSwitchToSimple?: () => void;
 }
 
-function MealHeaderFields({ name, onNameChange, onAddNewProduct }: MealHeaderFieldsProps) {
+function MealHeaderFields({ name, onNameChange, onAddNewProduct, onSwitchToSimple }: MealHeaderFieldsProps) {
   return (
     <div className="meal-editor-top-bar">
       <div className="meal-name-field">
-        <label>اسم الوجبة</label>
+        <label>اسم الوجبة (النمط المتقدم)</label>
         <input
           autoFocus
           value={name}
@@ -1013,29 +1096,49 @@ function MealHeaderFields({ name, onNameChange, onAddNewProduct }: MealHeaderFie
           placeholder="مثال: وجبة التوفير العائلية، وجبة ميكس جريل..."
         />
       </div>
-      <button
-        type="button"
-        className="primary-button"
-        onClick={onAddNewProduct}
-        style={{
-          minHeight: "40px",
-          padding: "0 18px",
-          fontSize: "12px",
-          fontWeight: 800,
-          background: "var(--green-800)",
-          color: "#fff",
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "8px",
-          whiteSpace: "nowrap",
-          borderRadius: "10px",
-          border: 0,
-          cursor: "pointer",
-          alignSelf: "flex-end"
-        }}
-      >
-        <PackagePlus size={17} /> إضافة صنف للوجبة
-      </button>
+      <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+        {onSwitchToSimple && (
+          <button
+            type="button"
+            className="soft-button"
+            onClick={onSwitchToSimple}
+            style={{
+              minHeight: "40px",
+              padding: "0 14px",
+              fontSize: "12px",
+              fontWeight: 700,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+            title="التبديل إلى شاشة الوجبات المبسطة السريعة"
+          >
+            <Sparkles size={15} color="#b45309" /> النمط المبسط
+          </button>
+        )}
+        <button
+          type="button"
+          className="primary-button"
+          onClick={onAddNewProduct}
+          style={{
+            minHeight: "40px",
+            padding: "0 18px",
+            fontSize: "12px",
+            fontWeight: 800,
+            background: "var(--green-800)",
+            color: "#fff",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            whiteSpace: "nowrap",
+            borderRadius: "10px",
+            border: 0,
+            cursor: "pointer"
+          }}
+        >
+          <PackagePlus size={17} /> إضافة صنف للوجبة
+        </button>
+      </div>
     </div>
   );
 }
@@ -1947,7 +2050,192 @@ function MealEditorFooter({
   );
 }
 
-function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps & { initialMeal: Meal | null; onClose: () => void }) {
+function SimpleMealManager({
+  state: _state,
+  update,
+  notify,
+  initialMeal,
+  onClose
+}: ViewProps & {
+  initialMeal: Meal | null;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<Meal>(() => initialMeal
+    ? {
+        ...initialMeal,
+        components: initialMeal.components?.map((item) => ({ ...item })) ?? [],
+        options: initialMeal.options?.map((opt) => ({ ...opt })) ?? [],
+        choiceGroups: initialMeal.choiceGroups?.map((cg) => ({ ...cg, choices: cg.choices.map((c) => ({ ...c })) })) ?? []
+      }
+    : {
+        id: uid(),
+        name: "",
+        price: 0,
+        available: true,
+        description: "",
+        components: []
+      }
+  );
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const save = () => {
+    if (!draft.name.trim()) {
+      notify("يرجى إدخال اسم الوجبة");
+      return;
+    }
+    if (draft.price < 0 || isNaN(Number(draft.price))) {
+      notify("يرجى إدخال سعر صحيح للوجبة");
+      return;
+    }
+
+    const meal: Meal = {
+      ...draft,
+      name: draft.name.trim(),
+      price: Number(draft.price) || 0,
+      description: draft.description?.trim() || "",
+      components: draft.components || [],
+      available: draft.available ?? true
+    };
+
+    update((current) => ({
+      ...current,
+      meals: current.meals.some((item) => item.id === meal.id)
+        ? current.meals.map((item) => item.id === meal.id ? meal : item)
+        : [meal, ...current.meals]
+    }));
+
+    notify(initialMeal ? "تم حفظ تعديلات الوجبة بنجاح" : "تمت إضافة الوجبة بنجاح");
+    onClose();
+  };
+
+  return (
+    <Modal
+      title={initialMeal ? `تعديل الوجبة: ${draft.name || "وجبة جديدة"}` : "إضافة وجبة"}
+      onClose={onClose}
+      size="default"
+    >
+      <div className="simple-meal-editor-clean">
+        <div className="simple-meal-row-2col">
+          <label className="simple-meal-field">
+            <span className="field-label">اسم الوجبة <b className="required-star">*</b></span>
+            <div className="field-input-wrapper">
+              <ShoppingBasket size={17} color="#059669" />
+              <input
+                type="text"
+                placeholder="مثال: وجبة ميكس سوبر، كومبو..."
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                autoFocus
+              />
+            </div>
+          </label>
+
+          <label className="simple-meal-field">
+            <span className="field-label">سعر الوجبة (ج.م) <b className="required-star">*</b></span>
+            <div className="field-input-wrapper">
+              <span className="currency-symbol">ج.م</span>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={draft.price === 0 ? "" : draft.price}
+                onChange={(e) => setDraft({ ...draft, price: e.target.value === "" ? 0 : Number(e.target.value) })}
+              />
+            </div>
+          </label>
+        </div>
+
+        <label className="simple-meal-field">
+          <span className="field-label">
+            <span>محتويات وأصناف الوجبة (ملاحظات كتابية)</span>
+            <small className="field-hint">اكتب بحرية ما تحتوي عليه الوجبة</small>
+          </span>
+          <textarea
+            rows={3}
+            placeholder="اكتب هنا ما تحتوي عليه الوجبة (مثال: 2 قطعة بروستد + بطاطس + ثومية + عيش + كانز)..."
+            value={draft.description ?? ""}
+            onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+          />
+        </label>
+
+        {/* Availability Toggle */}
+        <div className="simple-meal-availability-box">
+          <label className="simple-meal-toggle-label">
+            <input
+              type="checkbox"
+              checked={draft.available}
+              onChange={(e) => setDraft({ ...draft, available: e.target.checked })}
+            />
+            <div className="toggle-info">
+              <strong>{draft.available ? "الوجبة متاحة للبيع في الكاشير" : "الوجبة غير متاحة مؤقتًا"}</strong>
+              <small>{draft.available ? "تظهر مباشرة في قائمة الوجبات بنقطة البيع" : "لن تظهر للكاشير أثناء أخذ الطلبات"}</small>
+            </div>
+          </label>
+        </div>
+
+        {/* Modal Footer Actions */}
+        <div className="simple-meal-footer">
+          <div className="footer-left">
+            {initialMeal && (
+              <button
+                type="button"
+                className="delete-link-button"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2 size={16} /> حذف الوجبة
+              </button>
+            )}
+          </div>
+          <div className="footer-right">
+            <button type="button" className="soft-button" onClick={onClose}>
+              إلغاء
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={save}
+              disabled={!draft.name.trim()}
+            >
+              <Save size={16} /> {initialMeal ? "حفظ التعديلات" : "إضافة الوجبة"}
+            </button>
+          </div>
+        </div>
+
+        {confirmDelete && (
+          <Modal title="تأكيد حذف الوجبة" onClose={() => setConfirmDelete(false)}>
+            <div className="delete-order-confirm">
+              <span className="delete-order-icon"><Trash2 /></span>
+              <strong>هل تريد بالتأكيد حذف الوجبة «{draft.name}»؟</strong>
+              <p>سيتم حذف الوجبة نهائيًا من قائمة الوجبات في النظام.</p>
+              <footer>
+                <button type="button" className="soft-button" onClick={() => setConfirmDelete(false)}>إلغاء</button>
+                <button
+                  type="button"
+                  className="delete-order-button"
+                  onClick={() => {
+                    update((current) => ({
+                      ...current,
+                      meals: current.meals.filter((item) => item.id !== draft.id)
+                    }));
+                    notify(`تم حذف الوجبة ${draft.name}`);
+                    setConfirmDelete(false);
+                    onClose();
+                  }}
+                >
+                  <Trash2 /> تأكيد الحذف
+                </button>
+              </footer>
+            </div>
+          </Modal>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function MealManager({ state, update, notify, initialMeal, onClose, onSwitchToSimple }: ViewProps & { initialMeal: Meal | null; onClose: () => void; onSwitchToSimple?: (meal: Meal) => void }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [activeTab, setActiveTab] = useState<"components" | "choices" | "sizes">("components");
   const [draft, setDraft] = useState<Meal>(() => initialMeal
@@ -2270,6 +2558,7 @@ function MealManager({ state, update, notify, initialMeal, onClose }: ViewProps 
             name={draft.name}
             onNameChange={(name) => setDraft({ ...draft, name })}
             onAddNewProduct={() => handleOpenAddProduct()}
+            onSwitchToSimple={onSwitchToSimple ? () => onSwitchToSimple(draft) : undefined}
           />
 
           {/* 2. Step Navigation Wizard */}
@@ -2836,8 +3125,55 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
     </div>}
 
     {tab === "operations" && <div className="panel" role="tabpanel">
-      <div className="panel-title"><div><SlidersHorizontal /><span><strong>إعدادات التشغيل</strong><small>القيم الافتراضية وتنبيهات تجهيز الطلب</small></span></div></div>
+      <div className="panel-title"><div><SlidersHorizontal /><span><strong>إعدادات التشغيل والوجبات</strong><small>القيم الافتراضية، نمط إدارة الوجبات، وتنبيهات تجهيز الطلب</small></span></div></div>
       <div className="settings-form settings-operations">
+        {/* Meal Editor Mode Setting */}
+        <div className="full-field meal-mode-setting-box">
+          <div className="meal-mode-setting-header">
+            <ShoppingBasket size={18} color="#166534" />
+            <div>
+              <strong>نمط إدارة وإنشاء الوجبات الافتراضي</strong>
+              <small>اختر كيف تفضل شاشة إنشاء وتعديل الوجبات في النظام</small>
+            </div>
+          </div>
+          <div className="meal-mode-options-grid">
+            <label className={`meal-mode-option-card ${(settings.mealEditorMode ?? "simple") === "simple" ? "active" : ""}`}>
+              <input
+                type="radio"
+                name="mealEditorMode"
+                value="simple"
+                checked={(settings.mealEditorMode ?? "simple") === "simple"}
+                onChange={() => setSettings({ ...settings, mealEditorMode: "simple" })}
+              />
+              <div className="meal-mode-card-body">
+                <div className="meal-mode-badge-title">
+                  <Sparkles size={16} color="#166534" />
+                  <strong>النمط المبسط (ملاحظات ومكونات كتابية)</strong>
+                  <span className="mode-tag-pill">سريع وموصى به</span>
+                </div>
+                <p>إدخال اسم الوجبة وسعرها وملاحظات المكونات كتابةً بكل حرية دون الحاجة لربطها بمنتجات من المنيو.</p>
+              </div>
+            </label>
+
+            <label className={`meal-mode-option-card ${settings.mealEditorMode === "advanced" ? "active" : ""}`}>
+              <input
+                type="radio"
+                name="mealEditorMode"
+                value="advanced"
+                checked={settings.mealEditorMode === "advanced"}
+                onChange={() => setSettings({ ...settings, mealEditorMode: "advanced" })}
+              />
+              <div className="meal-mode-card-body">
+                <div className="meal-mode-badge-title">
+                  <SlidersHorizontal size={16} color="#2563eb" />
+                  <strong>النمط المتقدم (ربط الأصناف والمقاسات)</strong>
+                </div>
+                <p>ربط الوجبة بأصناف حقيقية ومقاسات ومجموعات اختيارات وتبديل بديلة وتكلفة المخزون.</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
         <label>رسوم التوصيل الافتراضية<input type="number" min="0" value={settings.defaultDeliveryFee} onChange={(event) => setSettings({ ...settings, defaultDeliveryFee: Number(event.target.value) })} /></label>
         <label>تنبيه المطبخ بعد (دقيقة)<input type="number" min="1" value={settings.kitchenWarningMinutes} onChange={(event) => setSettings({ ...settings, kitchenWarningMinutes: Number(event.target.value) })} /></label>
         <label>اعتبار الطلب متأخر بعد (دقيقة)<input type="number" min="1" value={settings.kitchenLateMinutes} onChange={(event) => setSettings({ ...settings, kitchenLateMinutes: Number(event.target.value) })} /></label>

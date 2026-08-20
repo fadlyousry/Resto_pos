@@ -116,6 +116,7 @@ export const initialState: AppState = {
     kitchenReceiptPrinter: "",
     defaultDeliveryFee: 30,
     kitchenWarningMinutes: 30,
-    kitchenLateMinutes: 45
+    kitchenLateMinutes: 45,
+    mealEditorMode: "simple"
   }
 };

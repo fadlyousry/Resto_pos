@@ -241,7 +241,10 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
 
   const addMeal = (meal: AppState["meals"][number]) => {
     const productId = `meal:${meal.id}`;
-    const cost = meal.components.reduce((sum, component) => {
+    const mealNote = meal.description?.trim()
+      ? meal.description.trim()
+      : (meal.components || []).map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ");
+    const cost = (meal.components || []).reduce((sum, component) => {
       const product = state.products.find((p) => p.id === component.productId);
       const option = component.optionId ? product?.options?.find((opt) => opt.id === component.optionId) : null;
       const compCost = option?.cost ?? component.cost ?? product?.cost ?? 0;
@@ -253,10 +256,10 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         ? current.map((item) => item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item)
         : [...current, {
           productId, mealId: meal.id,
-          mealComponents: meal.components.map((component) => ({ ...component })),
+          mealComponents: (meal.components || []).map((component) => ({ ...component })),
           name: meal.name, unit: "وجبة", price: meal.price, cost, quantity: 1,
           section: MEALS_SECTION,
-          note: meal.components.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
+          note: mealNote
         }];
     });
   };
@@ -540,8 +543,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
             const hasOptions = Boolean(meal.options && meal.options.length > 0);
             const hasChoices = Boolean(meal.choiceGroups && meal.choiceGroups.length > 0);
             const minPrice = hasOptions ? Math.min(...meal.options!.map((o) => o.price)) : meal.price;
-            const subtitleText = [
-              meal.components.map((item) => `${item.quantity}× ${item.name}${item.optionName ? ` (${item.optionName})` : ""}`).join(" · "),
+            const subtitleText = meal.description?.trim() || [
+              (meal.components || []).map((item) => `${item.quantity}× ${item.name}${item.optionName ? ` (${item.optionName})` : ""}`).join(" · "),
               hasChoices ? `${meal.choiceGroups!.length} خيارات تبديل (إما ده أو ده)` : ""
             ].filter(Boolean).join(" | ");
 
