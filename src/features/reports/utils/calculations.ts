@@ -370,25 +370,25 @@ export function computeTreasuryReport(state: AppState, filter: DateRangeFilter):
     .reduce((sum, t) => sum + t.amount, 0);
   const netMovement = totalInflow - totalOutflow;
 
-  // Calculate actual current balances per treasury
+  // Calculate period movements & balances per treasury for the filtered range
   const treasuryBalances = state.treasuries.map((treasury) => {
-    const firstShift = [...state.cashShifts]
-      .filter((s) => (s.treasuryId ?? salesTrId) === treasury.id && (!filter.to || dateKey(s.openedAt) <= filter.to))
-      .sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime())[0];
-    const opening = firstShift?.openingBalance ?? 0;
-
-    const movement = state.cashTransactions
-      .filter(
-        (t) =>
-          (!filter.to || dateKey(t.createdAt) <= filter.to) &&
-          transactionTreasuryId(state, t) === treasury.id
-      )
-      .reduce((sum, t) => sum + (t.direction === "in" ? t.amount : -t.amount), 0);
+    const periodTreasuryTxns = periodTransactions.filter(
+      (t) => transactionTreasuryId(state, t) === treasury.id
+    );
+    const inflow = periodTreasuryTxns
+      .filter((t) => t.direction === "in")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const outflow = periodTreasuryTxns
+      .filter((t) => t.direction === "out")
+      .reduce((sum, t) => sum + t.amount, 0);
+    const balance = inflow - outflow;
 
     return {
       id: treasury.id,
       name: treasury.name,
-      balance: opening + movement,
+      balance,
+      inflow,
+      outflow,
       active: treasury.active,
       isSalesDefault: treasury.id === salesTrId,
       isPurchasesDefault: treasury.id === purchasesTrId

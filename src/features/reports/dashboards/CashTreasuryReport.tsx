@@ -38,7 +38,7 @@ export function CashTreasuryReport({
         title: "تقرير الخزينة وجرد الورديات",
         dateRangeLabel: filter.label,
         kpiCards: [
-          { label: "إجمالي أرصدة الخزن", value: `${money(data.totalSafeBalance)} ج.م` },
+          { label: "صافي رصيد الخزن بالفترة", value: `${money(data.totalSafeBalance)} ج.م` },
           { label: "إجمالي الوارد بالفترة", value: `${money(data.totalInflow)} ج.م` },
           { label: "إجمالي المنصرف بالفترة", value: `${money(data.totalOutflow)} ج.م` },
           { label: "صافي حركة الأموال", value: `${money(data.netMovement)} ج.م` },
@@ -46,8 +46,8 @@ export function CashTreasuryReport({
         ],
         tables: [
           {
-            title: "أرصدة الخزن الحالية",
-            headers: ["اسم الخزنة", "الدور / التوجيه", "الحالة", "الرصيد الفعلي"],
+            title: "صافي حركة وأرصدة الخزن بالفترة",
+            headers: ["اسم الخزنة", "الدور / التوجيه", "الحالة", "صافي حركة الفترة"],
             rows: data.treasuryBalances.map((t) => [
               t.name,
               t.isSalesDefault ? "افتراضية للمبيعات" : t.isPurchasesDefault ? "افتراضية للمشتريات" : "خزنة إضافية",
@@ -81,7 +81,7 @@ export function CashTreasuryReport({
       <div className="reports-section-header-row">
         <div>
           <h3 style={{ margin: 0, fontSize: "18px", color: "#1a382f" }}>تقرير الخزينة وجرد الورديات</h3>
-          <small style={{ color: "#64748b" }}>متابعة أرصدة الخزن المتعددة وحركات الإيداع والصرف ومطابقة جرد الورديات</small>
+          <small style={{ color: "#64748b" }}>متابعة حركة وأرصدة الخزن المتعددة وحركات الإيداع والصرف ومطابقة جرد الورديات</small>
         </div>
         <div className="reports-section-header-actions">
           <ReportDateFilterPopover
@@ -101,11 +101,11 @@ export function CashTreasuryReport({
       <div className="report-kpi-grid">
         <div className="report-kpi-card">
           <div className="kpi-top-row">
-            <span className="kpi-title">إجمالي أرصدة الخزن الحالية</span>
+            <span className="kpi-title">صافي رصيد الخزن بالفترة</span>
             <span className="kpi-icon-wrap"><Landmark size={18} /></span>
           </div>
           <strong className="kpi-amount">{money(data.totalSafeBalance)} <small style={{ fontSize: "13px" }}>ج.م</small></strong>
-          <span style={{ fontSize: "12px", color: "#64748b" }}>رصيد كل الخزن النشطة</span>
+          <span style={{ fontSize: "12px", color: "#64748b" }}>صافي الحركة للخزن بالفترة</span>
         </div>
 
         <div className="report-kpi-card">
@@ -139,7 +139,7 @@ export function CashTreasuryReport({
       {/* Treasuries List Cards */}
       <div className="report-panel" style={{ marginTop: "20px" }}>
         <div className="report-panel-header">
-          <h3><WalletCards size={18} /> أرصدة الخزن المتعددة</h3>
+          <h3><WalletCards size={18} /> حركة وأرصدة الخزن بالفترة</h3>
           <small>{data.treasuryBalances.length} خزن مسجلة</small>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px" }}>

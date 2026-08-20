@@ -2970,7 +2970,6 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   );
   const closedSelectedShifts = selectedShifts.filter((shift) => Boolean(shift.closedAt));
   const totalDailyShiftDifference = closedSelectedShifts.reduce((sum, shift) => sum + (shift.difference ?? 0), 0);
-  const selectedOpeningBalance = selectedShifts.reduce((sum, shift) => sum + shift.openingBalance, 0);
   const dailyRevenueTransactions = selectedTransactions.filter((transaction) =>
     transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection" || (transaction.type === "deposit" && transaction.orderId))
     && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId))
@@ -3059,29 +3058,13 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     const matchesDirection = transactionDirectionFilter === "all" || transaction.direction === transactionDirectionFilter;
     return matchesMethod && matchesDirection;
   });
-  const displayedOpeningBalance = cashTab === "shift" ? (viewedShift?.openingBalance ?? 0) : selectedOpeningBalance;
-  const treasuryTransactionsThroughEnd = state.cashTransactions.filter((transaction) =>
-    (!cashDateTo || dateKey(transaction.createdAt) <= cashDateTo)
-    && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
-  );
-  const treasuryIdsForBalance = selectedTreasuryId === "all"
-    ? state.treasuries.map((treasury) => treasury.id)
-    : [selectedTreasuryId];
-  const treasuryOpeningThroughEnd = treasuryIdsForBalance.reduce((sum, treasuryId) => {
-    const firstShift = [...state.cashShifts]
-      .filter((shift) => (shift.treasuryId ?? currentSalesTreasuryId) === treasuryId
-        && (!cashDateTo || dateKey(shift.openedAt) <= cashDateTo))
-      .sort((left, right) => new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime())[0];
-    return sum + (firstShift?.openingBalance ?? 0);
-  }, 0);
+  const displayedOpeningBalance = cashTab === "shift" ? (viewedShift?.openingBalance ?? 0) : 0;
   const methodSummary = (method: PaymentMethod) => {
-    const sourceTransactions = cashTab === "treasury" ? treasuryTransactionsThroughEnd : displayedTransactions;
+    const sourceTransactions = displayedTransactions;
     const transactions = sourceTransactions.filter((transaction) => transaction.method === method);
     const incoming = transactions.filter((transaction) => transaction.direction === "in").reduce((sum, transaction) => sum + transaction.amount, 0);
     const outgoing = transactions.filter((transaction) => transaction.direction === "out").reduce((sum, transaction) => sum + transaction.amount, 0);
-    const opening = method === "cash"
-      ? cashTab === "treasury" ? treasuryOpeningThroughEnd : displayedOpeningBalance
-      : 0;
+    const opening = (cashTab === "shift" && method === "cash") ? displayedOpeningBalance : 0;
     return { incoming, outgoing, count: transactions.length, balance: incoming - outgoing + opening };
   };
   const cashSummary = methodSummary("cash");
@@ -3089,16 +3072,10 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const vodafoneSummary = methodSummary("vodafone");
   const totalBalance = cashSummary.balance + instapaySummary.balance + vodafoneSummary.balance;
   const periodTreasuryBalance = (treasuryId: string) => {
-    const firstShift = [...state.cashShifts]
-      .filter((shift) => (shift.treasuryId ?? currentSalesTreasuryId) === treasuryId
-        && (!cashDateTo || dateKey(shift.openedAt) <= cashDateTo))
-      .sort((left, right) => new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime())[0];
-    const opening = firstShift?.openingBalance ?? 0;
-    const movement = state.cashTransactions
-      .filter((transaction) => (!cashDateTo || dateKey(transaction.createdAt) <= cashDateTo)
+    return state.cashTransactions
+      .filter((transaction) => isInCashDateRange(transaction.createdAt)
         && transactionTreasuryId(state, transaction) === treasuryId)
       .reduce((sum, transaction) => sum + (transaction.direction === "in" ? transaction.amount : -transaction.amount), 0);
-    return opening + movement;
   };
   const allTreasuriesPeriodBalance = state.treasuries.reduce((sum, treasury) => sum + periodTreasuryBalance(treasury.id), 0);
   const selectedTreasury = selectedTreasuryId === "all"
@@ -3118,10 +3095,14 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     return directOrderNumber !== undefined ? [directOrderNumber] : settlementOrderNumbersByCreatedAt.get(transaction.createdAt) ?? [];
   };
   const balanceAfter = new Map<string, number>();
-  const runningBalance: Record<PaymentMethod, number> = { cash: displayedOpeningBalance, instapay: 0, vodafone: 0 };
+  const runningBalance: Record<PaymentMethod, number> = {
+    cash: cashTab === "shift" ? (viewedShift?.openingBalance ?? 0) : 0,
+    instapay: 0,
+    vodafone: 0
+  };
   [...displayedTransactions].reverse().forEach((transaction) => {
     const method = transaction.method as PaymentMethod;
-    runningBalance[method] += transaction.direction === "in" ? transaction.amount : -transaction.amount;
+    runningBalance[method] = (runningBalance[method] ?? 0) + (transaction.direction === "in" ? transaction.amount : -transaction.amount);
     balanceAfter.set(transaction.id, runningBalance[method]);
   });
   const transactionTypeLabels: Record<CashTransaction["type"], string> = {
@@ -3135,7 +3116,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     .filter((transaction) => transactionTreasuryId(state, transaction) === resolvedReportTreasuryId);
   const reportInitialShift = [...state.cashShifts]
     .filter((shift) => (shift.treasuryId ?? currentSalesTreasuryId) === resolvedReportTreasuryId
-      && (!cashDateTo || dateKey(shift.openedAt) <= cashDateTo))
+      && (!cashDateFrom || dateKey(shift.openedAt) < cashDateFrom))
     .sort((left, right) => new Date(left.openedAt).getTime() - new Date(right.openedAt).getTime())[0];
   const reportBaseOpeningBalance = reportInitialShift?.openingBalance ?? 0;
   const reportOpeningBalance = reportBaseOpeningBalance + (cashDateFrom
@@ -3399,8 +3380,8 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const cashHeroStats = cashTab === "treasury"
     ? [
       { label: "الخزن المسجلة", value: `${state.treasuries.length}` },
-      { label: "إجمالي الوارد", value: money(cashSummary.incoming + instapaySummary.incoming + vodafoneSummary.incoming) },
-      { label: "إجمالي الصادر", value: money(cashSummary.outgoing + instapaySummary.outgoing + vodafoneSummary.outgoing) }
+      { label: "الوارد بالفترة", value: money(cashSummary.incoming + instapaySummary.incoming + vodafoneSummary.incoming) },
+      { label: "المنصرف بالفترة", value: money(cashSummary.outgoing + instapaySummary.outgoing + vodafoneSummary.outgoing) }
     ]
     : cashTab === "daily" ? [
       { label: "عدد الطلبات", value: `${dailyOrderCount}` },

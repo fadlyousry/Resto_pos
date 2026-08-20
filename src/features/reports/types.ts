@@ -120,6 +120,8 @@ export interface TreasuryReportData {
     id: string;
     name: string;
     balance: number;
+    inflow?: number;
+    outflow?: number;
     active: boolean;
     isSalesDefault: boolean;
     isPurchasesDefault: boolean;
