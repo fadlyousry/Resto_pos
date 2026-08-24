@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeftRight, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, ClipboardList, Clock3, CookingPot, CreditCard,
-  Edit3, Info, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
+  Edit3, Info, ListFilter, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Scale, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
   Utensils, WalletCards, X, Shuffle, BadgeDollarSign
 } from "lucide-react";
@@ -1574,8 +1574,20 @@ function orderRecipeUsage(items: OrderItem[], state: AppState) {
 
 type OrderDatePreset = "all" | "today" | "yesterday" | "last7" | "month" | "custom";
 
+const orderStatusLabels: Record<"all" | "pending" | "active" | "scheduled" | "delivered" | "returned", string> = {
+  all: "كل الحالات",
+  active: "طلبات نشطة",
+  scheduled: "مجدولة",
+  pending: "تحصيل معلق",
+  delivered: "تم التسليم",
+  returned: "رفض الاستلام"
+};
+
 export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & { onEditOrder: (order: Order) => void }) {
   const [filter, setFilter] = useState<"all" | "pending" | "active" | "scheduled" | "delivered" | "returned">("all");
+  const [statusFilterOpen, setStatusFilterOpen] = useState(false);
+  const [paymentFilter, setPaymentFilter] = useState<"all" | PaymentMethod>("all");
+  const [paymentFilterOpen, setPaymentFilterOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
   const [datePreset, setDatePreset] = useState<OrderDatePreset>("today");
@@ -1588,10 +1600,33 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const [ordersClock, setOrdersClock] = useState(Date.now());
+  const dateFilterRef = useRef<HTMLDivElement>(null);
+  const statusFilterRef = useRef<HTMLDivElement>(null);
+  const paymentFilterRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const timer = window.setInterval(() => setOrdersClock(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!dateFilterOpen && !paymentFilterOpen && !statusFilterOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (dateFilterOpen && dateFilterRef.current && !dateFilterRef.current.contains(target)) {
+        setDateFilterOpen(false);
+      }
+      if (statusFilterOpen && statusFilterRef.current && !statusFilterRef.current.contains(target)) {
+        setStatusFilterOpen(false);
+      }
+      if (paymentFilterOpen && paymentFilterRef.current && !paymentFilterRef.current.contains(target)) {
+        setPaymentFilterOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [dateFilterOpen, paymentFilterOpen, statusFilterOpen]);
+
   const normalizedSearch = search.trim().toLocaleLowerCase("ar");
   const searchDigits = normalizedSearch.replace(/\D/g, "");
   const searchOrderNumber = normalizedSearch.replace("#", "").trim();
@@ -1637,6 +1672,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       setDraftDatePreset(datePreset);
       setDraftDateFrom(dateFrom);
       setDraftDateTo(dateTo);
+      setStatusFilterOpen(false);
+      setPaymentFilterOpen(false);
     }
     setDateFilterOpen((open) => !open);
   };
@@ -1666,6 +1703,61 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
     const minutes = Math.max(0, Math.floor((ordersClock - dateTimeValue(order.createdAt)) / 60000));
     return minutes >= state.settings.kitchenLateMinutes ? "late" : minutes >= state.settings.kitchenWarningMinutes ? "warning" : "ok";
   };
+
+  const stageCounts = useMemo(() => {
+    const baseOrders = state.orders.filter((order) => {
+      const matchesSearch = !normalizedSearch
+        || order.customerName.toLocaleLowerCase("ar").includes(normalizedSearch)
+        || Boolean(searchDigits && order.customerPhone.replace(/\D/g, "").includes(searchDigits))
+        || Boolean(searchOrderNumber && (
+          String(orderDisplayNumber(order)).includes(searchOrderNumber)
+          || String(order.number).includes(searchOrderNumber)
+        ));
+      const orderDate = dateKey(order.createdAt);
+      const matchesDate = (!dateFrom || orderDate >= dateFrom) && (!dateTo || orderDate <= dateTo);
+      const matchesPayment = paymentFilter === "all" || order.paymentMethod === paymentFilter;
+      return matchesSearch && matchesDate && matchesPayment;
+    });
+
+    return {
+      all: baseOrders.length,
+      active: baseOrders.filter((o) => o.stage !== "delivered" && o.stage !== "returned").length,
+      scheduled: baseOrders.filter((o) => o.stage !== "returned" && Boolean(o.scheduledFor) && dateTimeValue(o.scheduledFor!) > Date.now()).length,
+      pending: baseOrders.filter((o) => o.paymentStatus === "pending" && o.stage !== "returned").length,
+      delivered: baseOrders.filter((o) => o.stage === "delivered").length,
+      returned: baseOrders.filter((o) => o.stage === "returned").length
+    };
+  }, [state.orders, normalizedSearch, searchDigits, searchOrderNumber, dateFrom, dateTo, paymentFilter]);
+
+  const paymentCounts = useMemo(() => {
+    const baseOrders = state.orders.filter((order) => {
+      const matchesFilter =
+        filter === "pending" ? order.paymentStatus === "pending" && order.stage !== "returned"
+          : filter === "active" ? order.stage !== "delivered" && order.stage !== "returned"
+            : filter === "scheduled" ? order.stage !== "returned" && Boolean(order.scheduledFor) && dateTimeValue(order.scheduledFor!) > Date.now()
+              : filter === "delivered" ? order.stage === "delivered"
+                : filter === "returned" ? order.stage === "returned"
+                : true;
+      const matchesSearch = !normalizedSearch
+        || order.customerName.toLocaleLowerCase("ar").includes(normalizedSearch)
+        || Boolean(searchDigits && order.customerPhone.replace(/\D/g, "").includes(searchDigits))
+        || Boolean(searchOrderNumber && (
+          String(orderDisplayNumber(order)).includes(searchOrderNumber)
+          || String(order.number).includes(searchOrderNumber)
+        ));
+      const orderDate = dateKey(order.createdAt);
+      const matchesDate = (!dateFrom || orderDate >= dateFrom) && (!dateTo || orderDate <= dateTo);
+      return matchesFilter && matchesSearch && matchesDate;
+    });
+
+    return {
+      all: baseOrders.length,
+      cash: baseOrders.filter((o) => o.paymentMethod === "cash").length,
+      instapay: baseOrders.filter((o) => o.paymentMethod === "instapay").length,
+      vodafone: baseOrders.filter((o) => o.paymentMethod === "vodafone").length
+    };
+  }, [state.orders, filter, normalizedSearch, searchDigits, searchOrderNumber, dateFrom, dateTo]);
+
   const filtered = state.orders.filter((order) => {
     const matchesFilter =
       filter === "pending" ? order.paymentStatus === "pending" && order.stage !== "returned"
@@ -1683,7 +1775,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       ));
     const orderDate = dateKey(order.createdAt);
     const matchesDate = (!dateFrom || orderDate >= dateFrom) && (!dateTo || orderDate <= dateTo);
-    return matchesFilter && matchesSearch && matchesDate;
+    const matchesPayment = paymentFilter === "all" || order.paymentMethod === paymentFilter;
+    return matchesFilter && matchesSearch && matchesDate && matchesPayment;
   });
   const detailsOrder = detailsOrderId ? state.orders.find((order) => order.id === detailsOrderId) : null;
   const deleteOrder = deleteOrderId ? state.orders.find((order) => order.id === deleteOrderId) : null;
@@ -1831,7 +1924,8 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث باسم العميل أو رقم الهاتف أو رقم الطلب..." />
           </label>
           <div className="orders-filter-controls">
-            <div className="orders-date-filter-wrap">
+            {/* 1. Date Filter Dropdown */}
+            <div className="orders-date-filter-wrap" ref={dateFilterRef}>
               <button className={`orders-date-filter-button ${datePreset !== "all" ? "active" : ""}`} onClick={toggleDateFilter}>
                 <CalendarRange />
                 <span><strong>{dateFilterLabel}</strong></span>
@@ -1870,10 +1964,199 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
                 </div>
               </div>}
             </div>
-            <div className="filter-tabs">
-              {[["all", "الكل"], ["active", "طلبات نشطة"], ["scheduled", "مجدولة"], ["pending", "تحصيل معلق"], ["delivered", "تم التسليم"], ["returned", "رفض الاستلام"]].map(([id, label]) => (
-                <button className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)} key={id}>{label}</button>
-              ))}
+
+            {/* 2. Order Status Filter Dropdown */}
+            <div className="orders-date-filter-wrap orders-status-filter-wrap" ref={statusFilterRef}>
+              <button
+                type="button"
+                className={`orders-date-filter-button orders-status-filter-button ${filter !== "all" ? "active" : ""}`}
+                onClick={() => {
+                  setDateFilterOpen(false);
+                  setPaymentFilterOpen(false);
+                  setStatusFilterOpen((open) => !open);
+                }}
+                title="تصفية الطلبات حسب حالة الطلب"
+              >
+                <ListFilter />
+                <span><strong>{orderStatusLabels[filter]}</strong></span>
+                <ChevronDown className={statusFilterOpen ? "open" : ""} />
+              </button>
+              {statusFilterOpen && (
+                <div className="orders-payment-popover orders-status-popover">
+                  <div className="orders-payment-popover-header">
+                    <strong>تحديد حالة الطلب</strong>
+                    <span>{stageCounts[filter]} طلب</span>
+                  </div>
+                  <div className="orders-payment-popover-list">
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${filter === "all" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilter("all");
+                        setStatusFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <ClipboardList size={15} color="#059669" /> كل الحالات
+                      </span>
+                      <span className="payment-option-count">{stageCounts.all}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${filter === "active" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilter("active");
+                        setStatusFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <CookingPot size={15} color="#16a34a" /> طلبات نشطة
+                      </span>
+                      <span className="payment-option-count">{stageCounts.active}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${filter === "scheduled" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilter("scheduled");
+                        setStatusFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <Clock3 size={15} color="#0284c7" /> مجدولة
+                      </span>
+                      <span className="payment-option-count">{stageCounts.scheduled}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${filter === "pending" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilter("pending");
+                        setStatusFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <CircleDollarSign size={15} color="#d97706" /> تحصيل معلق
+                      </span>
+                      <span className="payment-option-count">{stageCounts.pending}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${filter === "delivered" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilter("delivered");
+                        setStatusFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <Check size={15} color="#15803d" /> تم التسليم
+                      </span>
+                      <span className="payment-option-count">{stageCounts.delivered}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${filter === "returned" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilter("returned");
+                        setStatusFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <X size={15} color="#dc2626" /> رفض الاستلام
+                      </span>
+                      <span className="payment-option-count">{stageCounts.returned}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Payment Method Dropdown Filter */}
+            <div className="orders-date-filter-wrap orders-payment-filter-wrap" ref={paymentFilterRef}>
+              <button
+                type="button"
+                className={`orders-date-filter-button orders-payment-filter-button ${paymentFilter !== "all" ? "active" : ""}`}
+                onClick={() => {
+                  setDateFilterOpen(false);
+                  setStatusFilterOpen(false);
+                  setPaymentFilterOpen((open) => !open);
+                }}
+                title="تصفية الطلبات بطريقة الدفع"
+              >
+                <CreditCard />
+                <span><strong>{paymentFilter === "all" ? "كل طرق الدفع" : paymentLabels[paymentFilter]}</strong></span>
+                <ChevronDown className={paymentFilterOpen ? "open" : ""} />
+              </button>
+              {paymentFilterOpen && (
+                <div className="orders-payment-popover">
+                  <div className="orders-payment-popover-header">
+                    <strong>تحديد طريقة الدفع</strong>
+                    <span>{paymentCounts[paymentFilter]} طلب</span>
+                  </div>
+                  <div className="orders-payment-popover-list">
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${paymentFilter === "all" ? "active" : ""}`}
+                      onClick={() => {
+                        setPaymentFilter("all");
+                        setPaymentFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <CreditCard size={15} color="#059669" /> كل طرق الدفع
+                      </span>
+                      <span className="payment-option-count">{paymentCounts.all}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${paymentFilter === "cash" ? "active" : ""}`}
+                      onClick={() => {
+                        setPaymentFilter("cash");
+                        setPaymentFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <Banknote size={15} color="#16a34a" /> نقدي (كاش)
+                      </span>
+                      <span className="payment-option-count">{paymentCounts.cash}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${paymentFilter === "instapay" ? "active" : ""}`}
+                      onClick={() => {
+                        setPaymentFilter("instapay");
+                        setPaymentFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <CreditCard size={15} color="#2563eb" /> إنستاباي
+                      </span>
+                      <span className="payment-option-count">{paymentCounts.instapay}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`orders-payment-option ${paymentFilter === "vodafone" ? "active" : ""}`}
+                      onClick={() => {
+                        setPaymentFilter("vodafone");
+                        setPaymentFilterOpen(false);
+                      }}
+                    >
+                      <span className="payment-option-title">
+                        <Phone size={15} color="#dc2626" /> فودافون كاش
+                      </span>
+                      <span className="payment-option-count">{paymentCounts.vodafone}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="orders-toolbar-meta">
@@ -1907,8 +2190,20 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
           ))}
           {!filtered.length && <Empty
             icon={<ReceiptText />}
-            title={search || datePreset !== "all" ? "لا توجد طلبات مطابقة" : "لا توجد طلبات هنا"}
-            text={datePreset !== "all" ? "غيّر فترة التاريخ أو امسح الفلتر لعرض طلبات أخرى" : search ? "راجع اسم العميل أو رقم الهاتف أو رقم الطلب" : "الطلبات الجديدة هتظهر تلقائيًا"}
+            title={search || datePreset !== "all" || filter !== "all" || paymentFilter !== "all" ? "لا توجد طلبات مطابقة" : "لا توجد طلبات هنا"}
+            text={
+              filter !== "all" && paymentFilter !== "all"
+                ? `لا توجد طلبات بحالة (${orderStatusLabels[filter]}) وطريقة دفع (${paymentLabels[paymentFilter]})`
+                : filter !== "all"
+                  ? `لا توجد طلبات بحالة (${orderStatusLabels[filter]}) في هذه الفترة`
+                  : paymentFilter !== "all"
+                    ? `لا توجد طلبات بطريقة الدفع (${paymentLabels[paymentFilter]}) في هذه الفترة`
+                    : datePreset !== "all"
+                      ? "غيّر فترة التاريخ أو امسح الفلتر لعرض طلبات أخرى"
+                      : search
+                        ? "راجع اسم العميل أو رقم الهاتف أو رقم الطلب"
+                        : "الطلبات الجديدة هتظهر تلقائيًا"
+            }
           />}
         </div>
       </div>

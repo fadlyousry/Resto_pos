@@ -704,6 +704,101 @@ svg { flex: 0 0 auto; }
 .orders-date-actions button { min-height: 36px; border-radius: 8px; font-family: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
 .orders-date-actions .apply { border: 0; background: var(--green-800); color: #fff; }
 .orders-date-actions .clear { border: 1px solid #dbe2de; background: #f7f9f8; color: #5f6964; }
+.orders-payment-filter-button { min-height: 42px; }
+.orders-payment-popover {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 230px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #dce3df;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 16px 40px #1d332a26;
+}
+.orders-payment-popover::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 35px;
+  width: 11px;
+  height: 11px;
+  border-top: 1px solid #dce3df;
+  border-right: 1px solid #dce3df;
+  background: #fff;
+  transform: rotate(-45deg);
+}
+.orders-payment-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 6px;
+  border-bottom: 1px solid #eef2f0;
+}
+.orders-payment-popover-header strong {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #1e293b;
+}
+.orders-payment-popover-header span {
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 700;
+}
+.orders-payment-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.orders-payment-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8faf9;
+  color: #334155;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: right;
+  width: 100%;
+}
+.orders-payment-option:hover {
+  border-color: #a9c3b7;
+  background: #f0f7f3;
+  color: #111827;
+}
+.orders-payment-option.active {
+  border-color: var(--green-700);
+  background: var(--green-800);
+  color: #ffffff;
+}
+.orders-payment-option .payment-option-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.orders-payment-option .payment-option-count {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.06);
+  color: inherit;
+}
+.orders-payment-option.active .payment-option-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
 .orders-table { position: relative; z-index: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; font-size: 10px; }
 .orders-row {
   width: 100%;
