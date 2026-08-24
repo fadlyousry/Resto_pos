@@ -14,7 +14,7 @@ import { CustomerFile } from "./management";
 import { InvoiceModal } from "../orders/InvoiceModal";
 import type { ViewProps } from "../../shared/contracts";
 import {
-  dateKey, dateTimeValue, money, orderDisplayNumber, paymentLabels, shortDate, stageLabels, todayKey
+  dateKey, dateTimeValue, money, orderDisplayNumber, paymentLabels, shortDate, stageLabels, todayKey, qty
 } from "../../shared/format";
 import { uid } from "../../shared/id";
 import { purchasesTreasuryId, salesTreasuryId, treasuryName, transactionTreasuryId } from "../../shared/treasury";
@@ -23,6 +23,91 @@ import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infras
 import { playOrderConfirmedSound } from "../../shared/sound";
 
 const MEALS_SECTION = "__meals";
+
+function CartQuantityInput({
+  quantity,
+  onDelta,
+  onChangeQuantity
+}: {
+  quantity: number;
+  onDelta: (delta: number) => void;
+  onChangeQuantity: (newQty: number) => void;
+}) {
+  const [localVal, setLocalVal] = useState<string>(String(quantity));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalVal(String(quantity));
+    }
+  }, [quantity, isFocused]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    const normalized = raw
+      .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+      .replace(",", ".");
+
+    if (normalized === "" || /^\d*\.?\d*$/.test(normalized)) {
+      setLocalVal(normalized);
+      const parsed = parseFloat(normalized);
+      if (!isNaN(parsed) && parsed > 0) {
+        onChangeQuantity(parsed);
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    const parsed = parseFloat(localVal);
+    if (isNaN(parsed) || parsed <= 0) {
+      const fallback = quantity > 0 ? quantity : 1;
+      setLocalVal(String(fallback));
+      onChangeQuantity(fallback);
+    } else {
+      setLocalVal(String(parsed));
+      onChangeQuantity(parsed);
+    }
+  };
+
+  return (
+    <div className="quantity">
+      <button
+        type="button"
+        title="تقليل الكمية"
+        onClick={() => onDelta(-1)}
+      >
+        <Minus size={15} />
+      </button>
+      <input
+        type="text"
+        inputMode="decimal"
+        className="cart-qty-input"
+        value={isFocused ? localVal : quantity}
+        onFocus={(e) => {
+          setIsFocused(true);
+          setLocalVal(String(quantity));
+          e.target.select();
+        }}
+        onChange={handleInputChange}
+        onBlur={handleBlur}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        title="اكتب الكمية مباشرة أو عدلها"
+      />
+      <button
+        type="button"
+        title="زيادة الكمية"
+        onClick={() => onDelta(1)}
+      >
+        <Plus size={15} />
+      </button>
+    </div>
+  );
+}
 
 function nextShiftOrderNumber(state: AppState) {
   const defaultTreasuryId = salesTreasuryId(state);
@@ -307,7 +392,17 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
 
   const setQuantity = (productId: string, optionId: string | undefined, delta: number) => {
     setCart((current) => current
-      .map((item) => item.productId === productId && item.optionId === optionId ? { ...item, quantity: item.quantity + delta } : item)
+      .map((item) => item.productId === productId && item.optionId === optionId
+        ? { ...item, quantity: Math.max(0, Math.round((item.quantity + delta) * 1000) / 1000) }
+        : item)
+      .filter((item) => item.quantity > 0));
+  };
+
+  const setItemQuantity = (productId: string, optionId: string | undefined, exactQty: number) => {
+    setCart((current) => current
+      .map((item) => item.productId === productId && item.optionId === optionId
+        ? { ...item, quantity: Math.max(0, exactQty) }
+        : item)
       .filter((item) => item.quantity > 0));
   };
 
@@ -625,11 +720,11 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
                 <strong>{item.name}</strong>
                 <small>{item.unit} · {money(item.price)}</small>
               </div>
-              <div className="quantity">
-                <button onClick={() => setQuantity(item.productId, item.optionId, -1)}><Minus size={15} /></button>
-                <span>{item.quantity}</span>
-                <button onClick={() => setQuantity(item.productId, item.optionId, 1)}><Plus size={15} /></button>
-              </div>
+              <CartQuantityInput
+                quantity={item.quantity}
+                onDelta={(delta) => setQuantity(item.productId, item.optionId, delta)}
+                onChangeQuantity={(newQty) => setItemQuantity(item.productId, item.optionId, newQty)}
+              />
               <b className="cart-line-total">{money(item.price * item.quantity)}</b>
               <button className="remove-cart-item" title="حذف الصنف" onClick={() => setQuantity(item.productId, item.optionId, -item.quantity)}><Trash2 /></button>
             </div>
@@ -638,7 +733,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         </div>
         <div className="cart-summary">
           <span className="cart-summary-title">ملخص الطلب</span>
-          <div><span>عدد الوحدات</span><b>{totalUnits}</b></div>
+          <div><span>عدد الوحدات</span><b>{qty(totalUnits)}</b></div>
           <div className="cart-total-row"><span>الإجمالي المبدئي</span><strong>{money(subtotal)}</strong></div>
           <button className="primary-button checkout-button" title={!hasOpenShift ? "افتح وردية من شاشة الخزنة أولًا" : ""} disabled={!cart.length || !customer || !hasOpenShift} onClick={() => setCheckout(true)}>
             {editingOrder ? "مراجعة وحفظ التعديل" : "متابعة الدفع"} <span>{money(subtotal)}</span>

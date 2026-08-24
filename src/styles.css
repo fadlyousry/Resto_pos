@@ -448,10 +448,15 @@ svg { flex: 0 0 auto; }
 .cart-product-cell strong { overflow: hidden; font-size: 13px; font-weight: 800; color: #111827; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .cart-product-cell small { overflow: hidden; color: #374151; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .cart-line-total { color: #1b4332; font-size: 13px; font-weight: 800; text-align: center; white-space: nowrap; }
-.quantity { display: flex; align-items: center; gap: 5px; direction: ltr; width: max-content; padding: 3px; border-radius: 9px; background: #f2f5f2; }
-.quantity button { width: 31px; height: 31px; border: 1px solid #9ca3af; background: #fff; color: var(--green-700); border-radius: 7px; display: grid; place-items: center; }
-.quantity button:hover { background: var(--green-700); color: #fff; }
-.quantity span { font-size: 13px; font-weight: 800; color: #111827; min-width: 30px; text-align: center; }
+.quantity { display: flex; align-items: center; gap: 4px; direction: ltr; width: max-content; padding: 3px; border-radius: 9px; background: #f2f5f2; border: 1px solid #e2e8f0; }
+.quantity button { width: 30px; height: 30px; border: 1px solid #9ca3af; background: #fff; color: var(--green-700); border-radius: 7px; display: grid; place-items: center; cursor: pointer; transition: all 0.15s ease; flex-shrink: 0; }
+.quantity button:hover { background: var(--green-700); color: #fff; border-color: var(--green-700); }
+.quantity span { font-size: 13px; font-weight: 800; color: #111827; min-width: 28px; text-align: center; }
+.cart-qty-input { width: 36px; min-width: 36px; height: 30px; border: 1px solid transparent; border-radius: 7px; background: transparent; text-align: center; font-size: 13px; font-weight: 800; color: #111827; padding: 0 2px; outline: none; transition: all 0.15s ease; -moz-appearance: textfield; }
+.cart-qty-input::-webkit-outer-spin-button,
+.cart-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.cart-qty-input:hover { background: #fff; border-color: #cbd5e1; cursor: text; }
+.cart-qty-input:focus { background: #fff; border-color: var(--green-700); box-shadow: 0 0 0 2px rgba(22, 101, 52, 0.2); }
 .remove-cart-item { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 8px; background: #fff1ee; color: #b66052; }
 .remove-cart-item svg { width: 15px; }
 .empty-cart { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #4b5563; gap: 8px; }
@@ -474,11 +479,11 @@ svg { flex: 0 0 auto; }
 .hint { display: block; text-align: center; color: #b08154; font-size: 8px; margin-top: 8px; }
 
 .modal-backdrop { position: fixed; inset: 0; background: #14231e9c; z-index: 50; display: grid; place-items: center; padding: 14px; backdrop-filter: blur(3px); }
-.modal { width: min(480px, 90vw); max-height: 92vh; background: var(--card); border-radius: 15px; box-shadow: 0 25px 80px #0003; overflow: auto; }
+.modal { width: min(480px, 90vw); max-height: 92vh; background: var(--card); border-radius: 15px; box-shadow: 0 25px 80px #0003; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
 .modal.medium { width: min(640px, 90vw); }
 .modal.medium h2 { font-size: 18px; }
 .modal.wide { width: min(980px, 94vw); max-height: 92vh; }
-.modal > header { position: sticky; top: 0; z-index: 2; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: var(--card); }
+.modal > header { position: sticky; top: 0; z-index: 2; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: var(--card); flex-shrink: 0; }
 .modal h2 { margin: 0; font-size: 15px; }
 .modal > header button { border: 0; background: #f1f0eb; color: #7e8682; border-radius: 8px; width: 32px; height: 32px; display: grid; place-items: center; }
 .modal > header svg { width: 18px; }
@@ -3792,13 +3797,13 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 /* Split Layout for Components */
 .meal-split-container {
   display: grid;
-  grid-template-columns: 1fr 290px;
+  grid-template-columns: 1fr 280px;
   gap: 10px;
-  min-height: 290px;
+  min-height: 270px;
   align-items: stretch;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 768px) {
   .meal-split-container {
     grid-template-columns: 1fr;
   }
@@ -3812,6 +3817,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 10px;
+  min-width: 0;
 }
 
 .meal-picker-toolbar {
@@ -3825,9 +3831,11 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 6px;
-  max-height: 260px;
+  max-height: 250px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-inline-end: 4px;
+  scrollbar-gutter: stable;
 }
 
 .meal-picker-card {
@@ -3839,19 +3847,20 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   border-radius: 8px;
   background: #ffffff;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
   height: 58px;
   min-height: 58px;
   max-height: 58px;
   box-sizing: border-box;
   text-align: right;
   gap: 2px;
+  contain: layout style;
 }
 
 .meal-picker-card:hover {
-  border-color: #cbd5e1;
+  border-color: #94a3b8;
   background: #f8fafc;
-  transform: translateY(-1px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
 }
 
 .meal-picker-card.is-selected {
@@ -3975,6 +3984,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   overflow: hidden;
+  min-width: 0;
 }
 
 .meal-basket-header {
@@ -3984,16 +3994,19 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   padding: 7px 10px;
   background: #f1f5f9;
   border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
 .meal-basket-list {
   flex: 1 1 auto;
-  max-height: 200px;
+  max-height: 190px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 6px 8px;
   display: flex;
   flex-direction: column;
   gap: 5px;
+  scrollbar-gutter: stable;
 }
 
 .meal-basket-item {
@@ -4588,7 +4601,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   .cart-product-cell small { font-size: 8px; }
   .quantity { gap: 3px; }
   .quantity button { width: 27px; height: 27px; }
-  .quantity span { min-width: 24px; font-size: 11px; }
+  .quantity span, .cart-qty-input { min-width: 24px; width: 28px; height: 27px; font-size: 11px; }
   .remove-cart-item { width: 28px; height: 28px; }
   .cart-summary { padding: 9px 12px 11px; }
   .cart-summary-title { margin-bottom: 6px; font-size: 10px; }
@@ -4650,18 +4663,19 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   .cash-hero-actions .light-button { min-height: 40px; padding-inline: 9px; font-size: 8px; }
 
   .modal-backdrop { padding: 10px; }
-  .modal { max-height: 95vh; }
+  .modal { max-height: 95vh; scrollbar-gutter: stable; }
   .modal > header { padding: 10px 14px; }
   .modal h2, .modal.medium h2 { font-size: 14px; }
-  .modal-body { padding: 12px 14px; }
-  .modal.wide { width: min(940px, 96vw); }
-  .meal-split-container { min-height: 250px; grid-template-columns: 1fr 265px; gap: 8px; }
-  .meal-picker-grid { max-height: 230px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 5px; }
-  .meal-picker-card { height: 54px; min-height: 54px; max-height: 54px; padding: 4px 6px; }
+  .modal-body { padding: 12px 14px; overflow-x: hidden; }
+  .modal.wide { width: min(940px, 96vw); max-height: 95vh; }
+  .meal-split-container { min-height: 240px; grid-template-columns: 1fr 255px; gap: 8px; }
+  .meal-picker-grid { max-height: 215px; grid-template-columns: repeat(auto-fill, minmax(115px, 1fr)); gap: 5px; scrollbar-gutter: stable; }
+  .meal-picker-card { height: 54px; min-height: 54px; max-height: 54px; padding: 4px 6px; contain: layout style; }
+  .meal-picker-card:hover { transform: none; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05); }
   .meal-picker-card-name { font-size: 11px; }
   .meal-picker-card-price { font-size: 10.5px; }
   .meal-picker-option-select { height: 20px; font-size: 9.5px; }
-  .meal-basket-list { max-height: 175px; padding: 4px 6px; gap: 4px; }
+  .meal-basket-list { max-height: 165px; padding: 4px 6px; gap: 4px; scrollbar-gutter: stable; }
   .meal-basket-item { padding: 4px 6px; }
   .meal-basket-item-title { font-size: 10.5px; }
   .choice-items-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 5px; }

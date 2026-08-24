@@ -60,7 +60,9 @@ export interface MenuItemMetric {
   name: string;
   section: string;
   category: string;
+  unit?: string;
   quantitySold: number;
+  ordersCount?: number;
   totalRevenue: number;
   unitPrice: number;
   unitCost: number;
@@ -71,6 +73,10 @@ export interface MenuItemMetric {
 }
 
 export interface MenuReportData {
+  allItemsSold: MenuItemMetric[];
+  totalItemsCount: number;
+  totalUnitsSold: number;
+  totalRevenue: number;
   topSellingByVolume: MenuItemMetric[];
   topRevenueGenerators: MenuItemMetric[];
   slowMovingItems: MenuItemMetric[];

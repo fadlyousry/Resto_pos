@@ -177,7 +177,7 @@ export function computeSalesReport(state: AppState, filter: DateRangeFilter): Sa
   };
 }
 
-// 2. Menu Performance & Top Items Calculation
+// 2. Menu Performance & Daily Sold Items Calculation
 export function computeMenuReport(state: AppState, filter: DateRangeFilter): MenuReportData {
   const periodOrders = state.orders.filter(
     (order) => isDateInRange(order.createdAt, filter.from, filter.to) && order.stage !== "returned"
@@ -186,6 +186,10 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
   const totalItemSalesAmount = periodOrders
     .flatMap((o) => o.items)
     .reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const totalUnitsSold = periodOrders
+    .flatMap((o) => o.items)
+    .reduce((sum, item) => sum + item.quantity, 0);
 
   const itemMap = new Map<string, MenuItemMetric>();
 
@@ -197,11 +201,19 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
       const lineRevenue = item.price * item.quantity;
       const lineProfit = lineRevenue - lineCost;
 
+      const foundProduct = state.products.find((p) => p.id === item.productId);
+      const foundSection = state.sections.find((s) => s.id === (item.section ?? foundProduct?.section));
+      const sectionName = item.mealId ? "وجبات" : (foundSection?.name ?? item.section ?? "عام");
+      const categoryName = foundProduct?.category || (item.mealId ? "وجبات" : "عام");
+      const unitName = item.unit || foundProduct?.unit || (item.mealId ? "وجبة" : "قطعة");
+
       const curr = itemMap.get(key) ?? {
         name: key,
-        section: item.section ?? "الأطباق",
-        category: "عام",
+        section: sectionName,
+        category: categoryName,
+        unit: unitName,
         quantitySold: 0,
+        ordersCount: 0,
         totalRevenue: 0,
         unitPrice: item.price,
         unitCost,
@@ -211,7 +223,8 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
         shareOfSales: 0
       };
 
-      curr.quantitySold += item.quantity;
+      curr.quantitySold = Math.round((curr.quantitySold + item.quantity) * 1000) / 1000;
+      curr.ordersCount = (curr.ordersCount ?? 0) + 1;
       curr.totalRevenue += lineRevenue;
       curr.totalCost += lineCost;
       curr.totalProfit += lineProfit;
@@ -229,25 +242,25 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
       totalItemSalesAmount > 0 ? (metric.totalRevenue / totalItemSalesAmount) * 100 : 0
   }));
 
-  const topSellingByVolume = [...allItems].sort((a, b) => b.quantitySold - a.quantitySold).slice(0, 10);
+  const allItemsSold = [...allItems].sort((a, b) => b.quantitySold - a.quantitySold);
+  const topSellingByVolume = allItemsSold.slice(0, 10);
   const topRevenueGenerators = [...allItems].sort((a, b) => b.totalRevenue - a.totalRevenue).slice(0, 10);
   const slowMovingItems = [...allItems].sort((a, b) => a.quantitySold - b.quantitySold).slice(0, 5);
 
   // Section Performance
-  const sectionMap = new Map<string, { quantity: number; revenue: number }>();
+  const sectionMap = new Map<string, { name: string; quantity: number; revenue: number }>();
   for (const item of allItems) {
-    const sec = item.section;
-    const curr = sectionMap.get(sec) ?? { quantity: 0, revenue: 0 };
-    curr.quantity += item.quantitySold;
+    const secKey = item.section;
+    const curr = sectionMap.get(secKey) ?? { name: secKey, quantity: 0, revenue: 0 };
+    curr.quantity = Math.round((curr.quantity + item.quantitySold) * 1000) / 1000;
     curr.revenue += item.totalRevenue;
-    sectionMap.set(sec, curr);
+    sectionMap.set(secKey, curr);
   }
 
   const sectionPerformance = [...sectionMap.entries()].map(([secId, val]) => {
-    const foundSec = state.sections.find((s) => s.id === secId);
     return {
       sectionId: secId,
-      sectionName: foundSec?.name ?? secId,
+      sectionName: val.name,
       quantity: val.quantity,
       revenue: val.revenue,
       share: totalItemSalesAmount > 0 ? (val.revenue / totalItemSalesAmount) * 100 : 0
@@ -259,7 +272,7 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
   for (const item of allItems) {
     const cat = item.category;
     const curr = categoryMap.get(cat) ?? { quantity: 0, revenue: 0 };
-    curr.quantity += item.quantitySold;
+    curr.quantity = Math.round((curr.quantity + item.quantitySold) * 1000) / 1000;
     curr.revenue += item.totalRevenue;
     categoryMap.set(cat, curr);
   }
@@ -272,6 +285,10 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
   })).sort((a, b) => b.revenue - a.revenue);
 
   return {
+    allItemsSold,
+    totalItemsCount: allItemsSold.length,
+    totalUnitsSold: Math.round(totalUnitsSold * 1000) / 1000,
+    totalRevenue: totalItemSalesAmount,
     topSellingByVolume,
     topRevenueGenerators,
     slowMovingItems,

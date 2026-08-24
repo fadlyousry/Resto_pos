@@ -75,7 +75,7 @@ export function ReportsView({ state }: { state: AppState }) {
             onClick={() => setActiveTab("menu")}
           >
             <Utensils size={16} />
-            <span>المنيو والأصناف</span>
+            <span>الأصناف المباعة والمنيو</span>
           </button>
 
           <button
