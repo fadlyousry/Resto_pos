@@ -409,7 +409,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
   const saveEditedOrder = (details: CheckoutDetails) => {
     if (!customer || !editingOrder) return;
     const createdAt = new Date().toISOString();
-    const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
+    const discount = Math.min(Math.max(0, details.discount), subtotal + details.deliveryFee);
+    const total = Math.max(0, subtotal + details.deliveryFee - discount);
     const oldUsage = editingOrder.inventoryDeducted === false
       ? new Map<string, number>()
       : orderRecipeUsage(editingOrder.items, state);
@@ -417,35 +418,52 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     const totalDifference = total - editingOrder.total;
     const paymentTransactions: CashTransaction[] = [];
     const orderTreasuryId = editingOrder.treasuryId ?? salesTreasuryId(state);
+    const hasTrackedInitialDiscount = state.cashTransactions.some((transaction) =>
+      transaction.orderId === editingOrder.id
+      && transaction.direction === "in"
+      && (transaction.type === "sale" || transaction.type === "collection" || transaction.type === "deposit")
+      && transaction.discountChange !== undefined
+    ) || state.driverSettlements.some((settlement) => settlement.orderIds.includes(editingOrder.id)
+      && state.cashTransactions.some((transaction) =>
+        transaction.createdAt === settlement.createdAt
+        && transaction.type === "collection"
+        && transaction.discountChange !== undefined
+      ));
 
     if (editingOrder.paymentStatus === "pending" && details.paymentStatus === "paid") {
       paymentTransactions.push({
         id: uid(), type: "collection", method: details.paymentMethod, amount: total, direction: "in",
-        description: `تحصيل بعد تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
+        description: `تحصيل بعد تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId,
+        discountChange: discount, createdAt
       });
     } else if (editingOrder.paymentStatus === "paid" && details.paymentStatus === "pending") {
       paymentTransactions.push({
         id: uid(), type: "withdrawal", method: editingOrder.paymentMethod, amount: editingOrder.total, direction: "out",
-        description: `عكس تحصيل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
+        description: `عكس تحصيل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId,
+        discountChange: -editingOrder.discount, createdAt
       });
     } else if (editingOrder.paymentStatus === "paid" && details.paymentStatus === "paid") {
       if (editingOrder.paymentMethod !== details.paymentMethod) {
         paymentTransactions.push(
           {
             id: uid(), type: "withdrawal", method: editingOrder.paymentMethod, amount: editingOrder.total, direction: "out",
-            description: `عكس طريقة دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
+            description: `عكس طريقة دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId,
+            discountChange: hasTrackedInitialDiscount ? -editingOrder.discount : 0, createdAt
           },
           {
             id: uid(), type: "deposit", method: details.paymentMethod, amount: total, direction: "in",
-            description: `إعادة تسجيل دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
+            description: `إعادة تسجيل دفع فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId,
+            discountChange: hasTrackedInitialDiscount ? discount : 0, createdAt
           }
         );
-      } else if (totalDifference !== 0) {
+      } else if (totalDifference !== 0 || discount !== editingOrder.discount) {
         paymentTransactions.push({
           id: uid(), type: totalDifference > 0 ? "deposit" : "withdrawal",
           method: details.paymentMethod, amount: Math.abs(totalDifference),
           direction: totalDifference > 0 ? "in" : "out",
-          description: `فرق تعديل فاتورة #${orderDisplayNumber(editingOrder)}`, orderId: editingOrder.id, treasuryId: orderTreasuryId, createdAt
+          description: totalDifference === 0 ? `تعديل خصم فاتورة #${orderDisplayNumber(editingOrder)}` : `فرق تعديل فاتورة #${orderDisplayNumber(editingOrder)}`,
+          orderId: editingOrder.id, treasuryId: orderTreasuryId,
+          discountChange: hasTrackedInitialDiscount ? discount - editingOrder.discount : 0, createdAt
         });
       }
     }
@@ -460,7 +478,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       items: cart,
       subtotal,
       deliveryFee: details.deliveryFee,
-      discount: details.discount,
+      discount,
       total,
       paymentMethod: details.paymentMethod,
       paymentStatus: details.paymentStatus,
@@ -544,7 +562,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       return;
     }
     const createdAt = new Date().toISOString();
-    const total = Math.max(0, subtotal + details.deliveryFee - details.discount);
+    const discount = Math.min(Math.max(0, details.discount), subtotal + details.deliveryFee);
+    const total = Math.max(0, subtotal + details.deliveryFee - discount);
     const orderId = uid();
     const orderTreasuryId = salesTreasuryId(state);
     const activeShift = state.cashShifts.find((shift) =>
@@ -564,7 +583,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       id: orderId, number: state.nextOrderNumber, shiftNumber, shiftId: activeShift.id, customerId: customer.id,
       customerName: customer.name, customerPhone: customer.phone, address: customer.address,
       customerNotes: customer.notes || undefined,
-      items: cart, subtotal, deliveryFee: details.deliveryFee, discount: details.discount, total,
+      items: cart, subtotal, deliveryFee: details.deliveryFee, discount, total,
       paymentMethod: details.paymentMethod, paymentStatus: details.paymentStatus,
       stage: "preparing", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
       driverId: details.driverId, driver: details.driver,
@@ -572,7 +591,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     };
     const transaction: CashTransaction | null = details.paymentStatus === "paid" ? {
       id: uid(), type: "sale", method: details.paymentMethod, amount: total, direction: "in",
-      description: `فاتورة #${orderDisplayNumber(order)}`, orderId, treasuryId: orderTreasuryId, createdAt
+      description: `فاتورة #${orderDisplayNumber(order)}`, orderId, treasuryId: orderTreasuryId,
+      discountChange: discount, createdAt
     } : null;
     update((current) => ({
       ...current,
@@ -665,7 +685,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
             <button className="product-card" onClick={() => product.options?.length ? setOptionProduct(product) : addProduct(product, undefined)} key={product.id}>
               <div className="product-card-top">
                 <span className="food-visual" style={{ background: `linear-gradient(145deg, ${product.accent}30, ${product.accent}80)` }}>
-                  {product.imageDataUrl ? <img src={product.imageDataUrl} alt="" /> : <Utensils size={26} style={{ color: product.accent }} />}
+                  {product.imageDataUrl ? <img src={product.imageDataUrl} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Utensils size={26} style={{ color: product.accent }} />}
                 </span>
                 <span className="product-info">
                   <strong>{product.name}</strong>
@@ -986,7 +1006,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       )}
       {optionProduct && <Modal title={`اختيار مقاس ${optionProduct.name}`} onClose={() => setOptionProduct(null)} size="medium">
         <div className="product-option-picker">
-          <div className="product-option-picker-head"><span className="food-visual" style={{ background: `linear-gradient(145deg, ${optionProduct.accent}30, ${optionProduct.accent}80)` }}>{optionProduct.imageDataUrl ? <img src={optionProduct.imageDataUrl} alt="" /> : <Utensils />}</span><div><strong>{optionProduct.name}</strong><small>اختار المقاس أو كمية البيع المطلوبة</small></div></div>
+          <div className="product-option-picker-head"><span className="food-visual" style={{ background: `linear-gradient(145deg, ${optionProduct.accent}30, ${optionProduct.accent}80)` }}>{optionProduct.imageDataUrl ? <img src={optionProduct.imageDataUrl} alt="" loading="lazy" decoding="async" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <Utensils />}</span><div><strong>{optionProduct.name}</strong><small>اختار المقاس أو كمية البيع المطلوبة</small></div></div>
           <div className="product-option-picker-grid">
             {optionProduct.options?.map((option) => <button type="button" key={option.id} onClick={() => addProduct(optionProduct, option)}>
               <span><strong>{option.name}</strong><small>{option.unit}</small></span>
@@ -1346,7 +1366,8 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, defaultFee, 
   );
   const [deliveryId, setDeliveryId] = useState(editingOrder?.driverId ?? "");
 
-  const discount = manualDiscount;
+  const maxDiscount = Math.max(0, subtotal + deliveryFee);
+  const discount = Math.min(manualDiscount, maxDiscount);
   const total = Math.max(0, subtotal + deliveryFee - discount);
 
   return (
@@ -1485,7 +1506,11 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, defaultFee, 
                   type="number"
                   min="0"
                   value={deliveryFee}
-                  onChange={(event) => setDeliveryFee(Math.max(0, Number(event.target.value)))}
+                  onChange={(event) => {
+                    const nextFee = Math.max(0, Number(event.target.value));
+                    setDeliveryFee(nextFee);
+                    setManualDiscount((current) => Math.min(current, subtotal + nextFee));
+                  }}
                 />
               </div>
             </div>
@@ -1496,8 +1521,9 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, defaultFee, 
                 <input
                   type="number"
                   min="0"
-                  value={manualDiscount}
-                  onChange={(event) => setManualDiscount(Math.max(0, Number(event.target.value)))}
+                  max={maxDiscount}
+                  value={discount || ""}
+                  onChange={(event) => setManualDiscount(Math.min(maxDiscount, Math.max(0, Number(event.target.value))))}
                 />
               </div>
             </div>
@@ -1517,7 +1543,7 @@ function CheckoutModal({ subtotal, customer, editingOrder, drivers, defaultFee, 
                 paymentMethod,
                 paymentStatus,
                 deliveryFee,
-                discount: manualDiscount,
+                discount,
                 scheduledFor,
                 note,
                 driverId: driver?.id,
@@ -1789,7 +1815,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
       cashTransactions: [{
         id: uid(), type: "collection", method: order.paymentMethod, amount: order.total,
         direction: "in", description: `تحصيل فاتورة #${orderDisplayNumber(order)}`, orderId: order.id,
-        treasuryId: order.treasuryId ?? salesTreasuryId(current), createdAt
+        treasuryId: order.treasuryId ?? salesTreasuryId(current), discountChange: order.discount, createdAt
       }, ...current.cashTransactions]
     }));
     notify(`تم تحصيل ${money(order.total)}`);
@@ -1853,6 +1879,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
         description: `عكس تحصيل بسبب حذف فاتورة #${orderDisplayNumber(deleteOrder)}`,
         orderId: deleteOrder.id,
         treasuryId: deleteOrder.treasuryId ?? salesTreasuryId(current),
+        discountChange: -deleteOrder.discount,
         createdAt: deletedAt
       } : null;
       const remainingCustomerOrders = current.orders.filter(
@@ -2851,7 +2878,8 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
       const refundTransaction: CashTransaction | null = rejectedOrder.paymentStatus === "paid" ? {
         id: uid(), type: "withdrawal", method: rejectedOrder.paymentMethod, amount: rejectedOrder.total,
         direction: "out", description: `رد قيمة طلب مرفوض #${orderDisplayNumber(rejectedOrder)}`,
-        orderId: rejectedOrder.id, treasuryId: rejectedOrder.treasuryId ?? salesTreasuryId(current), createdAt: returnedAt
+        orderId: rejectedOrder.id, treasuryId: rejectedOrder.treasuryId ?? salesTreasuryId(current),
+        discountChange: -rejectedOrder.discount, createdAt: returnedAt
       } : null;
       return {
         ...current,
@@ -2936,7 +2964,7 @@ export function DeliveryView({ state, update, notify }: ViewProps) {
     if (amountReceived + expenses > 0) transactions.push({
       id: uid(), type: "collection", method: paymentMethod, amount: amountReceived + expenses, direction: "in",
       description: `إجمالي تسوية المندوب ${driver.name} — ${orders.length} طلب — ${paymentLabels[paymentMethod]}`,
-      treasuryId: salesTreasuryId(state), createdAt
+      treasuryId: salesTreasuryId(state), discountChange: orders.reduce((sum, order) => sum + order.discount, 0), createdAt
     });
     if (expenses > 0) transactions.push({
       id: uid(), type: "expense", method: "cash", amount: expenses, direction: "out",
@@ -3238,6 +3266,8 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   });
   const [treasuryReportOpen, setTreasuryReportOpen] = useState(false);
   const [reportTreasuryId, setReportTreasuryId] = useState(purchasesTreasuryId(state));
+  const [simpleDailyOpen, setSimpleDailyOpen] = useState(false);
+  const [simpleDailyDate, setSimpleDailyDate] = useState<string>(todayKey);
   const [treasuryFilterOpen, setTreasuryFilterOpen] = useState(false);
   const [cashDateFilterOpen, setCashDateFilterOpen] = useState(false);
   const [cashDatePreset, setCashDatePreset] = useState<OrderDatePreset>("today");
@@ -3337,6 +3367,14 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     const key = dateKey(value);
     return (!cashDateFrom || key >= cashDateFrom) && (!cashDateTo || key <= cashDateTo);
   };
+  // A shift belongs to every report period it overlaps, not only to its opening day.
+  // This keeps overnight shifts visible after midnight while transactions remain
+  // filtered by their own timestamp below.
+  const shiftIntersectsCashDateRange = (shift: AppState["cashShifts"][number]) => {
+    const openedKey = dateKey(shift.openedAt);
+    const closedKey = shift.closedAt ? dateKey(shift.closedAt) : todayKey();
+    return (!cashDateTo || openedKey <= cashDateTo) && (!cashDateFrom || closedKey >= cashDateFrom);
+  };
   const currentSalesTreasuryId = salesTreasuryId(state);
   const currentPurchasesTreasuryId = purchasesTreasuryId(state);
   const activeTreasuries = state.treasuries.filter((treasury) => treasury.active);
@@ -3355,10 +3393,10 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const returnedOrderIds = new Set(state.orders.filter((order) => order.stage === "returned").map((order) => order.id));
   const refundedOriginalPaymentOrderIds = new Set(state.orders.filter((order) => order.paymentRefunded).map((order) => order.id));
   const selectedShifts = state.cashShifts.filter((shift) =>
-    isInCashDateRange(shift.openedAt)
+    shiftIntersectsCashDateRange(shift)
     && matchesSelectedTreasury(shift.treasuryId, currentSalesTreasuryId)
   );
-  const closedSelectedShifts = selectedShifts.filter((shift) => Boolean(shift.closedAt));
+  const closedSelectedShifts = selectedShifts.filter((shift) => Boolean(shift.closedAt) && isInCashDateRange(shift.closedAt!));
   const totalDailyShiftDifference = closedSelectedShifts.reduce((sum, shift) => sum + (shift.difference ?? 0), 0);
   const dailyRevenueTransactions = selectedTransactions.filter((transaction) =>
     transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection" || (transaction.type === "deposit" && transaction.orderId))
@@ -3384,8 +3422,88 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const dailyOrderCount = dailyOrders.length;
   const dailyAvgOrder = dailyOrderCount ? dailyOrders.reduce((sum, order) => sum + order.total, 0) / dailyOrderCount : 0;
   const dailyPending = dailyOrders.filter((order) => order.paymentStatus === "pending").reduce((sum, order) => sum + order.total, 0);
-  const dailyDiscounts = dailyOrders.reduce((sum, order) => sum + order.discount, 0);
+  const dailyOrderDiscounts = dailyOrders.reduce((sum, order) => sum + order.discount, 0);
+  const collectedAtByOrderId = new Map<string, string>();
+  const trackedInitialDiscountOrderIds = new Set<string>();
+  [...state.cashTransactions]
+    .filter((transaction) => transaction.orderId
+      && transaction.direction === "in"
+      && (transaction.type === "sale" || transaction.type === "collection" || transaction.type === "deposit"))
+    .sort((left, right) => dateTimeValue(left.createdAt) - dateTimeValue(right.createdAt))
+    .forEach((transaction) => {
+      if (transaction.orderId && !collectedAtByOrderId.has(transaction.orderId)) {
+        collectedAtByOrderId.set(transaction.orderId, transaction.createdAt);
+        if (transaction.discountChange !== undefined) trackedInitialDiscountOrderIds.add(transaction.orderId);
+      }
+    });
+  [...state.driverSettlements]
+    .sort((left, right) => dateTimeValue(left.createdAt) - dateTimeValue(right.createdAt))
+    .forEach((settlement) => settlement.orderIds.forEach((orderId) => {
+      if (!collectedAtByOrderId.has(orderId)) {
+        collectedAtByOrderId.set(orderId, settlement.createdAt);
+        const trackedSettlement = state.cashTransactions.some((transaction) =>
+          transaction.createdAt === settlement.createdAt
+          && transaction.type === "collection"
+          && transaction.discountChange !== undefined
+        );
+        if (trackedSettlement) trackedInitialDiscountOrderIds.add(orderId);
+      }
+    }));
+  const recordedCollectedDiscounts = selectedTransactions
+    .reduce((sum, transaction) => sum + (transaction.discountChange ?? 0), 0);
+  const legacyCollectedDiscounts = state.orders
+    .filter((order) => order.discount > 0
+      && !trackedInitialDiscountOrderIds.has(order.id)
+      && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
+      && Boolean(collectedAtByOrderId.get(order.id) && isInCashDateRange(collectedAtByOrderId.get(order.id)!)))
+    .reduce((sum, order) => sum + order.discount, 0);
+  const dailyCollectedDiscounts = recordedCollectedDiscounts + legacyCollectedDiscounts;
   const dailyDeliveryFees = dailyOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
+  const simpleDailyTransactions = state.cashTransactions.filter((transaction) =>
+    dateKey(transaction.createdAt) === simpleDailyDate
+    && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
+  );
+  const simpleDailyIncome = simpleDailyTransactions.filter((transaction) =>
+    transaction.direction === "in"
+    && (transaction.type === "sale" || transaction.type === "collection" || (transaction.type === "deposit" && transaction.orderId))
+    && (!transaction.orderId || !returnedOrderIds.has(transaction.orderId))
+    && (transaction.type !== "sale" || !transaction.orderId || !refundedOriginalPaymentOrderIds.has(transaction.orderId))
+  );
+  const simpleDailyReversals = simpleDailyTransactions.filter((transaction) =>
+    transaction.direction === "out"
+    && transaction.type === "withdrawal"
+    && transaction.orderId
+    && !returnedOrderIds.has(transaction.orderId)
+  );
+  const simpleDailyRevenue = simpleDailyIncome.reduce((sum, transaction) => sum + transaction.amount, 0)
+    - simpleDailyReversals.reduce((sum, transaction) => sum + transaction.amount, 0);
+  const simpleDailyExpenses = simpleDailyTransactions
+    .filter((transaction) => transaction.type === "expense")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
+  const simpleDailyOrders = state.orders.filter((order) =>
+    dateKey(order.createdAt) === simpleDailyDate
+    && order.stage !== "returned"
+    && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
+  );
+  const simpleDailyOrderDiscounts = simpleDailyOrders.reduce((sum, order) => sum + order.discount, 0);
+  const simpleDailyRecordedDiscounts = simpleDailyTransactions
+    .reduce((sum, transaction) => sum + (transaction.discountChange ?? 0), 0);
+  const simpleDailyLegacyDiscounts = state.orders
+    .filter((order) => {
+      const collectedAt = collectedAtByOrderId.get(order.id);
+      return order.discount > 0
+        && !trackedInitialDiscountOrderIds.has(order.id)
+        && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
+        && Boolean(collectedAt && dateKey(collectedAt) === simpleDailyDate);
+    })
+    .reduce((sum, order) => sum + order.discount, 0);
+  const simpleDailyCollectedDiscounts = simpleDailyRecordedDiscounts + simpleDailyLegacyDiscounts;
+  const simpleDailyMethodTotal = (method: PaymentMethod) =>
+    simpleDailyIncome.filter((transaction) => transaction.method === method).reduce((sum, transaction) => sum + transaction.amount, 0)
+    - simpleDailyReversals.filter((transaction) => transaction.method === method).reduce((sum, transaction) => sum + transaction.amount, 0);
+  const simpleDailyPending = simpleDailyOrders
+    .filter((order) => order.paymentStatus === "pending")
+    .reduce((sum, order) => sum + order.total, 0);
   const comparisonDateKey = cashDateFrom && cashDateFrom === cashDateTo ? offsetCashDate(cashDateFrom, -1) : null;
   const yesterdayTransactions = comparisonDateKey ? state.cashTransactions
     .filter((transaction) => dateKey(transaction.createdAt) === comparisonDateKey
@@ -3432,7 +3550,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
       };
       const revenue = incomeFor("cash") + incomeFor("instapay") + incomeFor("vodafone");
       const expenses = transactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + transaction.amount, 0);
-      return { shift, cash: incomeFor("cash"), instapay: incomeFor("instapay"), vodafone: incomeFor("vodafone"), revenue, expenses, net: revenue - expenses, transactions: transactions.length };
+      return { shift, cash: incomeFor("cash"), instapay: incomeFor("instapay"), vodafone: incomeFor("vodafone"), revenue, expenses, net: revenue - expenses, transactions: transactions.length, closingVarianceInPeriod: Boolean(shift.closedAt && isInCashDateRange(shift.closedAt)) };
     });
   const shiftTransactions = viewedShift
     ? state.cashTransactions.filter((transaction) => {
@@ -3913,6 +4031,10 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
                   <button className="light-button" onClick={() => openEditShiftModal(viewedShift)}><Edit3 /> تعديل تقفيل الوردية</button>
                 )}
               </>)}
+          {cashTab === "daily" && <button className="light-button simple-daily-open-button" onClick={() => {
+            setSimpleDailyDate(cashDateFrom && cashDateFrom === cashDateTo ? cashDateFrom : todayKey());
+            setSimpleDailyOpen(true);
+          }}><CalendarRange /> عرض يوم مبسط</button>}
           {cashTab === "daily" && (
             <div className="daily-discrepancy-card">
               <div className="daily-discrepancy-header">
@@ -4032,7 +4154,8 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         orderCount={dailyOrderCount}
         avgOrder={dailyAvgOrder}
         pending={dailyPending}
-        discounts={dailyDiscounts}
+        orderDiscounts={dailyOrderDiscounts}
+        collectedDiscounts={dailyCollectedDiscounts}
         deliveryFees={dailyDeliveryFees}
         revenueChange={revenueChangePercent}
         yesterdayRevenue={yesterdayRevenue}
@@ -4096,6 +4219,32 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         <label>سبب الإضافة أو المرجع<input value={treasuryDeposit.note} onChange={(event) => setTreasuryDeposit({ ...treasuryDeposit, note: event.target.value })} placeholder="مثال: رصيد افتتاحي لخزنة المشتريات" /></label>
         <div className="treasury-transfer-note"><Info /> ستظهر الإضافة كحركة إيداع في تقرير الخزنة، ويمكن متابعة ما صُرف منها والرصيد المتبقي.</div>
         <button className="primary-button" onClick={submitTreasuryDeposit}><Plus /> إضافة الرصيد الآن</button>
+      </div></Modal>}
+      {simpleDailyOpen && <Modal title="ملخص الإيراد اليومي" onClose={() => setSimpleDailyOpen(false)}><div className="simple-daily-modal">
+        <div className="simple-daily-date-row">
+          <label><CalendarRange /><span>اختر التاريخ</span><input type="date" value={simpleDailyDate} onChange={(event) => setSimpleDailyDate(event.target.value || todayKey())} /></label>
+          <button type="button" onClick={() => setSimpleDailyDate(todayKey())}>اليوم</button>
+        </div>
+        <div className="simple-daily-hero">
+          <small>إجمالي الإيراد</small>
+          <strong>{money(simpleDailyRevenue)}</strong>
+          <span>ج.م · {cashDisplayDate(simpleDailyDate)}</span>
+        </div>
+        <div className="simple-daily-kpis">
+          <article><ReceiptText /><span>الطلبات</span><strong>{simpleDailyOrders.length}</strong></article>
+          <article><Minus /><span>المصروفات</span><strong>{money(simpleDailyExpenses)}</strong></article>
+          <article className={simpleDailyRevenue - simpleDailyExpenses >= 0 ? "positive" : "negative"}><BarChart3 /><span>الصافي</span><strong>{money(simpleDailyRevenue - simpleDailyExpenses)}</strong></article>
+          <article><Clock3 /><span>معلق</span><strong>{money(simpleDailyPending)}</strong></article>
+        </div>
+        <div className="simple-daily-methods">
+          <span><Banknote /><small>نقدي</small><b>{money(simpleDailyMethodTotal("cash"))}</b></span>
+          <span><CreditCard /><small>إنستاباي</small><b>{money(simpleDailyMethodTotal("instapay"))}</b></span>
+          <span><Phone /><small>فودافون كاش</small><b>{money(simpleDailyMethodTotal("vodafone"))}</b></span>
+        </div>
+        {(simpleDailyOrderDiscounts !== 0 || simpleDailyCollectedDiscounts !== 0) && <div className="simple-daily-discounts">
+          <span><small>خصم الطلبات المنشأة</small><b>{money(simpleDailyOrderDiscounts)}</b></span>
+          <span><small>خصم الطلبات المحصلة</small><b>{money(simpleDailyCollectedDiscounts)}</b></span>
+        </div>}
       </div></Modal>}
       {treasuryReportOpen && <Modal title={`تقرير ${reportTreasury?.name ?? "الخزنة"}`} onClose={() => setTreasuryReportOpen(false)} size="wide"><div className="treasury-report">
         <div className="treasury-report-toolbar">
@@ -4208,7 +4357,7 @@ function CashMethodCard({ icon, label, summary, tone }: {
   </article>;
 }
 
-function DailyRevenueView({ date, revenue, sales, collections, editDeposits, editWithdrawals, expenses, net, methods, shifts, transactions, withdrawalTransactions, methodFilter, onMethodFilter, orderNumberById, transactionTypeLabels, orderCount, avgOrder, pending, discounts, deliveryFees, revenueChange, onEditShift }: {
+function DailyRevenueView({ date, revenue, sales, collections, editDeposits, editWithdrawals, expenses, net, methods, shifts, transactions, withdrawalTransactions, methodFilter, onMethodFilter, orderNumberById, transactionTypeLabels, orderCount, avgOrder, pending, orderDiscounts, collectedDiscounts, deliveryFees, revenueChange, onEditShift }: {
   date: string;
   revenue: number;
   sales: number;
@@ -4227,6 +4376,7 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
     expenses: number;
     net: number;
     transactions: number;
+    closingVarianceInPeriod: boolean;
   }>;
   transactions: CashTransaction[];
   withdrawalTransactions: CashTransaction[];
@@ -4237,7 +4387,8 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
   orderCount: number;
   avgOrder: number;
   pending: number;
-  discounts: number;
+  orderDiscounts: number;
+  collectedDiscounts: number;
   deliveryFees: number;
   revenueChange: number | null;
   yesterdayRevenue: number;
@@ -4273,7 +4424,8 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
     </div>
     <div className="daily-info-strip">
       <span><Clock3 size={15} /><small>معلق مع المناديب</small><b>{money(pending)}</b></span>
-      {discounts > 0 && <span><Calculator size={15} /><small>خصومات الفترة</small><b>{money(discounts)}</b></span>}
+      {orderDiscounts > 0 && <span><Calculator size={15} /><small>خصم الطلبات المنشأة</small><b>{money(orderDiscounts)}</b></span>}
+      {collectedDiscounts !== 0 && <span><CircleDollarSign size={15} /><small>خصم الطلبات المحصلة</small><b>{money(collectedDiscounts)}</b></span>}
       {deliveryFees > 0 && <span><Truck size={15} /><small>رسوم التوصيل</small><b>{money(deliveryFees)}</b></span>}
       {revenueChange !== null && <span className={`revenue-change-inline ${revenueChange >= 0 ? "up" : "down"}`}>{revenueChange >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}<small>مقارنة بأمس</small><b>{revenueChange >= 0 ? "+" : ""}{revenueChange.toFixed(1)}%</b></span>}
     </div>
@@ -4291,17 +4443,23 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
       <div className="daily-section-heading"><div><Clock3 /><span><strong>إيراد كل وردية</strong><small>{shifts.length ? `${shifts.length} وردية مسجلة خلال ${date}` : "لا توجد ورديات في الفترة المحددة"}</small></span></div><b>{money(totalShiftRevenue)}</b></div>
       {!!shifts.length && <div className="daily-shifts-table-scroll">
         <div className="daily-shifts-table-head"><span>الوردية</span><span>الفترة</span><span>نقدي</span><span>إنستاباي</span><span>فودافون كاش</span><span>المصروفات</span><span>الإيراد</span><span>الصافي</span><span>فرق الجرد</span><span>إجراءات</span></div>
-        {shifts.map(({ shift, cash, instapay, vodafone, revenue: sr, expenses: se, net: sn }, index) => {
+        {shifts.map(({ shift, cash, instapay, vodafone, revenue: sr, expenses: se, net: sn, closingVarianceInPeriod }, index) => {
           const mins = shift.closedAt ? Math.round((new Date(shift.closedAt).getTime() - new Date(shift.openedAt).getTime()) / 60000) : Math.round((Date.now() - new Date(shift.openedAt).getTime()) / 60000);
           const dur = mins >= 60 ? `${Math.floor(mins / 60)} ساعة ${mins % 60 ? `${mins % 60} د` : ""}` : `${mins} دقيقة`;
-          const diff = shift.difference ?? 0;
+          // Show a closing variance only on the date the shift was closed.
+          const diff = closingVarianceInPeriod ? (shift.difference ?? 0) : 0;
           return <div className="daily-shift-row" key={shift.id}>
             <span><strong>وردية {index + 1}</strong><small className={`cash-shift-status ${shift.closedAt ? "closed" : "open"}`}>{shift.closedAt ? "مغلقة" : "مفتوحة"}</small><small className="shift-duration">{dur}</small></span>
-            <span><b>{new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "numeric", minute: "2-digit" }).format(new Date(shift.openedAt))}</b><small>إلى {shift.closedAt ? new Intl.DateTimeFormat("ar-EG-u-nu-latn", { hour: "numeric", minute: "2-digit" }).format(new Date(shift.closedAt)) : "الآن"}</small></span>
+            <span className="daily-shift-period">
+              <b><small>فتح:</small> {shortDate(shift.openedAt)}</b>
+              <small><strong>غلق:</strong> {shift.closedAt ? shortDate(shift.closedAt) : "الوردية مفتوحة حتى الآن"}</small>
+            </span>
             <b>{money(cash)}</b><b>{money(instapay)}</b><b>{money(vodafone)}</b><b className="out">{money(se)}</b><b>{money(sr)}</b><b className={sn >= 0 ? "net" : "out"}>{money(sn)}</b>
             <span>
               {!shift.closedAt ? (
                 <small className="shift-diff-open">مفتوحة</small>
+              ) : !closingVarianceInPeriod ? (
+                <small>—</small>
               ) : diff === 0 ? (
                 <small className="shift-diff-match">مطابق</small>
               ) : diff > 0 ? (

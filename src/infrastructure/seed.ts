@@ -1,28 +1,40 @@
-import type { AppState, MenuSection, Product, ProductCategory } from "../domain/types";
+import type { AppState, Meal, MenuSection, Product, ProductCategory } from "../domain/types";
 import {
   createDefaultTreasuries, DEFAULT_PURCHASES_TREASURY_ID, DEFAULT_SALES_TREASURY_ID
 } from "../shared/treasury";
 
 const initialShiftOpenedAt = new Date().toISOString();
 
+const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=640&q=80`;
+
 export const products: Product[] = [
-  { id: "p1", name: "مكرونة بشاميل", category: "صواني", section: "cooked", unit: "صينية وسط", price: 280, cost: 175, available: true, accent: "#e9a15c" },
-  { id: "p2", name: "محشي مشكل", category: "محاشي", section: "cooked", unit: "كيلو", price: 190, cost: 112, available: true, accent: "#7e9a63" },
-  { id: "p3", name: "فراخ محمرة", category: "فراخ", section: "cooked", unit: "فرخة", price: 360, cost: 270, available: true, accent: "#cc7655" },
-  { id: "p4", name: "ورق عنب", category: "محاشي", section: "cooked", unit: "كيلو", price: 210, cost: 125, available: true, accent: "#6e8d5b" },
-  { id: "p5", name: "كفتة في الفرن", category: "لحوم", section: "cooked", unit: "كيلو", price: 420, cost: 315, available: true, accent: "#a85f4d" },
-  { id: "p6", name: "أرز بالشعرية", category: "إضافات", section: "cooked", unit: "طبق", price: 55, cost: 24, available: true, accent: "#d6b270" },
-  { id: "p7", name: "ملوخية", category: "طواجن", section: "cooked", unit: "طبق", price: 70, cost: 31, available: true, accent: "#62845d" },
-  { id: "p8", name: "رقاق باللحمة", category: "صواني", section: "cooked", unit: "صينية وسط", price: 330, cost: 220, available: true, accent: "#c48a54" },
-  { id: "p9", name: "فراخ متبلة", category: "فراخ", section: "fresh", unit: "كيلو", price: 230, cost: 178, available: true, accent: "#db8e64" },
-  { id: "p10", name: "كفتة جاهزة للتسوية", category: "لحوم", section: "fresh", unit: "كيلو", price: 350, cost: 282, available: true, accent: "#b36954" },
-  { id: "p11", name: "سمبوسك لحمة", category: "مجمدات", section: "fresh", unit: "دستة", price: 135, cost: 78, available: true, accent: "#d3a565" },
-  { id: "p12", name: "محشي جاهز للتسوية", category: "محاشي", section: "fresh", unit: "كيلو", price: 155, cost: 93, available: true, accent: "#829867" },
-  { id: "p13", name: "بانيه متبل", category: "فراخ", section: "fresh", unit: "كيلو", price: 285, cost: 230, available: true, accent: "#d49b72" },
-  { id: "p14", name: "صينية بطاطس بالفراخ", category: "صواني", section: "fresh", unit: "صينية", price: 310, cost: 235, available: false, accent: "#bb7f57" }
+  { id: "p1", name: "أرز بالشعرية", category: "الأرز والإضافات", section: "meals", unit: "كيلو", price: 90, cost: 38, available: true, accent: "#c58b52", reportingMode: "weighted", imageDataUrl: photo("photo-1512058564366-95c59f581b3d") , options: [{ id: "p1-quarter", name: "ربع كيلو", unit: "كجم", price: 25, cost: 10, recipeMultiplier: 0.25 }, { id: "p1-half", name: "نصف كيلو", unit: "كجم", price: 48, cost: 20, recipeMultiplier: 0.5 }, { id: "p1-kilo", name: "كيلو", unit: "كجم", price: 90, cost: 38, recipeMultiplier: 1 }] },
+  { id: "p2", name: "محشي مشكل", category: "المحاشي", section: "meals", unit: "كيلو", price: 240, cost: 135, available: true, accent: "#4e8a68", reportingMode: "weighted", imageDataUrl: photo("photo-1601050690597-df0568f70950"), options: [{ id: "p2-quarter", name: "ربع كيلو", unit: "كجم", price: 65, cost: 36, recipeMultiplier: 0.25 }, { id: "p2-half", name: "نصف كيلو", unit: "كجم", price: 125, cost: 70, recipeMultiplier: 0.5 }, { id: "p2-kilo", name: "كيلو", unit: "كجم", price: 240, cost: 135, recipeMultiplier: 1 }] },
+  { id: "p3", name: "ورق عنب", category: "المحاشي", section: "meals", unit: "كيلو", price: 260, cost: 145, available: true, accent: "#4f8b5c", reportingMode: "weighted", imageDataUrl: photo("photo-1625944525533-473f1a3d54e7"), options: [{ id: "p3-half", name: "نصف كيلو", unit: "كجم", price: 135, cost: 75, recipeMultiplier: 0.5 }, { id: "p3-kilo", name: "كيلو", unit: "كجم", price: 260, cost: 145, recipeMultiplier: 1 }] },
+  { id: "p4", name: "فراخ مشوية", category: "المشاوي", section: "meals", unit: "فرخة", price: 360, cost: 255, available: true, accent: "#b9654b", imageDataUrl: photo("photo-1532550907401-a500c9a57435"), options: [{ id: "p4-quarter", name: "ربع فرخة", unit: "قطعة", price: 120, cost: 85, recipeMultiplier: 0.25 }, { id: "p4-half", name: "نصف فرخة", unit: "قطعة", price: 220, cost: 155, recipeMultiplier: 0.5 }, { id: "p4-whole", name: "فرخة كاملة", unit: "قطعة", price: 360, cost: 255, recipeMultiplier: 1 }] },
+  { id: "p5", name: "شيش طاووق", category: "المشاوي", section: "meals", unit: "طبق", price: 280, cost: 170, available: true, accent: "#c16c4b", imageDataUrl: photo("photo-1599487488170-d11ec9c172f0") },
+  { id: "p6", name: "كفتة مشوية", category: "المشاوي", section: "meals", unit: "طبق", price: 300, cost: 190, available: true, accent: "#a95743", imageDataUrl: photo("photo-1555939594-58d7cb561ad1") },
+  { id: "p7", name: "مكرونة بشاميل", category: "الصواني", section: "meals", unit: "صينية", price: 320, cost: 205, available: true, accent: "#d09255", imageDataUrl: photo("photo-1473093295043-cdd812d0e601"), options: [{ id: "p7-small", name: "صغير", unit: "صينية", price: 140, cost: 90, recipeMultiplier: 0.4 }, { id: "p7-medium", name: "وسط", unit: "صينية", price: 230, cost: 145, recipeMultiplier: 0.7 }, { id: "p7-large", name: "كبير", unit: "صينية", price: 320, cost: 205, recipeMultiplier: 1 }] },
+  { id: "p8", name: "بيتزا مارغريتا", category: "البيتزا", section: "meals", unit: "بيتزا", price: 180, cost: 105, available: true, accent: "#d16c45", imageDataUrl: photo("photo-1574071318508-1cdbab80d002"), options: [{ id: "p8-small", name: "صغير", unit: "بيتزا", price: 120, cost: 70, recipeMultiplier: 0.55 }, { id: "p8-medium", name: "وسط", unit: "بيتزا", price: 180, cost: 105, recipeMultiplier: 0.8 }, { id: "p8-large", name: "كبير", unit: "بيتزا", price: 250, cost: 145, recipeMultiplier: 1.1 }] },
+  { id: "p9", name: "بيتزا فراخ باربكيو", category: "البيتزا", section: "meals", unit: "بيتزا", price: 280, cost: 165, available: true, accent: "#b85b42", imageDataUrl: photo("photo-1565299624946-b28f40a0ae38"), options: [{ id: "p9-small", name: "صغير", unit: "بيتزا", price: 180, cost: 105, recipeMultiplier: 0.55 }, { id: "p9-medium", name: "وسط", unit: "بيتزا", price: 230, cost: 135, recipeMultiplier: 0.8 }, { id: "p9-large", name: "كبير", unit: "بيتزا", price: 280, cost: 165, recipeMultiplier: 1.1 }] },
+  { id: "p10", name: "بطاطس محمرة", category: "المقبلات", section: "meals", unit: "طبق", price: 75, cost: 28, available: true, accent: "#d8a34e", imageDataUrl: photo("photo-1573080496219-bb080dd4f877") },
+  { id: "p11", name: "سلطة خضراء", category: "المقبلات", section: "meals", unit: "طبق", price: 65, cost: 24, available: true, accent: "#63a36f", imageDataUrl: photo("photo-1512621776951-a57141f2eefe") },
+  { id: "p12", name: "كشري", category: "الأطباق الرئيسية", section: "meals", unit: "علبة", price: 85, cost: 38, available: true, accent: "#b87943", imageDataUrl: photo("photo-1601050690117-94f5f6fa8bd7"), options: [{ id: "p12-small", name: "صغير", unit: "علبة", price: 55, cost: 25, recipeMultiplier: 0.6 }, { id: "p12-medium", name: "وسط", unit: "علبة", price: 70, cost: 31, recipeMultiplier: 0.8 }, { id: "p12-large", name: "كبير", unit: "علبة", price: 85, cost: 38, recipeMultiplier: 1 }] },
+  { id: "d1", name: "مياه معدنية", category: "مشروبات باردة", section: "drinks", unit: "زجاجة", price: 15, cost: 6, available: true, accent: "#3c91b5", imageDataUrl: photo("photo-1548839140-29a749e1cf4d") },
+  { id: "d2", name: "بيبسي كان", category: "مشروبات غازية", section: "drinks", unit: "كان", price: 35, cost: 18, available: true, accent: "#c43d3d", imageDataUrl: photo("photo-1629203849820-fdd70d49c38e") },
+  { id: "d3", name: "سفن أب كان", category: "مشروبات غازية", section: "drinks", unit: "كان", price: 35, cost: 18, available: true, accent: "#5e9b5a", imageDataUrl: photo("photo-1624517452488-04869289c4ca") },
+  { id: "d4", name: "عصير برتقال فريش", category: "عصائر فريش", section: "drinks", unit: "كوب", price: 70, cost: 32, available: true, accent: "#e99437", imageDataUrl: photo("photo-1600271886742-f049cd451bba"), options: [{ id: "d4-small", name: "صغير", unit: "كوب", price: 45, cost: 20, recipeMultiplier: 0.6 }, { id: "d4-large", name: "كبير", unit: "كوب", price: 70, cost: 32, recipeMultiplier: 1 }] },
+  { id: "d5", name: "عصير مانجو فريش", category: "عصائر فريش", section: "drinks", unit: "كوب", price: 80, cost: 38, available: true, accent: "#e4a62b", imageDataUrl: photo("photo-1553279768-865429fa0078"), options: [{ id: "d5-small", name: "صغير", unit: "كوب", price: 50, cost: 24, recipeMultiplier: 0.6 }, { id: "d5-large", name: "كبير", unit: "كوب", price: 80, cost: 38, recipeMultiplier: 1 }] },
+  { id: "d6", name: "ليمون بالنعناع", category: "عصائر فريش", section: "drinks", unit: "كوب", price: 65, cost: 27, available: true, accent: "#6da34f", imageDataUrl: photo("photo-1513558161293-caad8c7952b0") },
+  { id: "d7", name: "شاي", category: "مشروبات ساخنة", section: "drinks", unit: "كوب", price: 25, cost: 7, available: true, accent: "#9a6b3c", imageDataUrl: photo("photo-1576092768241-dec231879fc3") },
+  { id: "d8", name: "قهوة تركي", category: "مشروبات ساخنة", section: "drinks", unit: "فنجان", price: 45, cost: 14, available: true, accent: "#70452d", imageDataUrl: photo("photo-1495474472287-4d71bcdd2085") },
+  { id: "d9", name: "كابتشينو", category: "مشروبات ساخنة", section: "drinks", unit: "كوب", price: 85, cost: 32, available: true, accent: "#b47d54", imageDataUrl: photo("photo-1572442388796-11668a67e53d") },
+  { id: "d10", name: "ميلك شيك شوكولاتة", category: "مشروبات باردة", section: "drinks", unit: "كوب", price: 110, cost: 52, available: true, accent: "#85533c", imageDataUrl: photo("photo-1577805947697-89e18249d767") },
+  { id: "d11", name: "مشروب غازي زجاجة", category: "مشروبات غازية", section: "drinks", unit: "زجاجة", price: 45, cost: 24, available: true, accent: "#6b7e9b", imageDataUrl: photo("photo-1554866585-cd94860890b7") },
+  { id: "d12", name: "صودا بالليمون", category: "مشروبات باردة", section: "drinks", unit: "كوب", price: 60, cost: 22, available: true, accent: "#8fb7ae", imageDataUrl: photo("photo-1513558161293-caad8c7952b0") }
 ];
 
-const categories: ProductCategory[] = [...new Map(products.map((product) => [
+export const categories: ProductCategory[] = [...new Map(products.map((product) => [
   `${product.section}-${product.category}`,
   {
     id: `cat-${product.section}-${product.category}`,
@@ -33,15 +45,78 @@ const categories: ProductCategory[] = [...new Map(products.map((product) => [
   } satisfies ProductCategory
 ])).values()];
 
+/** Detects the original sample menu so it can be replaced on existing installations once. */
+export function isLegacyDemoMenu(menu: Pick<AppState, "products" | "sections">): boolean {
+  // The original sample menu used these two sections. Some installations may
+  // contain extra sample products added later, so section IDs are the reliable
+  // migration signal rather than an exact product count.
+  return menu.sections.some((section) => section.id === "cooked")
+    && menu.sections.some((section) => section.id === "fresh")
+    && !menu.sections.some((section) => section.id === "drinks");
+}
+
 export const sections: MenuSection[] = [
-  { id: "cooked", name: "مطبوخ" },
-  { id: "fresh", name: "طازة / غير مطبوخ" }
+  { id: "meals", name: "الأكل" },
+  { id: "drinks", name: "المشروبات" }
+];
+
+export const meals: Meal[] = [
+  {
+    id: "meal-1", name: "وجبة فراخ مشوية", price: 390, available: true,
+    description: "ربع فرخة مشوية مع أرز وسلطة وبطاطس",
+    components: [
+      { productId: "p4", optionId: "p4-quarter", optionName: "ربع فرخة", name: "فراخ مشوية", unit: "قطعة", price: 120, cost: 85, recipeMultiplier: 0.25, quantity: 1 },
+      { productId: "p1", optionId: "p1-half", optionName: "نصف كيلو", name: "أرز بالشعرية", unit: "كجم", price: 48, cost: 20, recipeMultiplier: 0.5, quantity: 1 },
+      { productId: "p10", name: "بطاطس محمرة", unit: "طبق", price: 75, cost: 28, quantity: 1 },
+      { productId: "p11", name: "سلطة خضراء", unit: "طبق", price: 65, cost: 24, quantity: 1 }
+    ]
+  },
+  {
+    id: "meal-2", name: "وجبة كفتة", price: 360, available: true,
+    description: "كفتة مشوية مع أرز وسلطة ومياه",
+    components: [
+      { productId: "p6", name: "كفتة مشوية", unit: "طبق", price: 300, cost: 190, quantity: 1 },
+      { productId: "p1", optionId: "p1-quarter", optionName: "ربع كيلو", name: "أرز بالشعرية", unit: "كجم", price: 25, cost: 10, recipeMultiplier: 0.25, quantity: 1 },
+      { productId: "p11", name: "سلطة خضراء", unit: "طبق", price: 65, cost: 24, quantity: 1 },
+      { productId: "d1", name: "مياه معدنية", unit: "زجاجة", price: 15, cost: 6, quantity: 1 }
+    ]
+  },
+  {
+    id: "meal-3", name: "وجبة بيتزا عائلية", price: 420, available: true,
+    description: "بيتزا كبيرة مع بطاطس ومشروب غازي",
+    components: [
+      { productId: "p9", optionId: "p9-large", optionName: "كبير", name: "بيتزا فراخ باربكيو", unit: "بيتزا", price: 280, cost: 165, recipeMultiplier: 1.1, quantity: 1 },
+      { productId: "p10", name: "بطاطس محمرة", unit: "طبق", price: 75, cost: 28, quantity: 1 },
+      { productId: "d2", name: "بيبسي كان", unit: "كان", price: 35, cost: 18, quantity: 2 }
+    ]
+  },
+  {
+    id: "meal-4", name: "وجبة كشري كاملة", price: 170, available: true,
+    description: "كشري كبير مع سلطة ومشروب",
+    components: [
+      { productId: "p12", optionId: "p12-large", optionName: "كبير", name: "كشري", unit: "علبة", price: 85, cost: 38, recipeMultiplier: 1, quantity: 1 },
+      { productId: "p11", name: "سلطة خضراء", unit: "طبق", price: 65, cost: 24, quantity: 1 },
+      { productId: "d1", name: "مياه معدنية", unit: "زجاجة", price: 15, cost: 6, quantity: 1 }
+    ]
+  },
+  {
+    id: "meal-5", name: "بوكس العائلة", price: 980, available: true,
+    description: "فرخة كاملة، أرز، محشي، بطاطس، سلطات ومشروبات",
+    components: [
+      { productId: "p4", optionId: "p4-whole", optionName: "فرخة كاملة", name: "فراخ مشوية", unit: "قطعة", price: 360, cost: 255, recipeMultiplier: 1, quantity: 1 },
+      { productId: "p1", optionId: "p1-kilo", optionName: "كيلو", name: "أرز بالشعرية", unit: "كجم", price: 90, cost: 38, recipeMultiplier: 1, quantity: 1 },
+      { productId: "p2", optionId: "p2-half", optionName: "نصف كيلو", name: "محشي مشكل", unit: "كجم", price: 125, cost: 70, recipeMultiplier: 0.5, quantity: 1 },
+      { productId: "p10", name: "بطاطس محمرة", unit: "طبق", price: 75, cost: 28, quantity: 1 },
+      { productId: "p11", name: "سلطة خضراء", unit: "طبق", price: 65, cost: 24, quantity: 2 },
+      { productId: "d2", name: "بيبسي كان", unit: "كان", price: 35, cost: 18, quantity: 4 }
+    ]
+  }
 ];
 
 export const initialState: AppState = {
   products,
   sections,
-  meals: [],
+  meals,
   savedChoiceGroups: [],
   categories,
   customers: [

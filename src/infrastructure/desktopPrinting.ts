@@ -624,19 +624,21 @@ function customerReceipt(order: Order, settings: AppState["settings"], customers
     customerCard(order.customerName, order.customerPhone || "", order.address || "", customerNotes),
     sectionLabel("تفاصيل الطلب"),
     tableHeader(
-      column("الإجمالي", 0.23, { align: "center", size: 7, bold: true }),
-      column("السعر", 0.2, { align: "center", size: 7, bold: true }),
-      column("العدد", 0.14, { align: "center", size: 7, bold: true }),
-      column("اسم الصنف", 0.43, { align: "center", size: 7, bold: true })
+      column("الإجمالي", 0.21, { align: "center", size: 7 }),
+      column("السعر", 0.18, { align: "center", size: 7 }),
+      column("العدد", 0.1, { align: "center", size: 7 }),
+      column("الحجم", 0.15, { align: "center", size: 7 }),
+      column("الصنف", 0.36, { align: "center", size: 7 })
     )
   ];
 
   order.items.forEach((item) => {
     blocks.push(columns(
-      column(money(item.price * item.quantity), 0.23, { align: "center", size: 8, bold: true, rtl: false }),
-      column(money(item.price), 0.2, { align: "center", size: 8, bold: true, rtl: false }),
-      column(String(item.quantity), 0.14, { align: "center", size: 8, bold: true, rtl: false }),
-      column(item.name, 0.43, { size: 8, bold: true })
+      column(money(item.price * item.quantity), 0.21, { align: "center", size: 8, rtl: false }),
+      column(money(item.price), 0.18, { align: "center", size: 8, rtl: false }),
+      column(String(item.quantity), 0.1, { align: "center", size: 8, rtl: false }),
+      column(item.optionName || "—", 0.15, { align: "center", size: 8 }),
+      column(item.name, 0.36, { size: 8 })
     ));
   });
 

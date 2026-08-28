@@ -236,6 +236,16 @@ function ProductEditorModal({
                 placeholder="طبق، كيلو، صينية..."
               />
             </label>
+            <label>
+              حساب المقاسات في التقرير
+              <select
+                value={editing.reportingMode ?? (/(كيلو|كجم|kg|جرام|جم|لتر)/i.test(editing.unit) ? "weighted" : "count")}
+                onChange={(event) => setEditing({ ...editing, reportingMode: event.target.value as Product["reportingMode"] })}
+              >
+                <option value="weighted">وزني — تحويل المقاسات للوحدة الأساسية</option>
+                <option value="count">عددي — إجمالي العدد مع تفصيل المقاسات</option>
+              </select>
+            </label>
             {!editing.options?.length && (
               <label>
                 سعر البيع
@@ -303,7 +313,7 @@ function ProductEditorModal({
               <span>وحدة البيع</span>
               <span>سعر البيع</span>
               <span>التكلفة</span>
-              <span>معامل الوصفة</span>
+              <span>معامل الكمية/الوصفة</span>
               <span />
             </div>
             {editing.options.map((option) => (
@@ -363,7 +373,7 @@ function ProductEditorModal({
                   min="0.01"
                   step="0.01"
                   value={option.recipeMultiplier || ""}
-                  title="يضاعف كميات مكونات الوصفة بهذا الرقم"
+                  title="الكمية الفعلية من الوحدة الأساسية: النصف 0.5 والربع 0.25"
                   onChange={(event) =>
                     setEditing({
                       ...editing,

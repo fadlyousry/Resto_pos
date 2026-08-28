@@ -97,12 +97,13 @@ function CustomerReceipt({ order, settings, customers }: { order: Order; setting
     </div>
     <div className="receipt-section-label">تفاصيل الطلب</div>
     <table className="customer-receipt-table">
-      <thead><tr><th>الصنف</th><th>العدد</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+      <thead><tr><th>الصنف</th><th>الحجم</th><th>العدد</th><th>السعر</th><th>الإجمالي</th></tr></thead>
       <tbody>{order.items.map((item) => {
         const isMeal = Boolean(item.mealId || item.mealComponents?.length || item.productId?.startsWith("meal:"));
         return (
           <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
-            <td><strong>{item.name}</strong>{!isMeal && item.note && <small className="receipt-item-note">{item.note}</small>}</td>
+            <td><span>{item.name}</span>{!isMeal && item.note && <small className="receipt-item-note">{item.note}</small>}</td>
+            <td>{item.optionName || "—"}</td>
             <td>{item.quantity}</td>
             <td>{money(item.price)}</td>
             <td>{money(item.price * item.quantity)}</td>

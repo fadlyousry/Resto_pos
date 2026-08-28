@@ -1,4 +1,4 @@
-import type { AppState, OrderItem, PaymentMethod } from "../../../domain/types";
+import type { AppState, OrderItem, PaymentMethod, Product } from "../../../domain/types";
 import { dateKey } from "../../../shared/format";
 import { purchasesTreasuryId, salesTreasuryId, transactionTreasuryId, treasuryName } from "../../../shared/treasury";
 import type {
@@ -30,6 +30,12 @@ export function getItemCost(item: OrderItem, state: AppState): number {
     }, 0);
   }
   return getProductCost(item.productId, state);
+}
+
+function inferredReportingMode(product?: Product, unit?: string): "weighted" | "count" {
+  if (product?.reportingMode) return product.reportingMode;
+  const normalizedUnit = `${product?.unit ?? ""} ${unit ?? ""}`.toLocaleLowerCase("ar");
+  return /(كيلو|كجم|جرام|جم|لتر|kg|g|l)/i.test(normalizedUnit) ? "weighted" : "count";
 }
 
 // 1. Sales Report Calculation
@@ -187,28 +193,37 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
     .flatMap((o) => o.items)
     .reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  const totalUnitsSold = periodOrders
-    .flatMap((o) => o.items)
-    .reduce((sum, item) => sum + item.quantity, 0);
-
   const itemMap = new Map<string, MenuItemMetric>();
+  const itemOrderIds = new Map<string, Set<string>>();
+  const itemOptionBreakdowns = new Map<string, Map<string, number>>();
+  let totalUnitsSold = 0;
 
   for (const order of periodOrders) {
     for (const item of order.items) {
-      const key = item.optionName ? `${item.name} (${item.optionName})` : item.name;
+      const foundProduct = state.products.find((p) => p.id === item.productId);
+      const foundOption = item.optionId
+        ? foundProduct?.options?.find((option) => option.id === item.optionId)
+        : undefined;
+      const quantityMultiplier = item.mealId
+        ? 1
+        : (item.recipeMultiplier ?? foundOption?.recipeMultiplier ?? 1);
+      const reportingMode = inferredReportingMode(foundProduct, item.unit);
+      const normalizedQuantity = Math.round(item.quantity * (reportingMode === "weighted" ? quantityMultiplier : 1) * 1000) / 1000;
+      const key = foundProduct ? `product:${foundProduct.id}` : item.mealId
+        ? `meal:${item.mealId}:${item.optionId ?? "base"}`
+        : `${item.productId}:${item.optionId ?? "base"}`;
       const unitCost = getItemCost(item, state);
       const lineCost = unitCost * item.quantity;
       const lineRevenue = item.price * item.quantity;
       const lineProfit = lineRevenue - lineCost;
 
-      const foundProduct = state.products.find((p) => p.id === item.productId);
       const foundSection = state.sections.find((s) => s.id === (item.section ?? foundProduct?.section));
       const sectionName = item.mealId ? "وجبات" : (foundSection?.name ?? item.section ?? "عام");
       const categoryName = foundProduct?.category || (item.mealId ? "وجبات" : "عام");
-      const unitName = item.unit || foundProduct?.unit || (item.mealId ? "وجبة" : "قطعة");
+      const unitName = foundProduct?.unit || item.unit || (item.mealId ? "وجبة" : "قطعة");
 
       const curr = itemMap.get(key) ?? {
-        name: key,
+        name: foundProduct?.name ?? item.name,
         section: sectionName,
         category: categoryName,
         unit: unitName,
@@ -223,19 +238,34 @@ export function computeMenuReport(state: AppState, filter: DateRangeFilter): Men
         shareOfSales: 0
       };
 
-      curr.quantitySold = Math.round((curr.quantitySold + item.quantity) * 1000) / 1000;
-      curr.ordersCount = (curr.ordersCount ?? 0) + 1;
+      curr.quantitySold = Math.round((curr.quantitySold + normalizedQuantity) * 1000) / 1000;
       curr.totalRevenue += lineRevenue;
       curr.totalCost += lineCost;
       curr.totalProfit += lineProfit;
+      totalUnitsSold = Math.round((totalUnitsSold + normalizedQuantity) * 1000) / 1000;
 
       itemMap.set(key, curr);
+      const orderIds = itemOrderIds.get(key) ?? new Set<string>();
+      orderIds.add(order.id);
+      itemOrderIds.set(key, orderIds);
+      if (reportingMode === "count" && foundProduct?.options?.length) {
+        const optionBreakdown = itemOptionBreakdowns.get(key) ?? new Map<string, number>();
+        const optionLabel = item.optionName ?? foundOption?.name ?? "أساسي";
+        optionBreakdown.set(optionLabel, Math.round(((optionBreakdown.get(optionLabel) ?? 0) + item.quantity) * 1000) / 1000);
+        itemOptionBreakdowns.set(key, optionBreakdown);
+      }
     }
   }
 
   // Calculate profit margin % and share for each item
-  const allItems: MenuItemMetric[] = [...itemMap.values()].map((metric) => ({
+  const allItems: MenuItemMetric[] = [...itemMap.entries()].map(([key, metric]) => ({
     ...metric,
+    ordersCount: itemOrderIds.get(key)?.size ?? metric.ordersCount,
+    optionBreakdown: itemOptionBreakdowns.has(key)
+      ? [...itemOptionBreakdowns.get(key)!.entries()].map(([name, quantity]) => ({ name, quantity }))
+      : undefined,
+    unitPrice: metric.quantitySold > 0 ? metric.totalRevenue / metric.quantitySold : metric.unitPrice,
+    unitCost: metric.quantitySold > 0 ? metric.totalCost / metric.quantitySold : metric.unitCost,
     profitMarginPercent:
       metric.totalRevenue > 0 ? (metric.totalProfit / metric.totalRevenue) * 100 : 0,
     shareOfSales:

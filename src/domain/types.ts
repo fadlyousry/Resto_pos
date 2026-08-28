@@ -26,6 +26,8 @@ export interface Product {
   imageDataUrl?: string;
   options?: ProductOption[];
   isMealComponent?: boolean;
+  /** How option sizes are summarized in sold-items reports. */
+  reportingMode?: "weighted" | "count";
 }
 
 export interface ProductCategory {
@@ -248,6 +250,8 @@ export interface CashTransaction {
   description: string;
   orderId?: string;
   treasuryId?: string;
+  /** Signed discount recognized by this collection/reversal movement. */
+  discountChange?: number;
   createdAt: string;
 }
 

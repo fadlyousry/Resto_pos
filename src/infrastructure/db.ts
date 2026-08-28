@@ -1,5 +1,5 @@
 import Database from "@tauri-apps/plugin-sql";
-import { initialState } from "./seed";
+import { categories as seededCategories, initialState, isLegacyDemoMenu, meals as seededMeals, products as seededProducts, sections as seededSections } from "./seed";
 import type {
   AppState, CashShift, CashTransaction, Customer, Driver, DriverSettlement, Ingredient,
   Order, Product, ProductCategory, PurchaseInvoice, RecipeItem, StockMovement, Supplier, Treasury
@@ -42,7 +42,8 @@ async function initDatabase() {
   )`);
   await database.execute(`CREATE TABLE IF NOT EXISTS cash_transactions (
     id TEXT PRIMARY KEY, type TEXT NOT NULL, method TEXT NOT NULL, amount REAL NOT NULL,
-    direction TEXT NOT NULL, description TEXT NOT NULL, order_id TEXT, created_at TEXT NOT NULL
+    direction TEXT NOT NULL, description TEXT NOT NULL, order_id TEXT, created_at TEXT NOT NULL,
+    discount_change REAL
   )`);
   await database.execute(`CREATE TABLE IF NOT EXISTS cash_shifts (
     id TEXT PRIMARY KEY, opened_at TEXT NOT NULL, opening_balance REAL NOT NULL,
@@ -91,6 +92,7 @@ async function initDatabase() {
   for (const migration of [
     "ALTER TABLE products ADD COLUMN options_json TEXT",
     "ALTER TABLE products ADD COLUMN image_data_url TEXT",
+    "ALTER TABLE products ADD COLUMN reporting_mode TEXT",
     "ALTER TABLE driver_settlements ADD COLUMN payment_method TEXT DEFAULT 'cash'",
     "ALTER TABLE orders ADD COLUMN driver_id TEXT",
     "ALTER TABLE orders ADD COLUMN settlement_id TEXT",
@@ -106,6 +108,7 @@ async function initDatabase() {
     "ALTER TABLE orders ADD COLUMN treasury_id TEXT",
     "ALTER TABLE orders ADD COLUMN customer_notes TEXT",
     "ALTER TABLE cash_transactions ADD COLUMN treasury_id TEXT",
+    "ALTER TABLE cash_transactions ADD COLUMN discount_change REAL",
     "ALTER TABLE cash_shifts ADD COLUMN treasury_id TEXT",
     "ALTER TABLE purchase_invoices ADD COLUMN treasury_id TEXT"
   ]) {
@@ -125,7 +128,13 @@ export async function loadState(): Promise<AppState> {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return structuredClone(initialState);
     const parsed = JSON.parse(saved) as Partial<AppState>;
-    return normalizeAppState(parsed, structuredClone(initialState));
+    const normalized = normalizeAppState(parsed, structuredClone(initialState));
+    if (isLegacyDemoMenu(normalized)) {
+      const migrated = { ...normalized, products: structuredClone(seededProducts), sections: structuredClone(seededSections), categories: structuredClone(seededCategories), meals: structuredClone(seededMeals), recipes: [] };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+      return migrated;
+    }
+    return normalized;
   }
 
   const db = await initDatabase();
@@ -135,6 +144,9 @@ export async function loadState(): Promise<AppState> {
     section: row.section as Product["section"], unit: String(row.unit),
     price: Number(row.price), cost: Number(row.cost), available: Boolean(row.available),
     accent: String(row.accent),
+    reportingMode: row.reporting_mode === "weighted" || row.reporting_mode === "count"
+      ? row.reporting_mode as Product["reportingMode"]
+      : undefined,
     imageDataUrl: row.image_data_url ? String(row.image_data_url) : undefined,
     options: row.options_json ? JSON.parse(String(row.options_json)) : undefined
   }));
@@ -204,6 +216,7 @@ export async function loadState(): Promise<AppState> {
     method: row.method as CashTransaction["method"], amount: Number(row.amount),
     direction: row.direction as CashTransaction["direction"], description: String(row.description),
     orderId: row.order_id ? String(row.order_id) : undefined,
+    discountChange: row.discount_change == null ? undefined : Number(row.discount_change),
     treasuryId: row.treasury_id ? String(row.treasury_id) : transactionTreasuryId(treasuryDefaults, {
       type: row.type as CashTransaction["type"],
       orderId: row.order_id ? String(row.order_id) : undefined,
@@ -268,7 +281,7 @@ export async function loadState(): Promise<AppState> {
     note: row.note ? String(row.note) : undefined, createdAt: String(row.created_at)
   }));
 
-  return {
+  const loadedState: AppState = {
     products,
     sections: setting.menuSections
       ? JSON.parse(setting.menuSections)
@@ -304,6 +317,12 @@ export async function loadState(): Promise<AppState> {
       ? { ...structuredClone(initialState.settings), ...JSON.parse(setting.restaurantSettings) }
       : structuredClone(initialState.settings)
   };
+  if (isLegacyDemoMenu(loadedState)) {
+    const migrated = { ...loadedState, products: structuredClone(seededProducts), sections: structuredClone(seededSections), categories: structuredClone(seededCategories), meals: structuredClone(seededMeals), recipes: [] };
+    await saveState(migrated);
+    return migrated;
+  }
+  return loadedState;
 }
 
 export async function getStateRevision(): Promise<string | null> {
@@ -337,10 +356,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const product of state.products) {
     await db.execute(
-      `INSERT INTO products (id,name,category,section,unit,price,cost,available,accent,options_json,image_data_url)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT(id) DO UPDATE SET name=$2,category=$3,section=$4,unit=$5,price=$6,cost=$7,available=$8,accent=$9,options_json=$10,image_data_url=$11`,
-      [product.id, product.name, product.category, product.section, product.unit, product.price, product.cost, product.available ? 1 : 0, product.accent, product.options?.length ? JSON.stringify(product.options) : null, product.imageDataUrl ?? null]
+      `INSERT INTO products (id,name,category,section,unit,price,cost,available,accent,options_json,image_data_url,reporting_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT(id) DO UPDATE SET name=$2,category=$3,section=$4,unit=$5,price=$6,cost=$7,available=$8,accent=$9,options_json=$10,image_data_url=$11,reporting_mode=$12`,
+      [product.id, product.name, product.category, product.section, product.unit, product.price, product.cost, product.available ? 1 : 0, product.accent, product.options?.length ? JSON.stringify(product.options) : null, product.imageDataUrl ?? null, product.reportingMode ?? null]
     );
   }
   for (const category of state.categories) {
@@ -409,10 +428,10 @@ export async function saveState(state: AppState): Promise<string> {
   }
   for (const transaction of state.cashTransactions) {
     await db.execute(
-      `INSERT INTO cash_transactions (id,type,method,amount,direction,description,order_id,created_at,treasury_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT(id) DO UPDATE SET treasury_id=$9`,
-      [transaction.id, transaction.type, transaction.method, transaction.amount, transaction.direction, transaction.description, transaction.orderId ?? null, transaction.createdAt, transactionTreasuryId(state, transaction)]
+      `INSERT INTO cash_transactions (id,type,method,amount,direction,description,order_id,created_at,treasury_id,discount_change)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT(id) DO UPDATE SET treasury_id=$9,discount_change=$10`,
+      [transaction.id, transaction.type, transaction.method, transaction.amount, transaction.direction, transaction.description, transaction.orderId ?? null, transaction.createdAt, transactionTreasuryId(state, transaction), transaction.discountChange ?? null]
     );
   }
   for (const supplier of state.suppliers) {

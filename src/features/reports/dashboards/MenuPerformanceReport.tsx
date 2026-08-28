@@ -157,13 +157,13 @@ export function MenuPerformanceReport({
               "الوحدة",
               "الكمية المباعة",
               "عدد الطلبات",
-              "سعر البيع",
+              "متوسط سعر الوحدة",
               "إجمالي المبيعات",
               "نسبة المساهمة"
             ],
             rows: filteredItems.map((item, idx) => [
               idx + 1,
-              item.name,
+              `${item.name}${item.optionBreakdown?.length ? ` (${item.optionBreakdown.map((option) => `${qty(option.quantity)} ${option.name}`).join(" + ")})` : ""}`,
               item.section,
               item.unit || "—",
               `${qty(item.quantitySold)} ${item.unit || ""}`,
@@ -427,7 +427,7 @@ export function MenuPerformanceReport({
                     الكمية المباعة {sortBy === "quantity" && (sortAsc ? "▲" : "▼")}
                   </th>
                   <th>مرات الطلب</th>
-                  <th>سعر البيع</th>
+                  <th>متوسط سعر الوحدة</th>
                   <th
                     style={{ cursor: "pointer", color: sortBy === "revenue" ? "#254d3e" : undefined }}
                     onClick={() => handleSort("revenue")}
@@ -463,6 +463,11 @@ export function MenuPerformanceReport({
                       <strong style={{ color: "#15803d", fontSize: "14px", background: "#f0fdf4", padding: "3px 8px", borderRadius: "6px", border: "1px solid #bbf7d0" }}>
                         {qty(item.quantitySold)} {item.unit || ""}
                       </strong>
+                      {item.optionBreakdown?.length ? (
+                        <small style={{ display: "block", marginTop: "5px", color: "#64748b", fontSize: "10px", fontWeight: 600 }}>
+                          {item.optionBreakdown.map((option) => `${qty(option.quantity)} ${option.name}`).join(" + ")}
+                        </small>
+                      ) : null}
                     </td>
                     <td>
                       <span style={{ color: "#475569", fontWeight: 600 }}>{item.ordersCount ?? 1} فاتورة</span>

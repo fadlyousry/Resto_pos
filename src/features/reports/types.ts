@@ -70,6 +70,7 @@ export interface MenuItemMetric {
   totalProfit: number;
   profitMarginPercent: number;
   shareOfSales: number;
+  optionBreakdown?: Array<{ name: string; quantity: number }>;
 }
 
 export interface MenuReportData {
