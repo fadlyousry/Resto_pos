@@ -41,6 +41,18 @@ export function transactionTreasuryId(state: TreasuryState, transaction: Pick<Ca
     : salesTreasuryId(state);
 }
 
+/**
+ * A withdrawal linked to an order reverses previously recorded revenue. It is
+ * presented as a reduction of inflow, not as a new expense or ordinary outflow.
+ */
+export function isOrderRevenueReversal(
+  transaction: Pick<CashTransaction, "type" | "direction" | "orderId">
+) {
+  return transaction.type === "withdrawal"
+    && transaction.direction === "out"
+    && Boolean(transaction.orderId);
+}
+
 export function treasuryName(state: TreasuryState, treasuryId: string | undefined) {
   const resolved = treasuryId ?? salesTreasuryId(state);
   return state.treasuries.find((treasury) => treasury.id === resolved)?.name ?? "خزنة غير معروفة";

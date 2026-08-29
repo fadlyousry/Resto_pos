@@ -2447,9 +2447,11 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-hero-balance strong { color: #111713; font-size: 34px; line-height: 1.15; letter-spacing: -.5px; }
 .cash-hero-balance span { color: #6c7670; font-size: 10px; font-weight: 800; }
 .cash-hero-stats { grid-column: 2; grid-row: 1 / span 2; width: 100%; display: grid; grid-template-columns: repeat(3, minmax(105px, 1fr)); gap: 8px; align-self: stretch; }
+.cash-hero.daily .cash-hero-stats { grid-template-columns: repeat(4, minmax(80px, 1fr)); }
 .cash-hero-stats > span { min-height: 64px; display: grid; align-content: center; justify-items: start; gap: 7px; padding: 10px 13px; border: 1px solid #e0e2df; border-radius: 8px; background: #fafafa; }
 .cash-hero-stats small { color: #3e4943; font-size: 10px; font-weight: 800; }
 .cash-hero-stats b { color: #0e1511; font-size: 16px; font-weight: 800; direction: ltr; white-space: nowrap; }
+.cash-hero-stats .cash-hero-datetime b { direction: rtl; unicode-bidi: plaintext; font-size: 12px; line-height: 1.6; white-space: normal; text-align: right; }
 .light-button { z-index: 1; border: 1px solid #ffffff25; color: #fff; background: #ffffff12; border-radius: 10px; min-height: 40px; padding: 0 14px; display: flex; align-items: center; gap: 7px; font-size: 9px; }
 .light-button svg { width: 17px; }
 .transactions { padding: 3px 18px 12px; }
@@ -2487,6 +2489,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-hero-actions .treasury-balance-button { border-color: #d8c8b7; background: #f7f1ea; color: #6f4e2f; }
 .cash-hero-actions .open-shift-button { border-color: #313b36; background: #313b36; color: #fff; font-weight: 800; }
 .cash-hero-actions .close-shift-button { border-color: #d5a8a2; background: #fbefed; color: #98463e; }
+.cash-hero.shift .cash-hero-actions { grid-template-columns: minmax(170px, 1fr); }
 .cash-date-filter { min-height: 56px; display: flex; align-items: center; justify-content: flex-start; gap: 14px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
 .cash-date-filter > div:first-child { display: flex; align-items: center; gap: 10px; }
 .cash-date-filter > div:first-child > svg { width: 21px; color: var(--green-700); }
@@ -2585,7 +2588,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-method-balance { min-height: 70px; display: grid; place-items: center; align-content: center; padding: 10px 12px; }
 .cash-method-balance small { color: #526159; font-size: 9px; font-weight: 700; }
 .cash-method-balance strong { color: var(--green-950); font-size: 23px; }
-.cash-method-card > footer { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #edf0eb; background: #fafbf9; }
+.cash-method-card > footer { display: grid; grid-template-columns: repeat(2, 1fr); border-top: 1px solid #edf0eb; background: #fafbf9; }
 .cash-method-card > footer span { min-height: 57px; display: grid; place-items: center; align-content: center; gap: 4px; border-left: 1px solid #edf0eb; }
 .cash-method-card > footer span:last-child { border-left: 0; }
 .cash-method-card > footer small { color: #68756e; font-size: 8px; font-weight: 700; }
@@ -2593,35 +2596,18 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-method-card > footer span:first-child b { color: #29704d; }
 .cash-method-card > footer span:nth-child(2) b { color: #aa4e45; }
 .cash-transactions-panel { overflow: visible; position: relative; }
-.cash-transactions-title { flex-wrap: wrap; gap: 10px; }
+.cash-transactions-title { flex-wrap: nowrap; gap: 12px; }
+.cash-transactions-title > div:first-child { flex: 0 0 auto; }
 .cash-transactions-title strong { color: #101713; font-size: 13px; font-weight: 800; }
-.cash-transactions-panel .panel-title > b { min-width: 72px; min-height: 32px; display: grid; place-items: center; border-radius: 8px; background: var(--green-100); color: var(--green-800); font-size: 10px; }
-.cash-transactions-filters { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
-.transaction-direction-filter-wrap { position: relative; }
-.transaction-direction-filter-button { min-width: 175px; height: 34px; min-height: 34px; display: inline-flex; align-items: center; justify-content: space-between; gap: 7px; padding: 4px 10px; border: 1px solid #d4dad6; border-radius: 8px; background: #fff; color: #37473f; font-family: inherit; cursor: pointer; transition: all .16s ease; }
-.transaction-direction-filter-button:hover { border-color: #8eae9e; background: #f7faf8; }
-.transaction-direction-filter-button.active { border-color: var(--green-700); background: #f0f7f3; color: var(--green-900); }
-.transaction-direction-filter-button > svg:first-child { width: 14px; height: 14px; color: var(--green-700); flex-shrink: 0; }
-.transaction-direction-filter-button > span { display: grid; text-align: right; flex: 1 1 auto; gap: 1px; }
-.transaction-direction-filter-button .filter-button-subtitle { font-size: 7px; color: #697c73; font-weight: 700; line-height: 1; }
-.transaction-direction-filter-button strong { font-size: 10px; font-weight: 800; color: #122119; white-space: nowrap; }
-.transaction-direction-filter-button > svg:last-child { width: 13px; height: 13px; color: #697c73; transition: transform .18s ease; }
-.transaction-direction-filter-button > svg:last-child.open { transform: rotate(180deg); }
-.transaction-direction-popover { position: absolute; z-index: 35; top: calc(100% + 6px); right: 0; width: 220px; display: grid; gap: 4px; padding: 7px; border: 1px solid #dce3df; border-radius: 10px; background: #fff; box-shadow: 0 10px 28px #1d332a22; }
-.transaction-direction-popover::before { content: ""; position: absolute; top: -4px; right: 18px; width: 8px; height: 8px; border-top: 1px solid #dce3df; border-right: 1px solid #dce3df; background: #fff; transform: rotate(-45deg); }
-.transaction-direction-popover .treasury-popover-header { padding: 1px 3px 5px; border-bottom: 1px solid #eef2ef; }
-.transaction-direction-popover .treasury-popover-header strong { font-size: 10px; }
-.transaction-direction-popover .treasury-popover-header span { font-size: 8px; }
-.transaction-direction-popover .treasury-popover-list { gap: 3px; }
-.transaction-direction-popover .treasury-popover-item { padding: 6px 8px; gap: 6px; border-width: 1px; border-radius: 7px; }
-.transaction-direction-popover .treasury-popover-item .treasury-item-info strong { font-size: 10px; }
-.transaction-direction-popover .treasury-popover-item .treasury-item-info small { font-size: 7.5px; }
-.transaction-direction-popover .treasury-popover-item .treasury-item-balance { font-size: 10px; }
-.transaction-method-filter { display: flex; align-items: center; gap: 6px; }
-.transaction-method-filter button { min-height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #d4dad6; border-radius: 8px; background: #fff; color: #405048; padding: 0 10px; font-family: inherit; font-size: 8px; font-weight: 800; cursor: pointer; }
-.transaction-method-filter button svg { width: 14px; }
-.transaction-method-filter button:hover { border-color: #9db5aa; background: #f7faf8; }
-.transaction-method-filter button.active { border-color: var(--green-800); background: var(--green-800); color: #fff; box-shadow: 0 4px 12px #183d3016; }
+.cash-transactions-panel .panel-title > b { min-width: 76px; min-height: 36px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid #cee0d6; border-radius: 9px; background: linear-gradient(180deg, #edf7f1, #e4f1e9); color: var(--green-800); font-size: 10px; }
+.cash-transactions-filters { min-width: 0; display: flex; flex: 1 1 auto; align-items: center; justify-content: flex-end; gap: 7px; margin-inline-start: auto; flex-wrap: nowrap; }
+.cash-transactions-filters label { position: relative; width: 138px; min-width: 118px; min-height: 36px; display: grid; grid-template-columns: minmax(0, 1fr) 14px; align-content: center; gap: 6px; padding: 4px 10px; overflow: hidden; border: 1px solid #d8dfdb; border-radius: 9px; background: linear-gradient(180deg, #fff, #fafcfb); box-shadow: 0 2px 7px #1d332a0a; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
+.cash-transactions-filters label:hover { border-color: #91ad9f; background: #f8fbf9; box-shadow: 0 3px 10px #1d332a12; }
+.cash-transactions-filters label:focus-within { border-color: var(--green-700); box-shadow: 0 0 0 3px #376b5514; }
+.cash-transactions-filters label.active { border-color: #79a18c; background: #f0f7f3; }
+.cash-transactions-filters select { width: 100%; min-width: 0; appearance: none; overflow: hidden; border: 0; outline: 0; padding-inline-start: 4px; background: transparent; color: #17271f; font: 800 10px Cairo, sans-serif; text-overflow: ellipsis; cursor: pointer; }
+.cash-transactions-filters select option { padding: 7px 12px; text-indent: 6px; direction: rtl; text-align: right; }
+.cash-transactions-filters label > svg { width: 13px; height: 13px; align-self: center; color: #587166; pointer-events: none; }
 .cash-transactions-head,
 .cash-transaction-row { min-width: 1040px; display: grid; grid-template-columns: 110px minmax(220px, 1.45fr) 120px 90px 110px 70px 90px 105px; align-items: center; gap: 10px; padding: 0 14px; }
 .cash-transactions-scroll { max-height: 402px; overflow: auto; border-top: 1px solid var(--line); }
@@ -2659,12 +2645,6 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-expense-form > label > select:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px #376b5514; }
 .shift-closed-hint { color: #a84c42 !important; font-weight: 800 !important; }
 .daily-revenue-view { display: grid; gap: 15px; }
-.daily-revenue-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.daily-info-strip { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #f7f9f7; }
-.daily-info-strip > span { display: flex; align-items: center; gap: 8px; padding: 7px 13px; border-radius: 8px; background: #fff; border: 1px solid #e8ece9; }
-.daily-info-strip > span > svg { width: 15px; flex: 0 0 auto; color: #5c7b6a; }
-.daily-info-strip small { color: #5c6962; font-size: 8px; font-weight: 700; }
-.daily-info-strip b { color: #1a3d2e; font-size: 10px; }
 .simple-daily-modal { display: grid; gap: 12px; }
 .simple-daily-date-row { display: flex; align-items: end; gap: 8px; padding: 10px; border: 1px solid #dce4df; border-radius: 11px; background: #f7f9f7; }
 .simple-daily-date-row label { flex: 1; display: grid; grid-template-columns: 18px 1fr; gap: 4px 7px; color: #263a30; }
@@ -2683,6 +2663,8 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .simple-daily-kpis article strong { color: #17231e; font-size: 17px; }
 .simple-daily-kpis article.positive strong { color: #23704a; }
 .simple-daily-kpis article.negative strong { color: #a8443c; }
+.simple-daily-note { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border: 1px solid #d9e5de; border-radius: 10px; background: #f3f8f5; color: #40564b; font-size: 9px; font-weight: 700; line-height: 1.8; }
+.simple-daily-note svg { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 1px; color: #376b55; }
 .simple-daily-methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid #dfe5e1; border-radius: 11px; }
 .simple-daily-methods span { min-height: 68px; display: grid; grid-template-columns: 20px 1fr; align-content: center; gap: 2px 6px; padding: 8px 10px; background: #fafcfa; }
 .simple-daily-methods span + span { border-right: 1px solid #dfe5e1; }
@@ -2697,13 +2679,6 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .revenue-change.up { background: #e0f5ea; color: #2a7a4d; }
 .revenue-change.down { background: #fce8e8; color: #a8413a; }
 .revenue-change svg { width: 14px; }
-.revenue-change-inline { background: #eef5f0; border: 1px solid #d4e3d9; }
-.revenue-change-inline.up { background: #e5f5eb; border-color: #c0dfc9; }
-.revenue-change-inline.up b { color: #2a7a4d; }
-.revenue-change-inline.down { background: #fdf2f0; border-color: #f0d5d0; }
-.revenue-change-inline.down b { color: #a8413a; }
-.revenue-change-inline svg { width: 14px; flex: 0 0 auto; }
-.daily-method-section,
 .daily-shifts-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
 .daily-section-heading { min-height: 61px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); }
 .daily-section-heading > div { display: flex; align-items: center; gap: 9px; }
@@ -2714,44 +2689,16 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .daily-section-heading > span { display: grid; justify-items: end; gap: 3px; }
 .daily-section-heading > span b,
 .daily-section-heading > b { color: var(--green-800); font-size: 15px; }
-.daily-method-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; padding: 12px; }
-.daily-method-card { overflow: hidden; border: 1px solid #dfe4e0; border-radius: 11px; background: #fbfcfa; }
-.daily-method-card > header { min-height: 59px; display: grid; grid-template-columns: 35px 1fr auto; align-items: center; gap: 8px; padding: 9px 11px; }
-.daily-method-card > header > span { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 9px; }
-.daily-method-card > header > span svg { width: 17px; }
-.daily-method-card.cash > header > span { background: #e5f3eb; color: #307352; }
-.daily-method-card.instapay > header > span { background: #e6f1f7; color: #32728d; }
-.daily-method-card.vodafone > header > span { background: #f9e8e6; color: #ab443c; }
-.daily-method-card > header > div { display: grid; gap: 3px; }
-.daily-method-card > header strong { color: #17231e; font-size: 10px; }
-.daily-method-card > header small { color: #647169; font-size: 8px; font-weight: 600; }
-.daily-method-card > header > b { min-height: 26px; display: grid; place-items: center; border-radius: 7px; padding: 0 7px; background: #eef2ef; color: #3d5147; font-size: 9px; }
-.daily-method-amount { display: grid; gap: 4px; padding: 3px 12px 10px; }
-.daily-method-amount small { color: #637068; font-size: 8px; font-weight: 700; }
-.daily-method-amount strong { color: #16241d; font-size: 20px; }
-.daily-method-progress { height: 5px; margin: 0 12px 11px; overflow: hidden; border-radius: 99px; background: #e9ecea; }
-.daily-method-progress i { height: 100%; display: block; border-radius: inherit; background: #438065; }
-.daily-method-card.instapay .daily-method-progress i { background: #4687a2; }
-.daily-method-card.vodafone .daily-method-progress i { background: #be554b; }
-.daily-method-card > footer { min-height: 43px; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #e7ebe8; background: #fff; }
-.daily-method-card > footer span { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 0 10px; color: #637068; font-size: 8px; font-weight: 700; }
-.daily-method-card > footer span + span { border-right: 1px solid #e7ebe8; }
-.daily-method-card > footer b { color: #17231e; font-size: 9px; }
 .daily-shifts-table-head,
-.daily-shift-row { min-width: 1205px; display: grid; grid-template-columns: 110px 220px repeat(3, 95px) 95px 105px 105px 110px 115px; align-items: center; gap: 9px; padding: 0 14px; }
-.daily-shifts-table-head { min-height: 41px; position: sticky; top: 0; z-index: 2; background: #f3f5f2; color: #4e5b54; font-size: 8px; font-weight: 800; }
-.daily-shift-row { min-height: 67px; border-top: 1px solid #edf0ed; }
+.daily-shift-row { min-width: 1435px; display: grid; grid-template-columns: 85px 85px 155px 155px 90px repeat(3, 90px) 110px 90px 90px 100px 90px; align-items: center; gap: 9px; padding: 0 14px; }
+.daily-shifts-table-head { min-height: 43px; position: sticky; top: 0; z-index: 2; border-bottom: 1px solid #dfe6e2; background: #f2f6f3; color: #425149; font-size: 8px; font-weight: 800; }
+.daily-shifts-table-head > span { white-space: nowrap; }
+.daily-shift-row { min-height: 58px; border-bottom: 1px solid #edf0ed; }
 .daily-shift-row:nth-child(even):not(.daily-shift-totals) { background: #fafcf9; }
-.daily-shift-row > span:first-child,
-.daily-shift-row > span:nth-child(2) { display: grid; gap: 4px; }
-.daily-shift-row strong { color: #15221b; font-size: 10px; }
-.daily-shift-row .cash-shift-status { min-height: 22px; padding: 0 7px; font-size: 7px; }
-.daily-shift-row .shift-duration { color: #829089; font-size: 7px; font-weight: 600; }
-.daily-shift-row span:nth-child(2) b { font-size: 9px; }
-.daily-shift-row span:nth-child(2) small { color: #69766f; font-size: 8px; font-weight: 600; }
-.daily-shift-period b { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
-.daily-shift-period b small,
-.daily-shift-period > small strong { color: #425149; font-size: inherit; font-weight: 800; }
+.daily-shift-row > strong:first-child { color: #15221b; font-size: 10px; white-space: nowrap; }
+.daily-shift-row .cash-shift-status { min-height: 25px; justify-self: start; padding: 0 8px; font-size: 8px; }
+.daily-shift-time { direction: rtl; unicode-bidi: plaintext; color: #47564e; font-size: 9px; font-weight: 700; line-height: 1.5; }
+.daily-shift-row .shift-duration { color: #59675f; font-size: 9px; font-weight: 700; white-space: nowrap; }
 .daily-shift-row > b { color: #17231e; font-size: 10px; }
 .daily-shift-row > b.out { color: #a64a41; }
 .daily-shift-row > b.net { color: #27714b; }
@@ -2773,26 +2720,30 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .daily-discrepancy-amount.surplus strong { color: #15803d; }
 .daily-discrepancy-amount.shortage strong { color: #dc2626; }
 .daily-discrepancy-amount span { font-size: 10px; font-weight: 800; color: #64748b; }
-.shift-bar { grid-column: 1 / -1; height: 4px; margin: -6px 14px 6px; border-radius: 99px; background: #eaeeed; overflow: hidden; }
-.shift-bar i { height: 100%; display: block; border-radius: inherit; background: linear-gradient(90deg, #3d7c5e, #6bb88e); transition: width 0.5s ease; }
 .daily-shift-totals { background: #f0f4f1 !important; border-top: 2px solid #c8d4cd !important; min-height: 56px; }
-.daily-shift-totals > span:first-child strong { color: #2a6b47 !important; }
+.daily-shift-totals > strong:first-child { color: #2a6b47 !important; }
 .daily-shift-totals > b { color: #1a3d2e !important; font-weight: 900 !important; }
-.daily-shift-outside-note { display: flex; align-items: center; gap: 8px; min-width: 1000px; padding: 10px 14px; border-top: 1px solid #e7ece9; background: #fef9f0; color: #8a6530; font-size: 9px; font-weight: 600; }
-.daily-shift-outside-note svg { flex: 0 0 auto; }
-.daily-revenue-transactions { overflow: hidden; }
-.daily-revenue-table-scroll { max-height: 380px; overflow: auto; }
+.daily-revenue-transactions { overflow: hidden; border-radius: 14px; box-shadow: 0 6px 20px #1d332a0a; }
+.daily-revenue-transactions .panel-title { min-height: 66px; border-bottom: 1px solid #dfe6e2; background: linear-gradient(180deg, #fff, #fbfcfb); }
+.daily-revenue-filters label { width: 126px; min-width: 104px; }
+.daily-revenue-table-scroll { max-height: 410px; overflow: auto; background: #fff; }
 .daily-revenue-table-head,
 .daily-revenue-row { min-width: 900px; display: grid; grid-template-columns: 125px minmax(245px, 1.5fr) 95px 105px 135px 115px; align-items: center; gap: 10px; padding: 0 15px; }
-.daily-revenue-table-head { min-height: 41px; position: sticky; top: 0; z-index: 2; background: #f3f5f2; color: #4e5b54; font-size: 8px; font-weight: 800; }
-.daily-revenue-row { min-height: 63px; border-top: 1px solid #edf0ed; color: #26342d; font-size: 9px; }
-.daily-revenue-row:nth-child(even) { background: #fafcf9; }
+.daily-revenue-table-head { min-height: 43px; position: sticky; top: 0; z-index: 2; border-bottom: 1px solid #dfe6e2; background: #f2f6f3; color: #425149; font-size: 8px; font-weight: 800; box-shadow: 0 2px 5px #1d332a0a; }
+.daily-revenue-row { min-height: 66px; border-bottom: 1px solid #e9eeeb; color: #26342d; font-size: 9px; transition: background .15s ease; }
+.daily-revenue-row:nth-child(even) { background: #fbfcfb; }
+.daily-revenue-row:hover { background: #f4f9f6; }
+.daily-revenue-row.withdrawal { background: #fffaf8; }
+.daily-revenue-row.withdrawal:hover { background: #fff5f1; }
+.daily-revenue-row > span:first-child { color: #536159; font-weight: 700; line-height: 1.7; }
 .daily-revenue-row > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
 .daily-revenue-row > span:nth-child(2) strong { overflow: hidden; color: #111b15; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .daily-revenue-row > span:nth-child(2) small { color: #69766f; font-size: 8px; }
 .daily-revenue-row > b { font-size: 9px; }
-.daily-revenue-amount { color: #26704a; font-size: 11px !important; direction: ltr; }
-.invoice-num { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 5px; background: #eaf3ee; color: #2d6b48; font-size: 9px; font-weight: 800; direction: ltr; margin-bottom: 1px; }
+.daily-revenue-shift { width: fit-content; padding: 4px 8px; border-radius: 6px; background: #f0f3f1; color: #405048; white-space: nowrap; }
+.daily-revenue-amount { width: fit-content; justify-self: start; padding: 5px 9px; border-radius: 7px; background: #eaf5ee; color: #26704a; font-size: 11px !important; direction: ltr; }
+.daily-revenue-amount.out { background: #fbecea; color: #b0443a; }
+.invoice-num { width: fit-content; justify-self: start; display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 5px; background: #eaf3ee; color: #2d6b48; font-size: 9px; font-weight: 800; direction: ltr; margin-bottom: 1px; }
 
 .treasury-manager { display: grid; gap: 13px; }
 .treasury-defaults { display: grid; grid-template-columns: minmax(250px, 1.25fr) repeat(2, minmax(210px, 1fr)); align-items: end; gap: 10px; padding: 13px; border: 1px solid #cfe0d7; border-radius: 12px; background: #f2f7f4; }
@@ -2957,7 +2908,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-page .panel-title strong { font-size: 14px; }
 .cash-page .panel-title small { font-size: 10px; }
 .cash-page .cash-transactions-panel .panel-title > b { font-size: 11px; }
-.cash-page .transaction-method-filter button { font-size: 10px; }
+.cash-page .cash-transactions-filters select { font-size: 11px; }
 .cash-page .cash-transactions-head { font-size: 10px; }
 .cash-page .cash-transaction-date { font-size: 10px; }
 .cash-page .cash-transaction-description strong { font-size: 12px; }
@@ -2969,20 +2920,11 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-page .transaction-balance { font-size: 13px; }
 .cash-page .mini-stat small { font-size: 11px; }
 .cash-page .mini-stat strong { font-size: 16px; }
-.cash-page .daily-info-strip small { font-size: 10px; }
-.cash-page .daily-info-strip b { font-size: 12px; }
 .cash-page .revenue-change { font-size: 10px; }
 .cash-page .daily-section-heading strong { font-size: 13px; }
 .cash-page .daily-section-heading small { font-size: 10px; }
 .cash-page .daily-section-heading > span b,
 .cash-page .daily-section-heading > b { font-size: 17px; }
-.cash-page .daily-method-card > header strong { font-size: 12px; }
-.cash-page .daily-method-card > header small { font-size: 10px; }
-.cash-page .daily-method-card > header > b { font-size: 10px; }
-.cash-page .daily-method-amount small { font-size: 10px; }
-.cash-page .daily-method-amount strong { font-size: 23px; }
-.cash-page .daily-method-card > footer span { font-size: 10px; }
-.cash-page .daily-method-card > footer b { font-size: 11px; }
 .cash-page .daily-shifts-table-head,
 .cash-page .daily-revenue-table-head { font-size: 10px; }
 .cash-page .daily-shift-row strong { font-size: 12px; }
@@ -2991,7 +2933,6 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .cash-page .daily-shift-row span:nth-child(2) b,
 .cash-page .daily-shift-row > b { font-size: 11px; }
 .cash-page .daily-shift-row span:nth-child(2) small { font-size: 10px; }
-.cash-page .daily-shift-outside-note { font-size: 10px; }
 .cash-page .daily-revenue-row { font-size: 11px; }
 .cash-page .daily-revenue-row > span:nth-child(2) strong { font-size: 12px; }
 .cash-page .daily-revenue-row > span:nth-child(2) small { font-size: 10px; }
@@ -4867,6 +4808,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   .cash-hero-stats { grid-column: 1; grid-row: auto; }
   .cash-hero-amount { padding-inline-start: 47px; }
   .cash-hero-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cash-hero.daily .cash-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cash-hero-actions { border-top: 1px solid #dedfdd; border-right: 0; }
   .purchase-stats-bar { grid-template-columns: 1fr 1fr; }
   .purchase-invoice-row { grid-template-columns: 45px 1.2fr 1fr 0.8fr 0.7fr 0.8fr 0.7fr 75px; font-size: 10px; }

@@ -1,6 +1,6 @@
 import type { AppState, OrderItem, PaymentMethod, Product } from "../../../domain/types";
 import { dateKey } from "../../../shared/format";
-import { purchasesTreasuryId, salesTreasuryId, transactionTreasuryId, treasuryName } from "../../../shared/treasury";
+import { isOrderRevenueReversal, purchasesTreasuryId, salesTreasuryId, transactionTreasuryId, treasuryName } from "../../../shared/treasury";
 import type {
   CustomerReportData,
   DateRangeFilter,
@@ -345,7 +345,7 @@ export function computeProfitLossReport(state: AppState, filter: DateRangeFilter
 
   // Operational Expenses
   const periodExpenses = state.cashTransactions.filter(
-    (t) => isDateInRange(t.createdAt, filter.from, filter.to) && t.type === "expense"
+    (t) => isDateInRange(t.createdAt, filter.from, filter.to) && t.type === "expense" && t.direction === "out"
   );
   const operationalExpenses = periodExpenses.reduce((sum, t) => sum + t.amount, 0);
 
@@ -409,11 +409,17 @@ export function computeTreasuryReport(state: AppState, filter: DateRangeFilter):
     isDateInRange(t.createdAt, filter.from, filter.to)
   );
 
+  const reversalOutflow = periodTransactions
+    .filter(isOrderRevenueReversal)
+    .reduce((sum, t) => sum + t.amount, 0);
   const totalInflow = periodTransactions
     .filter((t) => t.direction === "in")
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + t.amount, 0) - reversalOutflow;
   const totalOutflow = periodTransactions
-    .filter((t) => t.direction === "out")
+    .filter((t) => t.direction === "out" && !isOrderRevenueReversal(t))
+    .reduce((sum, t) => sum + t.amount, 0);
+  const totalExpenses = periodTransactions
+    .filter((t) => t.type === "expense" && t.direction === "out")
     .reduce((sum, t) => sum + t.amount, 0);
   const netMovement = totalInflow - totalOutflow;
 
@@ -422,11 +428,14 @@ export function computeTreasuryReport(state: AppState, filter: DateRangeFilter):
     const periodTreasuryTxns = periodTransactions.filter(
       (t) => transactionTreasuryId(state, t) === treasury.id
     );
+    const treasuryReversals = periodTreasuryTxns
+      .filter(isOrderRevenueReversal)
+      .reduce((sum, t) => sum + t.amount, 0);
     const inflow = periodTreasuryTxns
       .filter((t) => t.direction === "in")
-      .reduce((sum, t) => sum + t.amount, 0);
+      .reduce((sum, t) => sum + t.amount, 0) - treasuryReversals;
     const outflow = periodTreasuryTxns
-      .filter((t) => t.direction === "out")
+      .filter((t) => t.direction === "out" && !isOrderRevenueReversal(t))
       .reduce((sum, t) => sum + t.amount, 0);
     const balance = inflow - outflow;
 
@@ -491,7 +500,7 @@ export function computeTreasuryReport(state: AppState, filter: DateRangeFilter):
 
     const revenue = income - editOutflow;
     const expenses = shiftTxns
-      .filter((t) => t.type === "expense")
+      .filter((t) => t.type === "expense" && t.direction === "out")
       .reduce((sum, t) => sum + t.amount, 0);
 
     return {
@@ -516,6 +525,7 @@ export function computeTreasuryReport(state: AppState, filter: DateRangeFilter):
     totalSafeBalance,
     totalInflow,
     totalOutflow,
+    totalExpenses,
     netMovement,
     shifts
   };

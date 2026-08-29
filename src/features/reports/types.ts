@@ -134,8 +134,12 @@ export interface TreasuryReportData {
     isPurchasesDefault: boolean;
   }>;
   totalSafeBalance: number;
+  /** Incoming movements after subtracting order-linked revenue reversals. */
   totalInflow: number;
+  /** Actual outgoing movements, excluding order-linked revenue reversals. */
   totalOutflow: number;
+  /** Only explicit outgoing expense transactions; excludes reversals and withdrawals. */
+  totalExpenses: number;
   netMovement: number;
   shifts: Array<{
     id: string;

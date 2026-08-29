@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeftRight, Banknote, BarChart3, Bike, Calculator, CalendarRange, Check,
+  ArrowLeftRight, Banknote, BarChart3, Bike, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, ClipboardList, Clock3, CookingPot, CreditCard,
   Edit3, Info, ListFilter, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
   ReceiptText, Save, Scale, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
@@ -17,7 +17,7 @@ import {
   dateKey, dateTimeValue, money, orderDisplayNumber, paymentLabels, shortDate, stageLabels, todayKey, qty
 } from "../../shared/format";
 import { uid } from "../../shared/id";
-import { purchasesTreasuryId, salesTreasuryId, treasuryName, transactionTreasuryId } from "../../shared/treasury";
+import { isOrderRevenueReversal, purchasesTreasuryId, salesTreasuryId, treasuryName, transactionTreasuryId } from "../../shared/treasury";
 import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
 import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
 import { playOrderConfirmedSound } from "../../shared/sound";
@@ -3250,7 +3250,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const [treasuryNameDrafts, setTreasuryNameDrafts] = useState<Record<string, string>>({});
   const [transactionMethodFilter, setTransactionMethodFilter] = useState<"all" | PaymentMethod>("all");
   const [transactionDirectionFilter, setTransactionDirectionFilter] = useState<"all" | "in" | "out">("all");
-  const [directionFilterOpen, setDirectionFilterOpen] = useState(false);
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<"all" | CashTransaction["type"]>("all");
   const [dailyMethodFilter, setDailyMethodFilter] = useState<"all" | PaymentMethod>("all");
   const [expense, setExpense] = useState(false);
   const [expenseData, setExpenseData] = useState<{ amount: number; description: string; method: PaymentMethod; treasuryId: string }>({
@@ -3314,10 +3314,9 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     const handleDocumentClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;
-      if (!target.closest(".cash-treasury-filter-wrap") && !target.closest(".cash-date-range-wrap") && !target.closest(".transaction-direction-filter-wrap")) {
+      if (!target.closest(".cash-treasury-filter-wrap") && !target.closest(".cash-date-range-wrap")) {
         setTreasuryFilterOpen(false);
         setCashDateFilterOpen(false);
-        setDirectionFilterOpen(false);
       }
     };
     document.addEventListener("mousedown", handleDocumentClick);
@@ -3325,23 +3324,16 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   }, []);
   const toggleTreasuryFilter = () => {
     setCashDateFilterOpen(false);
-    setDirectionFilterOpen(false);
     setTreasuryFilterOpen((open) => !open);
   };
   const toggleCashDateFilter = () => {
     setTreasuryFilterOpen(false);
-    setDirectionFilterOpen(false);
     if (!cashDateFilterOpen) {
       setDraftCashDatePreset(cashDatePreset);
       setDraftCashDateFrom(cashDateFrom);
       setDraftCashDateTo(cashDateTo);
     }
     setCashDateFilterOpen((open) => !open);
-  };
-  const toggleDirectionFilter = () => {
-    setTreasuryFilterOpen(false);
-    setCashDateFilterOpen(false);
-    setDirectionFilterOpen((open) => !open);
   };
   const applyCashDateFilter = () => {
     if (draftCashDateFrom && draftCashDateTo && draftCashDateFrom > draftCashDateTo) {
@@ -3411,7 +3403,12 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const dailySalesRevenue = dailyRevenueTransactions.filter((transaction) => transaction.type === "sale").reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyCollections = dailyRevenueTransactions.filter((transaction) => transaction.type === "collection").reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyEditDeposits = dailyRevenueTransactions.filter((transaction) => transaction.type === "deposit").reduce((sum, transaction) => sum + transaction.amount, 0);
-  const dailyOperationalExpenses = selectedTransactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + transaction.amount, 0);
+  // Only explicit expense transactions are business expenses. Withdrawals used
+  // to reverse or delete an order still affect the treasury balance, but must
+  // never inflate the expenses figure.
+  const dailyOperationalExpenses = selectedTransactions
+    .filter((transaction) => transaction.type === "expense" && transaction.direction === "out")
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
   const dailyRevenue = dailySalesRevenue + dailyCollections + dailyEditDeposits - dailyEditWithdrawalsTotal;
   const dailyNet = dailyRevenue - dailyOperationalExpenses;
   const dailyOrders = state.orders.filter((order) =>
@@ -3420,9 +3417,6 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
   );
   const dailyOrderCount = dailyOrders.length;
-  const dailyAvgOrder = dailyOrderCount ? dailyOrders.reduce((sum, order) => sum + order.total, 0) / dailyOrderCount : 0;
-  const dailyPending = dailyOrders.filter((order) => order.paymentStatus === "pending").reduce((sum, order) => sum + order.total, 0);
-  const dailyOrderDiscounts = dailyOrders.reduce((sum, order) => sum + order.discount, 0);
   const collectedAtByOrderId = new Map<string, string>();
   const trackedInitialDiscountOrderIds = new Set<string>();
   [...state.cashTransactions]
@@ -3449,16 +3443,6 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         if (trackedSettlement) trackedInitialDiscountOrderIds.add(orderId);
       }
     }));
-  const recordedCollectedDiscounts = selectedTransactions
-    .reduce((sum, transaction) => sum + (transaction.discountChange ?? 0), 0);
-  const legacyCollectedDiscounts = state.orders
-    .filter((order) => order.discount > 0
-      && !trackedInitialDiscountOrderIds.has(order.id)
-      && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
-      && Boolean(collectedAtByOrderId.get(order.id) && isInCashDateRange(collectedAtByOrderId.get(order.id)!)))
-    .reduce((sum, order) => sum + order.discount, 0);
-  const dailyCollectedDiscounts = recordedCollectedDiscounts + legacyCollectedDiscounts;
-  const dailyDeliveryFees = dailyOrders.reduce((sum, order) => sum + order.deliveryFee, 0);
   const simpleDailyTransactions = state.cashTransactions.filter((transaction) =>
     dateKey(transaction.createdAt) === simpleDailyDate
     && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
@@ -3478,7 +3462,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const simpleDailyRevenue = simpleDailyIncome.reduce((sum, transaction) => sum + transaction.amount, 0)
     - simpleDailyReversals.reduce((sum, transaction) => sum + transaction.amount, 0);
   const simpleDailyExpenses = simpleDailyTransactions
-    .filter((transaction) => transaction.type === "expense")
+    .filter((transaction) => transaction.type === "expense" && transaction.direction === "out")
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const simpleDailyOrders = state.orders.filter((order) =>
     dateKey(order.createdAt) === simpleDailyDate
@@ -3520,14 +3504,16 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const yesterdayRevenue = yesterdayRevenueIn - yesterdayEditWithdrawals;
   const revenueChangePercent = comparisonDateKey && yesterdayRevenue ? ((dailyRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 : null;
   const dailyMethodRevenue = (method: PaymentMethod) => {
-    const incoming = dailyRevenueTransactions.filter((transaction) => transaction.method === method);
+    const incomingTransactions = dailyRevenueTransactions.filter((transaction) => transaction.method === method);
     const methodEditWithdrawals = dailyEditWithdrawals.filter((transaction) => transaction.method === method);
-    const methodExpenses = selectedTransactions.filter((transaction) => transaction.method === method && transaction.type === "expense");
-    const amountIn = incoming.reduce((sum, transaction) => sum + transaction.amount, 0);
+    const methodExpenses = selectedTransactions.filter((transaction) =>
+      transaction.method === method && transaction.type === "expense" && transaction.direction === "out"
+    );
+    const amountIn = incomingTransactions.reduce((sum, transaction) => sum + transaction.amount, 0);
     const amountEditOut = methodEditWithdrawals.reduce((sum, transaction) => sum + transaction.amount, 0);
-    const amount = amountIn - amountEditOut;
+    const incoming = amountIn - amountEditOut;
     const outgoing = methodExpenses.reduce((sum, transaction) => sum + transaction.amount, 0);
-    return { amount, outgoing, net: amount - outgoing, count: incoming.length + methodEditWithdrawals.length, share: dailyRevenue ? (Math.max(0, amount) / Math.max(1, dailyRevenue)) * 100 : 0 };
+    return { incoming, outgoing, balance: incoming - outgoing };
   };
   const dailyShiftRows = [...selectedShifts]
     .sort((a, b) => new Date(a.openedAt).getTime() - new Date(b.openedAt).getTime())
@@ -3549,7 +3535,9 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         return methodIn - methodEditOut;
       };
       const revenue = incomeFor("cash") + incomeFor("instapay") + incomeFor("vodafone");
-      const expenses = transactions.filter((transaction) => transaction.type === "expense").reduce((sum, transaction) => sum + transaction.amount, 0);
+      const expenses = transactions
+        .filter((transaction) => transaction.type === "expense" && transaction.direction === "out")
+        .reduce((sum, transaction) => sum + transaction.amount, 0);
       return { shift, cash: incomeFor("cash"), instapay: incomeFor("instapay"), vodafone: incomeFor("vodafone"), revenue, expenses, net: revenue - expenses, transactions: transactions.length, closingVarianceInPeriod: Boolean(shift.closedAt && isInCashDateRange(shift.closedAt)) };
     });
   const shiftTransactions = viewedShift
@@ -3564,16 +3552,21 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const filteredTransactions = displayedTransactions.filter((transaction) => {
     const matchesMethod = transactionMethodFilter === "all" || transaction.method === transactionMethodFilter;
     const matchesDirection = transactionDirectionFilter === "all" || transaction.direction === transactionDirectionFilter;
-    return matchesMethod && matchesDirection;
+    const matchesType = transactionTypeFilter === "all" || transaction.type === transactionTypeFilter;
+    return matchesMethod && matchesDirection && matchesType;
   });
+  const hasTransactionFilters = transactionMethodFilter !== "all"
+    || transactionDirectionFilter !== "all"
+    || transactionTypeFilter !== "all";
   const displayedOpeningBalance = cashTab === "shift" ? (viewedShift?.openingBalance ?? 0) : 0;
   const methodSummary = (method: PaymentMethod) => {
     const sourceTransactions = displayedTransactions;
     const transactions = sourceTransactions.filter((transaction) => transaction.method === method);
-    const incoming = transactions.filter((transaction) => transaction.direction === "in").reduce((sum, transaction) => sum + transaction.amount, 0);
-    const outgoing = transactions.filter((transaction) => transaction.direction === "out").reduce((sum, transaction) => sum + transaction.amount, 0);
+    const reversedRevenue = transactions.filter(isOrderRevenueReversal).reduce((sum, transaction) => sum + transaction.amount, 0);
+    const incoming = transactions.filter((transaction) => transaction.direction === "in").reduce((sum, transaction) => sum + transaction.amount, 0) - reversedRevenue;
+    const outgoing = transactions.filter((transaction) => transaction.direction === "out" && !isOrderRevenueReversal(transaction)).reduce((sum, transaction) => sum + transaction.amount, 0);
     const opening = (cashTab === "shift" && method === "cash") ? displayedOpeningBalance : 0;
-    return { incoming, outgoing, count: transactions.length, balance: incoming - outgoing + opening };
+    return { incoming, outgoing, balance: incoming - outgoing + opening };
   };
   const cashSummary = methodSummary("cash");
   const instapaySummary = methodSummary("instapay");
@@ -3635,23 +3628,26 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const reportPeriodTransactions = reportAllTransactions
     .filter((transaction) => isInCashDateRange(transaction.createdAt))
     .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+  const reportReversals = reportPeriodTransactions
+    .filter(isOrderRevenueReversal)
+    .reduce((sum, transaction) => sum + transaction.amount, 0);
   const reportIncoming = reportPeriodTransactions
     .filter((transaction) => transaction.direction === "in")
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + transaction.amount, 0) - reportReversals;
   const reportOutgoing = reportPeriodTransactions
-    .filter((transaction) => transaction.direction === "out")
+    .filter((transaction) => transaction.direction === "out" && !isOrderRevenueReversal(transaction))
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const reportDeposits = reportPeriodTransactions
     .filter((transaction) => transaction.type === "deposit" && transaction.direction === "in")
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const reportSalesAndCollections = reportPeriodTransactions
     .filter((transaction) => transaction.direction === "in" && (transaction.type === "sale" || transaction.type === "collection"))
-    .reduce((sum, transaction) => sum + transaction.amount, 0);
+    .reduce((sum, transaction) => sum + transaction.amount, 0) - reportReversals;
   const reportExpenses = reportPeriodTransactions
     .filter((transaction) => transaction.type === "expense" && transaction.direction === "out")
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const reportWithdrawals = reportPeriodTransactions
-    .filter((transaction) => transaction.type === "withdrawal" && transaction.direction === "out")
+    .filter((transaction) => transaction.type === "withdrawal" && transaction.direction === "out" && !isOrderRevenueReversal(transaction))
     .reduce((sum, transaction) => sum + transaction.amount, 0);
   const reportClosingBalance = reportOpeningBalance + reportIncoming - reportOutgoing;
   let reportRunningBalance = reportOpeningBalance;
@@ -3879,7 +3875,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     setTreasuryReportOpen(true);
   };
   const cashHeroAmount = cashTab === "daily"
-    ? dailyRevenue
+    ? dailyNet
     : cashTab === "treasury" ? selectedTreasuryClosingBalance : totalBalance;
   const cashHeroTitle = cashTab === "treasury"
     ? `أرصدة ${selectedTreasuryLabel}`
@@ -3888,18 +3884,19 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
   const cashHeroStats = cashTab === "treasury"
     ? [
       { label: "الخزن المسجلة", value: `${state.treasuries.length}` },
-      { label: "الوارد بالفترة", value: money(cashSummary.incoming + instapaySummary.incoming + vodafoneSummary.incoming) },
-      { label: "المنصرف بالفترة", value: money(cashSummary.outgoing + instapaySummary.outgoing + vodafoneSummary.outgoing) }
+      { label: "إجمالي الوارد", value: money(cashSummary.incoming + instapaySummary.incoming + vodafoneSummary.incoming) },
+      { label: "المصروفات", value: money(dailyOperationalExpenses) }
     ]
     : cashTab === "daily" ? [
       { label: "عدد الطلبات", value: `${dailyOrderCount}` },
       { label: "عدد الورديات", value: `${selectedShifts.length}` },
-      { label: "صافي الإيراد", value: money(dailyNet) }
+      { label: "إجمالي الإيراد", value: money(dailyRevenue) },
+      { label: "المصروفات", value: money(dailyOperationalExpenses) }
     ] : [
       { label: "رصيد البداية", value: money(displayedOpeningBalance) },
       { label: "حركات الوردية", value: `${shiftTransactions.length}` },
       activeShift
-        ? { label: "وقت فتح الوردية", value: new Date(activeShift.openedAt).toLocaleTimeString("ar-EG", { hour: "numeric", minute: "2-digit" }) }
+        ? { label: "تاريخ ووقت فتح الوردية", value: shortDate(activeShift.openedAt) }
         : { label: "فرق الجرد", value: money(viewedShift?.difference ?? 0) }
   ];
   return (
@@ -3999,7 +3996,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
           </div>
         </div>
         <div className="cash-treasury-toolbar-actions">
-          <button className="treasury-manage-button" onClick={openTreasuryManager}><Edit3 /> إدارة الخزن</button>
+          {cashTab !== "daily" && <button className="treasury-manage-button" onClick={openTreasuryManager}><Edit3 /> إدارة الخزن</button>}
         </div>
       </section>}
       <div className={`cash-hero ${cashTab}`}>
@@ -4012,7 +4009,7 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
           <div className="cash-hero-amount">
             <div className="cash-hero-balance"><strong>{money(cashHeroAmount)}</strong><span>ج.م</span></div>
           </div>
-          <div className="cash-hero-stats">{cashHeroStats.map((stat) => <span key={stat.label}><small>{stat.label}</small><b>{stat.value}</b></span>)}</div>
+          <div className="cash-hero-stats">{cashHeroStats.map((stat) => <span className={stat.label === "تاريخ ووقت فتح الوردية" ? "cash-hero-datetime" : undefined} key={stat.label}><small>{stat.label}</small><b>{stat.value}</b></span>)}</div>
           {cashTab === "daily" && revenueChangePercent !== null && <span className={`revenue-change ${revenueChangePercent >= 0 ? "up" : "down"}`}>{revenueChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />} {revenueChangePercent >= 0 ? "+" : ""}{revenueChangePercent.toFixed(1)}% مقارنة بأمس ({money(yesterdayRevenue)})</span>}
         </div>
         <div className="cash-hero-actions">
@@ -4020,7 +4017,10 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
           {cashTab === "treasury" && <button className="light-button" onClick={openTreasuryReport}><ReceiptText /> تقرير الخزنة</button>}
           {cashTab === "treasury" && activeTreasuries.length > 1 && <button className="light-button" onClick={openTreasuryTransfer}><ArrowLeftRight /> تحويل بين الخزن</button>}
           {cashTab !== "daily" && <button className="light-button" onClick={() => {
-            setExpenseData((current) => ({ ...current, treasuryId: purchasesTreasuryId(state) }));
+            const treasuryId = cashTab === "shift"
+              ? (activeShift?.treasuryId ?? currentSalesTreasuryId)
+              : purchasesTreasuryId(state);
+            setExpenseData((current) => ({ ...current, treasuryId }));
             setExpense(true);
           }}><Minus /> تسجيل مصروف</button>}
           {cashTab === "shift" && (activeShift
@@ -4068,47 +4068,36 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         <div className="panel-title cash-transactions-title">
           <div><WalletCards /><span><strong>{cashTab === "shift" ? "حركات الوردية" : `سجل حركات ${cashDateLabel}`}</strong></span></div>
           <div className="cash-transactions-filters">
-            <div className="orders-date-filter-wrap transaction-direction-filter-wrap">
-              <button
-                className={`orders-date-filter-button transaction-direction-filter-button ${transactionDirectionFilter !== "all" ? "active" : ""}`}
-                onClick={toggleDirectionFilter}
-              >
-                <strong>{transactionDirectionFilter === "all" ? "كل الحركات" : transactionDirectionFilter === "in" ? "الوارد فقط (+)" : "المنصرف فقط (-)"}</strong>
-                <ChevronDown className={directionFilterOpen ? "open" : ""} />
-              </button>
-              {directionFilterOpen && (
-                <div className="orders-date-popover transaction-direction-popover">
-                  <div className="treasury-popover-list">
-                    <button
-                      className={`treasury-popover-item ${transactionDirectionFilter === "all" ? "active" : ""}`}
-                      onClick={() => { setTransactionDirectionFilter("all"); setDirectionFilterOpen(false); }}
-                    >
-                      <strong>كل الحركات</strong>
-                    </button>
-                    <button
-                      className={`treasury-popover-item ${transactionDirectionFilter === "in" ? "active" : ""}`}
-                      onClick={() => { setTransactionDirectionFilter("in"); setDirectionFilterOpen(false); }}
-                    >
-                      <strong>الوارد فقط</strong>
-                    </button>
-                    <button
-                      className={`treasury-popover-item ${transactionDirectionFilter === "out" ? "active" : ""}`}
-                      onClick={() => { setTransactionDirectionFilter("out"); setDirectionFilterOpen(false); }}
-                    >
-                      <strong>المنصرف فقط</strong>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="transaction-method-filter">
-              <button className={transactionMethodFilter === "all" ? "active" : ""} onClick={() => setTransactionMethodFilter("all")}>الكل</button>
-              <button className={transactionMethodFilter === "cash" ? "active" : ""} onClick={() => setTransactionMethodFilter("cash")}><Banknote /> نقدي</button>
-              <button className={transactionMethodFilter === "instapay" ? "active" : ""} onClick={() => setTransactionMethodFilter("instapay")}><CreditCard /> إنستاباي</button>
-              <button className={transactionMethodFilter === "vodafone" ? "active" : ""} onClick={() => setTransactionMethodFilter("vodafone")}><Phone /> فودافون كاش</button>
-            </div>
+            <label className={transactionDirectionFilter !== "all" ? "active" : ""}>
+              <select value={transactionDirectionFilter} onChange={(event) => setTransactionDirectionFilter(event.target.value as "all" | "in" | "out")}>
+                <option value="all">وارد / منصرف</option>
+                <option value="in">وارد</option>
+                <option value="out">منصرف</option>
+              </select>
+              <ChevronDown />
+            </label>
+            <label className={transactionMethodFilter !== "all" ? "active" : ""}>
+              <select value={transactionMethodFilter} onChange={(event) => setTransactionMethodFilter(event.target.value as "all" | PaymentMethod)}>
+                <option value="all">طريقة الدفع</option>
+                <option value="cash">نقدي</option>
+                <option value="instapay">إنستاباي</option>
+                <option value="vodafone">فودافون كاش</option>
+              </select>
+              <ChevronDown />
+            </label>
+            <label className={transactionTypeFilter !== "all" ? "active" : ""}>
+              <select value={transactionTypeFilter} onChange={(event) => setTransactionTypeFilter(event.target.value as "all" | CashTransaction["type"])}>
+                <option value="all">النوع</option>
+                <option value="sale">إيراد بيع</option>
+                <option value="collection">تحصيل عهدة</option>
+                <option value="expense">مصروف</option>
+                <option value="deposit">إيداع</option>
+                <option value="withdrawal">سحب</option>
+              </select>
+              <ChevronDown />
+            </label>
           </div>
-          <b>{filteredTransactions.length}{transactionMethodFilter !== "all" || transactionDirectionFilter !== "all" ? ` من ${displayedTransactions.length}` : ""} حركة</b>
+          <b>{filteredTransactions.length}{hasTransactionFilters ? ` من ${displayedTransactions.length}` : ""} حركة</b>
         </div>
         <div className="cash-transactions-scroll">
           {!!filteredTransactions.length && <div className="cash-transactions-head"><span>الوقت</span><span>البيان ورقم الطلب</span><span>الخزنة</span><span>النوع</span><span>الوسيلة</span><span>الاتجاه</span><span>المبلغ</span><span>الرصيد بعد الحركة</span></div>}
@@ -4126,19 +4115,11 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
               <b className="transaction-balance">{money(balanceAfter.get(transaction.id) ?? 0)}</b>
             </div>;
           })}
-          {!filteredTransactions.length && <Empty icon={<WalletCards />} title={transactionMethodFilter !== "all" || transactionDirectionFilter !== "all" ? "لا توجد حركات تطابق الفلاتر المحددة" : cashTab === "shift" ? "لا توجد حركات في الوردية" : "لا توجد حركات في هذه الفترة"} text={transactionMethodFilter !== "all" || transactionDirectionFilter !== "all" ? "اختر طريقة دفع أخرى أو اتجاه آخر لعرض الحركات" : cashTab === "shift" ? "الحركات الجديدة ستظهر هنا بعد بدء البيع أو تسجيل مصروف" : "غيّر الفترة أو ابدأ تسجيل حركات جديدة"} />}
+          {!filteredTransactions.length && <Empty icon={<WalletCards />} title={hasTransactionFilters ? "لا توجد حركات تطابق الفلاتر المحددة" : cashTab === "shift" ? "لا توجد حركات في الوردية" : "لا توجد حركات في هذه الفترة"} text={hasTransactionFilters ? "غيّر الاتجاه أو الوسيلة أو النوع لعرض حركات أخرى" : cashTab === "shift" ? "الحركات الجديدة ستظهر هنا بعد بدء البيع أو تسجيل مصروف" : "غيّر الفترة أو ابدأ تسجيل حركات جديدة"} />}
           </div>
         </div>
       </div></>}
       {cashTab === "daily" && <DailyRevenueView
-        date={cashDateLabel}
-        revenue={dailyRevenue}
-        sales={dailySalesRevenue}
-        collections={dailyCollections}
-        editDeposits={dailyEditDeposits}
-        editWithdrawals={dailyEditWithdrawalsTotal}
-        expenses={dailyOperationalExpenses}
-        net={dailyNet}
         methods={{
           cash: dailyMethodRevenue("cash"),
           instapay: dailyMethodRevenue("instapay"),
@@ -4151,14 +4132,6 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         onMethodFilter={setDailyMethodFilter}
         orderNumberById={orderNumberById}
         transactionTypeLabels={transactionTypeLabels}
-        orderCount={dailyOrderCount}
-        avgOrder={dailyAvgOrder}
-        pending={dailyPending}
-        orderDiscounts={dailyOrderDiscounts}
-        collectedDiscounts={dailyCollectedDiscounts}
-        deliveryFees={dailyDeliveryFees}
-        revenueChange={revenueChangePercent}
-        yesterdayRevenue={yesterdayRevenue}
         onEditShift={openEditShiftModal}
       />}
       {treasuryManagerOpen && <Modal title="إدارة الخزن المتعددة" onClose={() => setTreasuryManagerOpen(false)} size="wide">
@@ -4226,16 +4199,17 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
           <button type="button" onClick={() => setSimpleDailyDate(todayKey())}>اليوم</button>
         </div>
         <div className="simple-daily-hero">
-          <small>إجمالي الإيراد</small>
+          <small>الإيراد بعد العكس والمرتجعات</small>
           <strong>{money(simpleDailyRevenue)}</strong>
           <span>ج.م · {cashDisplayDate(simpleDailyDate)}</span>
         </div>
         <div className="simple-daily-kpis">
           <article><ReceiptText /><span>الطلبات</span><strong>{simpleDailyOrders.length}</strong></article>
           <article><Minus /><span>المصروفات</span><strong>{money(simpleDailyExpenses)}</strong></article>
-          <article className={simpleDailyRevenue - simpleDailyExpenses >= 0 ? "positive" : "negative"}><BarChart3 /><span>الصافي</span><strong>{money(simpleDailyRevenue - simpleDailyExpenses)}</strong></article>
+          <article className={simpleDailyRevenue - simpleDailyExpenses >= 0 ? "positive" : "negative"}><BarChart3 /><span>الصافي بعد المصروفات</span><strong>{money(simpleDailyRevenue - simpleDailyExpenses)}</strong></article>
           <article><Clock3 /><span>معلق</span><strong>{money(simpleDailyPending)}</strong></article>
         </div>
+        <div className="simple-daily-note"><Info /><span>المصروف يُخصم مرة واحدة من الإيراد. رصيد الوردية أو درج الكاشير يشمل رصيد بداية الوردية، ورصيد البداية ليس إيرادًا.</span></div>
         <div className="simple-daily-methods">
           <span><Banknote /><small>نقدي</small><b>{money(simpleDailyMethodTotal("cash"))}</b></span>
           <span><CreditCard /><small>إنستاباي</small><b>{money(simpleDailyMethodTotal("instapay"))}</b></span>
@@ -4253,15 +4227,15 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
         </div>
         <div className="treasury-report-summary">
           <article><small>الرصيد قبل الفترة</small><strong>{money(reportOpeningBalance)}</strong><span>الموجود قبل {cashDateLabel}</span></article>
-          <article className="incoming"><small>إجمالي الأموال المضافة</small><strong>+ {money(reportIncoming)}</strong><span>{reportPeriodTransactions.filter((transaction) => transaction.direction === "in").length} حركة واردة</span></article>
-          <article className="outgoing"><small>إجمالي المنصرف</small><strong>- {money(reportOutgoing)}</strong><span>{reportPeriodTransactions.filter((transaction) => transaction.direction === "out").length} حركة صادرة</span></article>
+          <article className="incoming"><small>صافي الوارد بعد العكس</small><strong>{reportIncoming >= 0 ? "+" : "-"} {money(Math.abs(reportIncoming))}</strong><span>{money(reportReversals)} عكس حركات مخصوم</span></article>
+          <article className="outgoing"><small>الصادر الفعلي</small><strong>- {money(reportOutgoing)}</strong><span>لا يشمل عكس الإيرادات</span></article>
           <article className="closing"><small>الرصيد المتبقي</small><strong>{money(reportClosingBalance)}</strong><span>حتى نهاية {cashDateLabel}</span></article>
         </div>
         <div className="treasury-report-breakdown">
           <span><small>إضافات وتحويلات واردة</small><b>{money(reportDeposits)}</b></span>
-          <span><small>مبيعات وتحصيلات</small><b>{money(reportSalesAndCollections)}</b></span>
+          <span><small>صافي المبيعات والتحصيلات</small><b>{money(reportSalesAndCollections)}</b></span>
           <span><small>مشتريات ومصروفات</small><b className="out">{money(reportExpenses)}</b></span>
-          <span><small>مسحوبات وتحويلات صادرة</small><b className="out">{money(reportWithdrawals)}</b></span>
+          <span><small>مسحوبات وتحويلات فعلية</small><b className="out">{money(reportWithdrawals)}</b></span>
         </div>
         <div className="treasury-report-methods">
           <span><Banknote /><small>نقدي</small><b>{money(reportMethodBalance("cash"))}</b></span>
@@ -4347,26 +4321,18 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
 function CashMethodCard({ icon, label, summary, tone }: {
   icon: ReactNode;
   label: string;
-  summary: { incoming: number; outgoing: number; count: number; balance: number };
+  summary: { incoming: number; outgoing: number; balance: number };
   tone: "cash" | "instapay" | "vodafone";
 }) {
   return <article className={`cash-method-card ${tone}`}>
     <header><span>{icon}</span><div><strong>{label}</strong></div></header>
     <div className="cash-method-balance"><strong>{money(summary.balance)}</strong></div>
-    <footer><span><small>وارد</small><b>+ {money(summary.incoming)}</b></span><span><small>صادر</small><b>- {money(summary.outgoing)}</b></span><span><small>الحركات</small><b>{summary.count}</b></span></footer>
+    <footer><span><small>وارد</small><b>{summary.incoming >= 0 ? "+" : "-"} {money(Math.abs(summary.incoming))}</b></span><span><small>منصرف</small><b>- {money(summary.outgoing)}</b></span></footer>
   </article>;
 }
 
-function DailyRevenueView({ date, revenue, sales, collections, editDeposits, editWithdrawals, expenses, net, methods, shifts, transactions, withdrawalTransactions, methodFilter, onMethodFilter, orderNumberById, transactionTypeLabels, orderCount, avgOrder, pending, orderDiscounts, collectedDiscounts, deliveryFees, revenueChange, onEditShift }: {
-  date: string;
-  revenue: number;
-  sales: number;
-  collections: number;
-  editDeposits: number;
-  editWithdrawals: number;
-  expenses: number;
-  net: number;
-  methods: Record<PaymentMethod, { amount: number; outgoing: number; net: number; count: number; share: number }>;
+function DailyRevenueView({ methods, shifts, transactions, withdrawalTransactions, methodFilter, onMethodFilter, orderNumberById, transactionTypeLabels, onEditShift }: {
+  methods: Record<PaymentMethod, { incoming: number; outgoing: number; balance: number }>;
   shifts: Array<{
     shift: AppState["cashShifts"][number];
     cash: number;
@@ -4384,77 +4350,53 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
   onMethodFilter: (method: "all" | PaymentMethod) => void;
   orderNumberById: Map<string, number>;
   transactionTypeLabels: Record<CashTransaction["type"], string>;
-  orderCount: number;
-  avgOrder: number;
-  pending: number;
-  orderDiscounts: number;
-  collectedDiscounts: number;
-  deliveryFees: number;
-  revenueChange: number | null;
-  yesterdayRevenue: number;
   onEditShift: (shift: AppState["cashShifts"][number]) => void;
 }) {
-  const filteredIn = methodFilter === "all" ? transactions : transactions.filter((transaction) => transaction.method === methodFilter);
-  const filteredOut = methodFilter === "all" ? withdrawalTransactions : withdrawalTransactions.filter((transaction) => transaction.method === methodFilter);
-  const allFiltered: Array<CashTransaction & { _isWithdrawal?: boolean }> = [
-    ...filteredIn.map((t) => ({ ...t, _isWithdrawal: false as const })),
-    ...filteredOut.map((t) => ({ ...t, _isWithdrawal: true as const }))
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const [typeFilter, setTypeFilter] = useState<"all" | CashTransaction["type"]>("all");
+  const [directionFilter, setDirectionFilter] = useState<"all" | "in" | "out">("all");
+  const [shiftFilter, setShiftFilter] = useState<"all" | "outside" | string>("all");
   const shiftForTransaction = (transaction: CashTransaction) => shifts.find(({ shift }) => {
     const time = new Date(transaction.createdAt).getTime();
     return time >= new Date(shift.openedAt).getTime() && (!shift.closedAt || time <= new Date(shift.closedAt).getTime());
   });
+  const revenueTransactions: Array<CashTransaction & { _isWithdrawal?: boolean }> = [
+    ...transactions.map((transaction) => ({ ...transaction, _isWithdrawal: false as const })),
+    ...withdrawalTransactions.map((transaction) => ({ ...transaction, _isWithdrawal: true as const }))
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const filteredRevenueTransactions = revenueTransactions.filter((transaction) => {
+    const transactionShift = shiftForTransaction(transaction);
+    const matchesMethod = methodFilter === "all" || transaction.method === methodFilter;
+    const matchesType = typeFilter === "all" || transaction.type === typeFilter;
+    const matchesDirection = directionFilter === "all"
+      || (directionFilter === "out" ? transaction._isWithdrawal : !transaction._isWithdrawal);
+    const matchesShift = shiftFilter === "all"
+      || (shiftFilter === "outside" ? !transactionShift : transactionShift?.shift.id === shiftFilter);
+    return matchesMethod && matchesType && matchesDirection && matchesShift;
+  });
+  const hasRevenueFilters = methodFilter !== "all" || typeFilter !== "all" || directionFilter !== "all" || shiftFilter !== "all";
   const totalShiftRevenue = shifts.reduce((sum, r) => sum + r.revenue, 0);
-  const maxShiftRevenue = Math.max(1, ...shifts.map((r) => r.revenue));
-  const outsideShiftRevenue = revenue - totalShiftRevenue;
   return <div className="daily-revenue-view">
-    <div className="daily-revenue-kpis">
-      <MiniStat icon={<CircleDollarSign />} label="إجمالي الإيراد" value={money(revenue)} tone="green" />
-      <MiniStat icon={<ReceiptText />} label="مبيعات مباشرة" value={money(sales)} tone="blue" />
-      <MiniStat icon={<Banknote />} label="تحصيل عهد المناديب" value={money(collections)} tone="orange" />
+    <div className="cash-method-cards">
+      <CashMethodCard icon={<Banknote />} label="الخزنة النقدية" summary={methods.cash} tone="cash" />
+      <CashMethodCard icon={<CreditCard />} label="إنستاباي" summary={methods.instapay} tone="instapay" />
+      <CashMethodCard icon={<Phone />} label="فودافون كاش" summary={methods.vodafone} tone="vodafone" />
     </div>
-    {(editDeposits > 0 || editWithdrawals > 0) && <div className="daily-info-strip">
-      {editDeposits > 0 && <span><Edit3 size={15} /><small>تعديلات واردة</small><b>+ {money(editDeposits)}</b></span>}
-      {editWithdrawals > 0 && <span><Edit3 size={15} /><small>عكس تعديلات</small><b>- {money(editWithdrawals)}</b></span>}
-    </div>}
-    <div className="daily-revenue-kpis">
-      <MiniStat icon={<BarChart3 />} label="صافي الفترة" value={money(net)} tone={net >= 0 ? "green" : "red"} />
-      <MiniStat icon={<ClipboardCheck />} label={`الطلبات (${orderCount})`} value={money(avgOrder) + " متوسط"} tone="blue" />
-      <MiniStat icon={<Minus />} label="المصروفات التشغيلية" value={money(expenses)} tone="red" />
-    </div>
-    <div className="daily-info-strip">
-      <span><Clock3 size={15} /><small>معلق مع المناديب</small><b>{money(pending)}</b></span>
-      {orderDiscounts > 0 && <span><Calculator size={15} /><small>خصم الطلبات المنشأة</small><b>{money(orderDiscounts)}</b></span>}
-      {collectedDiscounts !== 0 && <span><CircleDollarSign size={15} /><small>خصم الطلبات المحصلة</small><b>{money(collectedDiscounts)}</b></span>}
-      {deliveryFees > 0 && <span><Truck size={15} /><small>رسوم التوصيل</small><b>{money(deliveryFees)}</b></span>}
-      {revenueChange !== null && <span className={`revenue-change-inline ${revenueChange >= 0 ? "up" : "down"}`}>{revenueChange >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}<small>مقارنة بأمس</small><b>{revenueChange >= 0 ? "+" : ""}{revenueChange.toFixed(1)}%</b></span>}
-    </div>
-
-    <section className="daily-method-section">
-      <div className="daily-section-heading"><div><CreditCard /><span><strong>الإيراد حسب طريقة الدفع</strong><small>نسبة ومبلغ كل وسيلة من إجمالي إيراد الفترة</small></span></div><span><small>صافي حركة الفترة</small><b>{money(net)}</b></span></div>
-      <div className="daily-method-grid">
-        <DailyMethodCard icon={<Banknote />} label="نقدي" tone="cash" data={methods.cash} />
-        <DailyMethodCard icon={<CreditCard />} label="إنستاباي" tone="instapay" data={methods.instapay} />
-        <DailyMethodCard icon={<Phone />} label="فودافون كاش" tone="vodafone" data={methods.vodafone} />
-      </div>
-    </section>
 
     <section className="daily-shifts-panel">
-      <div className="daily-section-heading"><div><Clock3 /><span><strong>إيراد كل وردية</strong><small>{shifts.length ? `${shifts.length} وردية مسجلة خلال ${date}` : "لا توجد ورديات في الفترة المحددة"}</small></span></div><b>{money(totalShiftRevenue)}</b></div>
+      <div className="daily-section-heading"><div><Clock3 /><span><strong>إيراد كل وردية</strong></span></div><b>{money(totalShiftRevenue)}</b></div>
       {!!shifts.length && <div className="daily-shifts-table-scroll">
-        <div className="daily-shifts-table-head"><span>الوردية</span><span>الفترة</span><span>نقدي</span><span>إنستاباي</span><span>فودافون كاش</span><span>المصروفات</span><span>الإيراد</span><span>الصافي</span><span>فرق الجرد</span><span>إجراءات</span></div>
+        <div className="daily-shifts-table-head"><span>الوردية</span><span>الحالة</span><span>وقت الفتح</span><span>وقت الغلق</span><span>المدة</span><span>نقدي</span><span>إنستاباي</span><span>فودافون كاش</span><span>إجمالي الإيراد</span><span>المصروفات</span><span>الصافي</span><span>فرق الجرد</span><span>إجراءات</span></div>
         {shifts.map(({ shift, cash, instapay, vodafone, revenue: sr, expenses: se, net: sn, closingVarianceInPeriod }, index) => {
           const mins = shift.closedAt ? Math.round((new Date(shift.closedAt).getTime() - new Date(shift.openedAt).getTime()) / 60000) : Math.round((Date.now() - new Date(shift.openedAt).getTime()) / 60000);
           const dur = mins >= 60 ? `${Math.floor(mins / 60)} ساعة ${mins % 60 ? `${mins % 60} د` : ""}` : `${mins} دقيقة`;
-          // Show a closing variance only on the date the shift was closed.
           const diff = closingVarianceInPeriod ? (shift.difference ?? 0) : 0;
           return <div className="daily-shift-row" key={shift.id}>
-            <span><strong>وردية {index + 1}</strong><small className={`cash-shift-status ${shift.closedAt ? "closed" : "open"}`}>{shift.closedAt ? "مغلقة" : "مفتوحة"}</small><small className="shift-duration">{dur}</small></span>
-            <span className="daily-shift-period">
-              <b><small>فتح:</small> {shortDate(shift.openedAt)}</b>
-              <small><strong>غلق:</strong> {shift.closedAt ? shortDate(shift.closedAt) : "الوردية مفتوحة حتى الآن"}</small>
-            </span>
-            <b>{money(cash)}</b><b>{money(instapay)}</b><b>{money(vodafone)}</b><b className="out">{money(se)}</b><b>{money(sr)}</b><b className={sn >= 0 ? "net" : "out"}>{money(sn)}</b>
+            <strong>وردية {index + 1}</strong>
+            <span className={`cash-shift-status ${shift.closedAt ? "closed" : "open"}`}>{shift.closedAt ? "مغلقة" : "مفتوحة"}</span>
+            <span className="daily-shift-time">{shortDate(shift.openedAt)}</span>
+            <span className="daily-shift-time">{shift.closedAt ? shortDate(shift.closedAt) : "—"}</span>
+            <span className="shift-duration">{dur}</span>
+            <b>{money(cash)}</b><b>{money(instapay)}</b><b>{money(vodafone)}</b><b>{money(sr)}</b><b className="out">{money(se)}</b><b className={sn >= 0 ? "net" : "out"}>{money(sn)}</b>
             <span>
               {!shift.closedAt ? (
                 <small className="shift-diff-open">مفتوحة</small>
@@ -4480,16 +4422,15 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
                 </button>
               )}
             </span>
-            <div className="shift-bar"><i style={{ width: `${(sr / maxShiftRevenue) * 100}%` }} /></div>
           </div>;
         })}
         <div className="daily-shift-row daily-shift-totals">
-          <span><strong>الإجمالي</strong></span><span />
+          <strong>الإجمالي</strong><span /><span /><span /><span />
           <b>{money(shifts.reduce((s, r) => s + r.cash, 0))}</b>
           <b>{money(shifts.reduce((s, r) => s + r.instapay, 0))}</b>
           <b>{money(shifts.reduce((s, r) => s + r.vodafone, 0))}</b>
-          <b className="out">{money(shifts.reduce((s, r) => s + r.expenses, 0))}</b>
           <b>{money(totalShiftRevenue)}</b>
+          <b className="out">{money(shifts.reduce((s, r) => s + r.expenses, 0))}</b>
           <b className={shifts.reduce((s, r) => s + r.net, 0) >= 0 ? "net" : "out"}>{money(shifts.reduce((s, r) => s + r.net, 0))}</b>
           <span>
             {shifts.some((r) => r.shift.closedAt) ? (
@@ -4504,25 +4445,55 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
           </span>
           <span />
         </div>
-        {outsideShiftRevenue > 0 && <div className="daily-shift-outside-note"><Info size={14} /><span>يوجد {money(outsideShiftRevenue)} إيراد مسجل خارج نطاق الورديات</span></div>}
       </div>}
-      {!shifts.length && <Empty icon={<Clock3 />} title="لا توجد ورديات في هذه الفترة" text="اختر فترة أخرى أو افتح وردية جديدة" />}
+      {!shifts.length && <Empty icon={<Clock3 />} title="لا توجد ورديات في هذه الفترة" text="" />}
     </section>
 
     <section className="panel daily-revenue-transactions">
       <div className="panel-title cash-transactions-title">
         <div><ReceiptText /><span><strong>تفاصيل إيرادات الفترة</strong><small>المبيعات والتحصيلات وتسويات تعديل الفواتير</small></span></div>
-        <div className="transaction-method-filter">
-          <button className={methodFilter === "all" ? "active" : ""} onClick={() => onMethodFilter("all")}>الكل</button>
-          <button className={methodFilter === "cash" ? "active" : ""} onClick={() => onMethodFilter("cash")}><Banknote /> نقدي</button>
-          <button className={methodFilter === "instapay" ? "active" : ""} onClick={() => onMethodFilter("instapay")}><CreditCard /> إنستاباي</button>
-          <button className={methodFilter === "vodafone" ? "active" : ""} onClick={() => onMethodFilter("vodafone")}><Phone /> فودافون كاش</button>
+        <div className="cash-transactions-filters daily-revenue-filters">
+          <label className={directionFilter !== "all" ? "active" : ""}>
+            <select value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as "all" | "in" | "out")}>
+              <option value="all">وارد / منصرف</option>
+              <option value="in">وارد</option>
+              <option value="out">منصرف</option>
+            </select>
+            <ChevronDown />
+          </label>
+          <label className={methodFilter !== "all" ? "active" : ""}>
+            <select value={methodFilter} onChange={(event) => onMethodFilter(event.target.value as "all" | PaymentMethod)}>
+              <option value="all">طريقة الدفع</option>
+              <option value="cash">نقدي</option>
+              <option value="instapay">إنستاباي</option>
+              <option value="vodafone">فودافون كاش</option>
+            </select>
+            <ChevronDown />
+          </label>
+          <label className={typeFilter !== "all" ? "active" : ""}>
+            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as "all" | CashTransaction["type"])}>
+              <option value="all">النوع</option>
+              <option value="sale">إيراد بيع</option>
+              <option value="collection">تحصيل عهدة</option>
+              <option value="deposit">إيداع</option>
+              <option value="withdrawal">سحب</option>
+            </select>
+            <ChevronDown />
+          </label>
+          <label className={shiftFilter !== "all" ? "active" : ""}>
+            <select value={shiftFilter} onChange={(event) => setShiftFilter(event.target.value)}>
+              <option value="all">الوردية</option>
+              {shifts.map(({ shift }, index) => <option value={shift.id} key={shift.id}>وردية {index + 1}</option>)}
+              <option value="outside">خارج الوردية</option>
+            </select>
+            <ChevronDown />
+          </label>
         </div>
-        <b>{allFiltered.length} حركة</b>
+        <b>{filteredRevenueTransactions.length}{hasRevenueFilters ? ` من ${revenueTransactions.length}` : ""} حركة</b>
       </div>
       <div className="daily-revenue-table-scroll">
-        {!!allFiltered.length && <div className="daily-revenue-table-head"><span>الوقت</span><span>الفاتورة / البيان</span><span>الوردية</span><span>النوع</span><span>طريقة الدفع</span><span>المبلغ</span></div>}
-        {allFiltered.map((transaction) => {
+        {!!filteredRevenueTransactions.length && <div className="daily-revenue-table-head"><span>الوقت</span><span>الفاتورة / البيان</span><span>الوردية</span><span>النوع</span><span>طريقة الدفع</span><span>المبلغ</span></div>}
+        {filteredRevenueTransactions.map((transaction) => {
           const shiftRow = shiftForTransaction(transaction);
           const shiftIndex = shiftRow ? shifts.indexOf(shiftRow) + 1 : 0;
           const orderNum = transaction.orderId ? orderNumberById.get(transaction.orderId) : undefined;
@@ -4530,29 +4501,15 @@ function DailyRevenueView({ date, revenue, sales, collections, editDeposits, edi
           return <div className={`daily-revenue-row${isWithdrawal ? " withdrawal" : ""}`} key={transaction.id}>
             <span>{shortDate(transaction.createdAt)}</span>
             <span>{orderNum !== undefined && <b className="invoice-num">#{orderNum}</b>}<strong>{transaction.description}</strong><small>{transaction.orderId && orderNumberById.has(transaction.orderId) ? `مرجع الطلب #${orderNumberById.get(transaction.orderId)}` : "حركة مسجلة بالنظام"}</small></span>
-            <b>{shiftIndex ? `وردية ${shiftIndex}` : "خارج وردية"}</b>
+            <b className="daily-revenue-shift">{shiftIndex ? `وردية ${shiftIndex}` : "خارج وردية"}</b>
             <span><b className="transaction-type">{transactionTypeLabels[transaction.type]}</b></span>
             <span><b className={`transaction-method ${transaction.method}`}>{transaction.method === "cash" ? <Banknote /> : transaction.method === "instapay" ? <CreditCard /> : <Phone />}{paymentLabels[transaction.method as PaymentMethod]}</b></span>
             <b className={`daily-revenue-amount${isWithdrawal ? " out" : ""}`}>{isWithdrawal ? "-" : "+"} {money(transaction.amount)}</b>
           </div>;
         })}
-        {!allFiltered.length && <Empty icon={<ReceiptText />} title="لا توجد إيرادات مطابقة" text="غيّر الفترة أو طريقة الدفع لعرض نتائج أخرى" />}
+        {!filteredRevenueTransactions.length && <Empty icon={<ReceiptText />} title="لا توجد إيرادات مطابقة" text="غيّر طريقة الدفع أو النوع أو الاتجاه أو الوردية لعرض نتائج أخرى" />}
       </div>
     </section>
   </div>;
-}
-
-function DailyMethodCard({ icon, label, tone, data }: {
-  icon: ReactNode;
-  label: string;
-  tone: "cash" | "instapay" | "vodafone";
-  data: { amount: number; outgoing: number; net: number; count: number; share: number };
-}) {
-  return <article className={`daily-method-card ${tone}`}>
-    <header><span>{icon}</span><div><strong>{label}</strong><small>{data.count} حركة إيراد</small></div><b>{data.share.toFixed(1)}%</b></header>
-    <div className="daily-method-amount"><small>إجمالي الوارد</small><strong>{money(data.amount)}</strong></div>
-    <div className="daily-method-progress"><i style={{ width: `${Math.min(100, data.share)}%` }} /></div>
-    <footer><span>مصروفات <b>{money(data.outgoing)}</b></span><span>الصافي <b>{money(data.net)}</b></span></footer>
-  </article>;
 }
 

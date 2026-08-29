@@ -39,8 +39,9 @@ export function CashTreasuryReport({
         dateRangeLabel: filter.label,
         kpiCards: [
           { label: "صافي رصيد الخزن بالفترة", value: `${money(data.totalSafeBalance)} ج.م` },
-          { label: "إجمالي الوارد بالفترة", value: `${money(data.totalInflow)} ج.م` },
-          { label: "إجمالي المنصرف بالفترة", value: `${money(data.totalOutflow)} ج.م` },
+          { label: "صافي الوارد بعد العكس", value: `${money(data.totalInflow)} ج.م` },
+          { label: "الصادر الفعلي بالفترة", value: `${money(data.totalOutflow)} ج.م` },
+          { label: "المصروفات الفعلية بالفترة", value: `${money(data.totalExpenses)} ج.م` },
           { label: "صافي حركة الأموال", value: `${money(data.netMovement)} ج.م` },
           { label: "عدد الورديات المسجلة", value: `${data.shifts.length} وردية` }
         ],
@@ -110,20 +111,29 @@ export function CashTreasuryReport({
 
         <div className="report-kpi-card">
           <div className="kpi-top-row">
-            <span className="kpi-title">إجمالي الوارد (Inflow)</span>
+            <span className="kpi-title">صافي الوارد بعد العكس</span>
             <span className="kpi-icon-wrap"><ArrowDownCircle size={18} /></span>
           </div>
-          <strong className="kpi-amount">+{money(data.totalInflow)} <small style={{ fontSize: "13px" }}>ج.م</small></strong>
-          <span style={{ fontSize: "12px", color: "#059669" }}>مبيعات وتحصيلات وإيداعات</span>
+          <strong className="kpi-amount">{data.totalInflow >= 0 ? "+" : "-"}{money(Math.abs(data.totalInflow))} <small style={{ fontSize: "13px" }}>ج.م</small></strong>
+          <span style={{ fontSize: "12px", color: "#059669" }}>الوارد مخصومًا منه عكس حركات الطلبات</span>
         </div>
 
         <div className="report-kpi-card">
           <div className="kpi-top-row">
-            <span className="kpi-title">إجمالي المنصرف (Outflow)</span>
+            <span className="kpi-title">الصادر الفعلي (Outflow)</span>
             <span className="kpi-icon-wrap"><ArrowUpCircle size={18} /></span>
           </div>
           <strong className="kpi-amount">-{money(data.totalOutflow)} <small style={{ fontSize: "13px" }}>ج.م</small></strong>
-          <span style={{ fontSize: "12px", color: "#dc2626" }}>مصروفات ومشتريات ومسحوبات</span>
+          <span style={{ fontSize: "12px", color: "#dc2626" }}>المصروفات والمسحوبات الفعلية دون عكس الإيرادات</span>
+        </div>
+
+        <div className="report-kpi-card">
+          <div className="kpi-top-row">
+            <span className="kpi-title">المصروفات الفعلية</span>
+            <span className="kpi-icon-wrap"><ArrowUpCircle size={18} /></span>
+          </div>
+          <strong className="kpi-amount">-{money(data.totalExpenses)} <small style={{ fontSize: "13px" }}>ج.م</small></strong>
+          <span style={{ fontSize: "12px", color: "#dc2626" }}>حركات النوع «مصروف» فقط</span>
         </div>
 
         <div className="report-kpi-card">
