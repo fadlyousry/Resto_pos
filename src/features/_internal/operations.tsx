@@ -315,7 +315,7 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
         ? current.map((item) => `${item.productId}:${item.optionId ?? "base"}` === lineKey ? { ...item, quantity: item.quantity + 1 } : item)
         : [...current, {
           productId: product.id, optionId: option?.id, optionName: option?.name,
-          name: option ? `${product.name} - ${option.name}` : product.name,
+          name: product.name,
           unit: option?.unit ?? product.unit, price: option?.price ?? product.price,
           cost: option?.cost ?? product.cost, recipeMultiplier: option?.recipeMultiplier ?? 1,
           quantity: 1, section: product.section
