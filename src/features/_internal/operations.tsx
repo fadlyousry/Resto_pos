@@ -3417,32 +3417,6 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
   );
   const dailyOrderCount = dailyOrders.length;
-  const collectedAtByOrderId = new Map<string, string>();
-  const trackedInitialDiscountOrderIds = new Set<string>();
-  [...state.cashTransactions]
-    .filter((transaction) => transaction.orderId
-      && transaction.direction === "in"
-      && (transaction.type === "sale" || transaction.type === "collection" || transaction.type === "deposit"))
-    .sort((left, right) => dateTimeValue(left.createdAt) - dateTimeValue(right.createdAt))
-    .forEach((transaction) => {
-      if (transaction.orderId && !collectedAtByOrderId.has(transaction.orderId)) {
-        collectedAtByOrderId.set(transaction.orderId, transaction.createdAt);
-        if (transaction.discountChange !== undefined) trackedInitialDiscountOrderIds.add(transaction.orderId);
-      }
-    });
-  [...state.driverSettlements]
-    .sort((left, right) => dateTimeValue(left.createdAt) - dateTimeValue(right.createdAt))
-    .forEach((settlement) => settlement.orderIds.forEach((orderId) => {
-      if (!collectedAtByOrderId.has(orderId)) {
-        collectedAtByOrderId.set(orderId, settlement.createdAt);
-        const trackedSettlement = state.cashTransactions.some((transaction) =>
-          transaction.createdAt === settlement.createdAt
-          && transaction.type === "collection"
-          && transaction.discountChange !== undefined
-        );
-        if (trackedSettlement) trackedInitialDiscountOrderIds.add(orderId);
-      }
-    }));
   const simpleDailyTransactions = state.cashTransactions.filter((transaction) =>
     dateKey(transaction.createdAt) === simpleDailyDate
     && matchesSelectedTreasury(transactionTreasuryId(state, transaction), currentSalesTreasuryId)
@@ -3469,22 +3443,18 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
     && order.stage !== "returned"
     && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
   );
-  const simpleDailyOrderDiscounts = simpleDailyOrders.reduce((sum, order) => sum + order.discount, 0);
-  const simpleDailyRecordedDiscounts = simpleDailyTransactions
-    .reduce((sum, transaction) => sum + (transaction.discountChange ?? 0), 0);
-  const simpleDailyLegacyDiscounts = state.orders
-    .filter((order) => {
-      const collectedAt = collectedAtByOrderId.get(order.id);
-      return order.discount > 0
-        && !trackedInitialDiscountOrderIds.has(order.id)
-        && matchesSelectedTreasury(order.treasuryId, currentSalesTreasuryId)
-        && Boolean(collectedAt && dateKey(collectedAt) === simpleDailyDate);
-    })
-    .reduce((sum, order) => sum + order.discount, 0);
-  const simpleDailyCollectedDiscounts = simpleDailyRecordedDiscounts + simpleDailyLegacyDiscounts;
-  const simpleDailyMethodTotal = (method: PaymentMethod) =>
-    simpleDailyIncome.filter((transaction) => transaction.method === method).reduce((sum, transaction) => sum + transaction.amount, 0)
-    - simpleDailyReversals.filter((transaction) => transaction.method === method).reduce((sum, transaction) => sum + transaction.amount, 0);
+  const simpleDailyMethodTotal = (method: PaymentMethod) => {
+    const incoming = simpleDailyIncome
+      .filter((transaction) => transaction.method === method)
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    const reversals = simpleDailyReversals
+      .filter((transaction) => transaction.method === method)
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    const expenses = simpleDailyTransactions
+      .filter((transaction) => transaction.method === method && transaction.type === "expense" && transaction.direction === "out")
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    return incoming - reversals - expenses;
+  };
   const simpleDailyPending = simpleDailyOrders
     .filter((order) => order.paymentStatus === "pending")
     .reduce((sum, order) => sum + order.total, 0);
@@ -4199,26 +4169,20 @@ export function CashView({ state, update, notify, cashTab }: ViewProps & { cashT
           <button type="button" onClick={() => setSimpleDailyDate(todayKey())}>اليوم</button>
         </div>
         <div className="simple-daily-hero">
-          <small>الإيراد بعد العكس والمرتجعات</small>
-          <strong>{money(simpleDailyRevenue)}</strong>
-          <span>ج.م · {cashDisplayDate(simpleDailyDate)}</span>
+          <small>الصافي</small>
+          <strong>{money(simpleDailyRevenue - simpleDailyExpenses)}</strong>
         </div>
         <div className="simple-daily-kpis">
-          <article><ReceiptText /><span>الطلبات</span><strong>{simpleDailyOrders.length}</strong></article>
-          <article><Minus /><span>المصروفات</span><strong>{money(simpleDailyExpenses)}</strong></article>
-          <article className={simpleDailyRevenue - simpleDailyExpenses >= 0 ? "positive" : "negative"}><BarChart3 /><span>الصافي بعد المصروفات</span><strong>{money(simpleDailyRevenue - simpleDailyExpenses)}</strong></article>
-          <article><Clock3 /><span>معلق</span><strong>{money(simpleDailyPending)}</strong></article>
+          <article className="simple-daily-expenses"><Minus /><span>المصروفات</span><strong>{money(simpleDailyExpenses)}</strong></article>
+          <article className="simple-daily-pending"><Clock3 /><span>معلق</span><strong>{money(simpleDailyPending)}</strong></article>
+          <article className={`simple-daily-total ${simpleDailyRevenue >= 0 ? "positive" : "negative"}`}><BarChart3 /><span>إجمالي الإيراد</span><strong>{money(simpleDailyRevenue)}</strong></article>
+          <article className="simple-daily-orders"><ReceiptText /><span>الطلبات</span><strong>{simpleDailyOrders.length}</strong></article>
         </div>
-        <div className="simple-daily-note"><Info /><span>المصروف يُخصم مرة واحدة من الإيراد. رصيد الوردية أو درج الكاشير يشمل رصيد بداية الوردية، ورصيد البداية ليس إيرادًا.</span></div>
         <div className="simple-daily-methods">
           <span><Banknote /><small>نقدي</small><b>{money(simpleDailyMethodTotal("cash"))}</b></span>
           <span><CreditCard /><small>إنستاباي</small><b>{money(simpleDailyMethodTotal("instapay"))}</b></span>
           <span><Phone /><small>فودافون كاش</small><b>{money(simpleDailyMethodTotal("vodafone"))}</b></span>
         </div>
-        {(simpleDailyOrderDiscounts !== 0 || simpleDailyCollectedDiscounts !== 0) && <div className="simple-daily-discounts">
-          <span><small>خصم الطلبات المنشأة</small><b>{money(simpleDailyOrderDiscounts)}</b></span>
-          <span><small>خصم الطلبات المحصلة</small><b>{money(simpleDailyCollectedDiscounts)}</b></span>
-        </div>}
       </div></Modal>}
       {treasuryReportOpen && <Modal title={`تقرير ${reportTreasury?.name ?? "الخزنة"}`} onClose={() => setTreasuryReportOpen(false)} size="wide"><div className="treasury-report">
         <div className="treasury-report-toolbar">
