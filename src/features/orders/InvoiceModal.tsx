@@ -140,19 +140,24 @@ function KitchenReceipt({ order, settings }: { order: Order; settings: AppState[
       <thead>
         <tr>
           <th>الصنف والتفاصيل</th>
+          <th>الحجم</th>
           <th>الكمية</th>
         </tr>
       </thead>
       <tbody>
         {order.items.map((item) => {
-          const details = item.mealComponents?.length
-            ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
-            : item.note;
+          const details = [
+            item.mealComponents?.length
+              ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
+              : "",
+            item.note ?? ""
+          ].filter(Boolean).join("\n");
           return <tr key={`${item.productId}:${item.optionId ?? "base"}`}>
             <td>
               <strong>{item.name}</strong>
               {details && <div className="receipt-item-note">{details}</div>}
             </td>
+            <td>{item.optionName || "—"}</td>
             <td><b>{item.quantity}×</b></td>
           </tr>;
         })}

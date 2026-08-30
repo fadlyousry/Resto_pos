@@ -28,7 +28,7 @@ type ReceiptBlock =
   | { kind: "customer"; name: string; phone: string; address: string; notes?: string }
   | { kind: "orderHero"; orderNumber: number; createdAt: string }
   | { kind: "kitchenHero"; orderNumber: number }
-  | { kind: "kitchenTable"; items: { name: string; quantity: number; details?: string }[] }
+  | { kind: "kitchenTable"; items: { name: string; quantity: number; optionName?: string; details?: string }[] }
   | { kind: "kitchenNote"; text: string }
   | { kind: "separator" }
   | { kind: "space"; height: number };
@@ -99,7 +99,7 @@ const customerCard = (name: string, phone: string, address: string, notes?: stri
 const orderHero = (orderNumber: number, createdAt: string): ReceiptBlock => ({ kind: "orderHero", orderNumber, createdAt });
 const kitchenHero = (orderNumber: number): ReceiptBlock => ({ kind: "kitchenHero", orderNumber });
 const kitchenTable = (
-  items: { name: string; quantity: number; details?: string }[]
+  items: { name: string; quantity: number; optionName?: string; details?: string }[]
 ): ReceiptBlock => ({ kind: "kitchenTable", items });
 const kitchenNote = (noteText: string): ReceiptBlock => ({ kind: "kitchenNote", text: noteText });
 const separator = (): ReceiptBlock => ({ kind: "separator" });
@@ -256,9 +256,11 @@ async function renderReceiptCanvas(receipt: ReceiptDocument) {
       continue;
     }
     if (block.kind === "kitchenTable") {
-      const qtyWidth = Math.round(contentWidth * 0.24);
-      const itemWidth = contentWidth - qtyWidth;
-      const splitX = margin + qtyWidth;
+      const qtyWidth = Math.round(contentWidth * 0.2);
+      const sizeWidth = Math.round(contentWidth * 0.2);
+      const itemWidth = contentWidth - qtyWidth - sizeWidth;
+      const qtySplitX = margin + qtyWidth;
+      const itemSplitX = qtySplitX + sizeWidth;
       context.lineWidth = 2;
       context.strokeStyle = "#000";
 
@@ -266,14 +268,19 @@ async function renderReceiptCanvas(receipt: ReceiptDocument) {
       const headerHeight = 36;
       context.strokeRect(margin, y, contentWidth, headerHeight);
       context.beginPath();
-      context.moveTo(splitX, y);
-      context.lineTo(splitX, y + headerHeight);
+      context.moveTo(qtySplitX, y);
+      context.lineTo(qtySplitX, y + headerHeight);
+      context.moveTo(itemSplitX, y);
+      context.lineTo(itemSplitX, y + headerHeight);
       context.stroke();
 
       drawWrappedText(context, "الكمية", margin, y + 6, qtyWidth, {
         align: "center", size: 9, bold: true, rtl: true
       });
-      drawWrappedText(context, "الصنف والتفاصيل", splitX, y + 6, itemWidth, {
+      drawWrappedText(context, "الحجم", qtySplitX, y + 6, sizeWidth, {
+        align: "center", size: 9, bold: true, rtl: true
+      });
+      drawWrappedText(context, "الصنف والتفاصيل", itemSplitX, y + 6, itemWidth, {
         align: "center", size: 9, bold: true, rtl: true
       });
       y += headerHeight;
@@ -294,8 +301,10 @@ async function renderReceiptCanvas(receipt: ReceiptDocument) {
         context.strokeStyle = "#000";
         context.strokeRect(margin, y, contentWidth, rowHeight);
         context.beginPath();
-        context.moveTo(splitX, y);
-        context.lineTo(splitX, y + rowHeight);
+        context.moveTo(qtySplitX, y);
+        context.lineTo(qtySplitX, y + rowHeight);
+        context.moveTo(itemSplitX, y);
+        context.lineTo(itemSplitX, y + rowHeight);
         context.stroke();
 
         // Quantity in left column (centered vertically and horizontally)
@@ -306,9 +315,13 @@ async function renderReceiptCanvas(receipt: ReceiptDocument) {
           align: "center", size: qtyFontSize, bold: true, rtl: false
         });
 
+        drawWrappedText(context, item.optionName || "—", qtySplitX, qtyY, sizeWidth, {
+          align: "center", size: 9.5, bold: true, rtl: true
+        });
+
         // Item name in right column
         let textY = y + 7;
-        const drawnNameHeight = drawWrappedText(context, item.name, splitX, textY, itemWidth - 10, {
+        const drawnNameHeight = drawWrappedText(context, item.name, itemSplitX, textY, itemWidth - 10, {
           align: "right", size: 10.5, bold: true, rtl: true
         });
         textY += drawnNameHeight + 4;
@@ -318,7 +331,7 @@ async function renderReceiptCanvas(receipt: ReceiptDocument) {
           const detailTextHeight = detailLines.length * Math.ceil(receiptFontSize(8.5) * 1.36);
           const bubbleHeight = detailTextHeight + 10;
           const bubbleWidth = itemWidth - 14;
-          const bubbleX = splitX + 7;
+          const bubbleX = itemSplitX + 7;
           const bubbleY = textY;
 
           context.fillStyle = createHalftonePattern(context);
@@ -664,12 +677,16 @@ function customerReceipt(order: Order, settings: AppState["settings"], customers
 
 function kitchenReceipt(order: Order, settings: AppState["settings"]): ReceiptDocument {
   const tableItems = order.items.map((item) => {
-    const details = item.mealComponents?.length
-      ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
-      : item.note;
+    const details = [
+      item.mealComponents?.length
+        ? item.mealComponents.map((component) => `${component.quantity}× ${component.name}${component.optionName ? ` (${component.optionName})` : ""}`).join(" · ")
+        : "",
+      item.note ?? ""
+    ].filter(Boolean).join("\n");
     return {
       name: item.name,
       quantity: item.quantity,
+      optionName: item.optionName,
       details: details || undefined
     };
   });

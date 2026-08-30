@@ -1590,9 +1590,11 @@ button.orders-row.stage-delivered { background: #fff; }
 .kitchen-receipt-table { border-collapse: collapse; width: 100%; margin: 8px 0 10px; border: 1.5px solid #111512; }
 .kitchen-receipt-table thead th { padding: 7px 6px; border: 1.5px solid #111512; background: #111512; color: #fff; font-size: 8px; font-weight: 900; }
 .kitchen-receipt-table thead th:first-child { text-align: right; }
+.kitchen-receipt-table thead th:nth-child(2) { width: 58px; text-align: center; }
 .kitchen-receipt-table thead th:last-child { width: 58px; text-align: center; }
 .kitchen-receipt-table tbody td { padding: 8px 6px; border: 1px solid #111512; vertical-align: middle; }
 .kitchen-receipt-table tbody td:first-child { text-align: right; }
+.kitchen-receipt-table tbody td:nth-child(2) { width: 58px; text-align: center; background: #fbfdfc; }
 .kitchen-receipt-table tbody td:last-child { width: 58px; text-align: center; background: #fbfdfc; }
 .kitchen-receipt-table tbody td:first-child strong { font-size: 11px; font-weight: 800; }
 .kitchen-receipt-table tbody td:last-child b { font-size: 14px; font-weight: 900; }
@@ -3745,9 +3747,11 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   body.print-receipt .kitchen-receipt-table { border-collapse: collapse; width: 100%; margin: 2mm 0; border: .4mm solid #000; }
   body.print-receipt .kitchen-receipt-table thead th { padding: 1.5mm 1mm; border: .4mm solid #000; font-size: 7.5pt; font-weight: 900; background: #000; color: #fff; }
   body.print-receipt .kitchen-receipt-table thead th:first-child { text-align: right; }
+  body.print-receipt .kitchen-receipt-table thead th:nth-child(2) { width: 14mm; text-align: center; }
   body.print-receipt .kitchen-receipt-table thead th:last-child { width: 14mm; text-align: center; }
   body.print-receipt .kitchen-receipt-table tbody td { padding: 1.8mm 1.2mm; border: .3mm solid #000; }
   body.print-receipt .kitchen-receipt-table tbody td:first-child { text-align: right; }
+  body.print-receipt .kitchen-receipt-table tbody td:nth-child(2) { width: 14mm; text-align: center; }
   body.print-receipt .kitchen-receipt-table tbody td:last-child { width: 14mm; text-align: center; }
   body.print-receipt .kitchen-receipt-table tbody td:first-child strong { font-size: 9.5pt; font-weight: 800; }
   body.print-receipt .kitchen-receipt-table tbody td:last-child b { font-size: 11pt; font-weight: 900; }
