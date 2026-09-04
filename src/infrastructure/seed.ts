@@ -187,6 +187,7 @@ export const initialState: AppState = {
     invoiceFooter: "شكرًا لاختياركم Resto POS — نتمنى لكم يومًا سعيدًا",
     printCustomerReceipt: true,
     printKitchenReceipt: true,
+    kitchenDisplayEnabled: true,
     customerReceiptPrinter: "",
     kitchenReceiptPrinter: "",
     defaultDeliveryFee: 30,

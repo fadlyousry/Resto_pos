@@ -2976,6 +2976,17 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
 
   const machineId = getMachineId();
   const licenseEval = evaluateLicense(state.license);
+  const kitchenDisplayEnabled = settings.kitchenDisplayEnabled !== false;
+  const kitchenModeLabel = kitchenDisplayEnabled && settings.printKitchenReceipt
+    ? "شاشة مطبخ + طابعة"
+    : kitchenDisplayEnabled
+      ? "شاشة مطبخ فقط"
+      : settings.printKitchenReceipt
+        ? "طابعة مطبخ فقط — الطلبات الجديدة تصبح جاهزة تلقائيًا"
+        : "بدون شاشة أو طابعة مطبخ";
+  const selectableDeviceRole: DeviceRole = state.settings.kitchenDisplayEnabled === false && deviceRole === "kitchen"
+    ? "terminal"
+    : deviceRole;
 
   const refreshPrinters = async () => {
     if (!desktopRuntime) return;
@@ -3017,6 +3028,10 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
 
   const save = () => {
     if (!settings.restaurantName.trim()) return;
+    if (!kitchenDisplayEnabled && deviceRole === "kitchen") {
+      setDeviceRole("terminal");
+      saveDeviceRole("terminal");
+    }
     update((current) => ({ ...current, settings }));
     notify("تم حفظ الإعدادات وتحديث هوية النظام");
   };
@@ -3093,7 +3108,7 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
               <span><strong>الطباعة الفورية ESC/POS</strong><small>{desktopRuntime ? `إرسال RAW مباشر — ${printers.length} طابعة متاحة على Windows` : "الطباعة المباشرة ESC/POS تعمل في نسخة الديسكتوب"}</small></span>
               {desktopRuntime && <button type="button" className="soft-button receipt-printers-refresh" disabled={printersLoading} onClick={() => void refreshPrinters()}><RefreshCw /> {printersLoading ? "جاري التحديث..." : "تحديث الطابعات"}</button>}
             </div>
-            <div className="receipt-print-options">
+            <div className="receipt-print-options single">
               <div className={settings.printCustomerReceipt ? "receipt-print-option active" : "receipt-print-option"}>
                 <label className="receipt-print-option-main">
                   <input type="checkbox" checked={settings.printCustomerReceipt} onChange={(event) => setSettings({ ...settings, printCustomerReceipt: event.target.checked })} />
@@ -3110,22 +3125,6 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
                   {desktopRuntime && <button type="button" className="soft-button" disabled={testingPrinter !== null} onClick={() => void testPrinter("customer")}><Printer /> {testingPrinter === "customer" ? "جاري الاختبار..." : "طباعة اختبار"}</button>}
                 </div>
               </div>
-              <div className={settings.printKitchenReceipt ? "receipt-print-option active" : "receipt-print-option"}>
-                <label className="receipt-print-option-main">
-                  <input type="checkbox" checked={settings.printKitchenReceipt} onChange={(event) => setSettings({ ...settings, printKitchenReceipt: event.target.checked })} />
-                  <span className="receipt-print-option-icon kitchen"><CookingPot /></span>
-                  <span><strong>ريسيت المطبخ</strong><small>يخرج فورًا بالأصناف والكميات والملاحظات بدون أسعار</small></span>
-                  <i><b /></i>
-                </label>
-                <div className="receipt-printer-field">
-                  <label><span>طابعة ريسيت المطبخ</span><select value={settings.kitchenReceiptPrinter ?? ""} disabled={!desktopRuntime} onChange={(event) => setSettings({ ...settings, kitchenReceiptPrinter: event.target.value })}>
-                    <option value="">الطابعة الافتراضية في Windows</option>
-                    {settings.kitchenReceiptPrinter && !printers.some((printer) => printer.name === settings.kitchenReceiptPrinter) && <option value={settings.kitchenReceiptPrinter}>{settings.kitchenReceiptPrinter} — غير متصلة</option>}
-                    {printers.map((printer) => <option value={printer.name} key={printer.name}>{printer.name}{printer.isDefault ? " — الافتراضية" : ""}</option>)}
-                  </select></label>
-                  {desktopRuntime && <button type="button" className="soft-button" disabled={testingPrinter !== null} onClick={() => void testPrinter("kitchen")}><Printer /> {testingPrinter === "kitchen" ? "جاري الاختبار..." : "طباعة اختبار"}</button>}
-                </div>
-              </div>
             </div>
             {printerStatus && <p className={printerStatus.includes("بنجاح") ? "receipt-printer-status success" : "receipt-printer-status error"}>{printerStatus}</p>}
           </div>
@@ -3137,6 +3136,44 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
     {tab === "operations" && <div className="panel" role="tabpanel">
       <div className="panel-title"><div><SlidersHorizontal /><span><strong>إعدادات التشغيل والوجبات</strong><small>القيم الافتراضية، نمط إدارة الوجبات، وتنبيهات تجهيز الطلب</small></span></div></div>
       <div className="settings-form settings-operations">
+        <div className="receipt-print-settings kitchen-system-settings full-field">
+          <div className="receipt-print-settings-title">
+            <CookingPot />
+            <span><strong>نظام استقبال طلبات المطبخ</strong><small>اختر الشاشة أو الطابعة أو الاثنين معًا حسب طريقة تشغيل المطعم</small></span>
+            <b className={kitchenDisplayEnabled || settings.printKitchenReceipt ? "kitchen-mode-summary" : "kitchen-mode-summary warning"}>{kitchenModeLabel}</b>
+            {desktopRuntime && <button type="button" className="soft-button receipt-printers-refresh" disabled={printersLoading} onClick={() => void refreshPrinters()}><RefreshCw /> {printersLoading ? "جاري التحديث..." : "تحديث الطابعات"}</button>}
+          </div>
+          <div className="receipt-print-options">
+            <div className={kitchenDisplayEnabled ? "receipt-print-option active" : "receipt-print-option"}>
+              <label className="receipt-print-option-main">
+                <input type="checkbox" checked={kitchenDisplayEnabled} onChange={(event) => setSettings({ ...settings, kitchenDisplayEnabled: event.target.checked })} />
+                <span className="receipt-print-option-icon"><Monitor /></span>
+                <span><strong>شاشة المطبخ</strong><small>تعرض الطلبات قيد التجهيز وتسمح للمطبخ بتحويلها إلى جاهزة</small></span>
+                <i><b /></i>
+              </label>
+              <p className="kitchen-display-rule">عند إيقافها تختفي شاشة المطبخ من كل الأجهزة، وتدخل الطلبات الجديدة بحالة «جاهز» تلقائيًا.</p>
+            </div>
+            <div className={settings.printKitchenReceipt ? "receipt-print-option active" : "receipt-print-option"}>
+              <label className="receipt-print-option-main">
+                <input type="checkbox" checked={settings.printKitchenReceipt} onChange={(event) => setSettings({ ...settings, printKitchenReceipt: event.target.checked })} />
+                <span className="receipt-print-option-icon kitchen"><Printer /></span>
+                <span><strong>طابعة المطبخ</strong><small>تطبع الأصناف والكميات والملاحظات فور تسجيل الطلب، بدون أسعار</small></span>
+                <i><b /></i>
+              </label>
+              <div className="receipt-printer-field">
+                <label><span>طابعة ريسيت المطبخ</span><select value={settings.kitchenReceiptPrinter ?? ""} disabled={!desktopRuntime || !settings.printKitchenReceipt} onChange={(event) => setSettings({ ...settings, kitchenReceiptPrinter: event.target.value })}>
+                  <option value="">الطابعة الافتراضية في Windows</option>
+                  {settings.kitchenReceiptPrinter && !printers.some((printer) => printer.name === settings.kitchenReceiptPrinter) && <option value={settings.kitchenReceiptPrinter}>{settings.kitchenReceiptPrinter} — غير متصلة</option>}
+                  {printers.map((printer) => <option value={printer.name} key={printer.name}>{printer.name}{printer.isDefault ? " — الافتراضية" : ""}</option>)}
+                </select></label>
+                {desktopRuntime && <button type="button" className="soft-button" disabled={testingPrinter !== null || !settings.printKitchenReceipt} onClick={() => void testPrinter("kitchen")}><Printer /> {testingPrinter === "kitchen" ? "جاري الاختبار..." : "طباعة اختبار"}</button>}
+              </div>
+            </div>
+          </div>
+          {!kitchenDisplayEnabled && !settings.printKitchenReceipt && <p className="receipt-printer-status error">تنبيه: شاشة وطابعة المطبخ متوقفتان. ستُسجل الطلبات كجاهزة بدون إرسالها للمطبخ.</p>}
+          {printerStatus && <p className={printerStatus.includes("بنجاح") ? "receipt-printer-status success" : "receipt-printer-status error"}>{printerStatus}</p>}
+        </div>
+
         {/* Meal Editor Mode Setting */}
         <div className="full-field meal-mode-setting-box">
           <div className="meal-mode-setting-header">
@@ -3185,8 +3222,8 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
         </div>
 
         <label>رسوم التوصيل الافتراضية<input type="number" min="0" value={settings.defaultDeliveryFee} onChange={(event) => setSettings({ ...settings, defaultDeliveryFee: Number(event.target.value) })} /></label>
-        <label>تنبيه المطبخ بعد (دقيقة)<input type="number" min="1" value={settings.kitchenWarningMinutes} onChange={(event) => setSettings({ ...settings, kitchenWarningMinutes: Number(event.target.value) })} /></label>
-        <label>اعتبار الطلب متأخر بعد (دقيقة)<input type="number" min="1" value={settings.kitchenLateMinutes} onChange={(event) => setSettings({ ...settings, kitchenLateMinutes: Number(event.target.value) })} /></label>
+        <label className={!kitchenDisplayEnabled ? "setting-disabled" : undefined}>تنبيه المطبخ بعد (دقيقة)<input type="number" min="1" disabled={!kitchenDisplayEnabled} value={settings.kitchenWarningMinutes} onChange={(event) => setSettings({ ...settings, kitchenWarningMinutes: Number(event.target.value) })} /><small>{!kitchenDisplayEnabled ? "يعمل عند تفعيل شاشة المطبخ" : "يغير لون تنبيه الطلب على الشاشة"}</small></label>
+        <label className={!kitchenDisplayEnabled ? "setting-disabled" : undefined}>اعتبار الطلب متأخر بعد (دقيقة)<input type="number" min="1" disabled={!kitchenDisplayEnabled} value={settings.kitchenLateMinutes} onChange={(event) => setSettings({ ...settings, kitchenLateMinutes: Number(event.target.value) })} /><small>{!kitchenDisplayEnabled ? "يعمل عند تفعيل شاشة المطبخ" : "يظهر الطلب كمتأخر على الشاشة"}</small></label>
         <button className="primary-button" onClick={save}><Save /> حفظ إعدادات التشغيل</button>
       </div>
     </div>}
@@ -3233,10 +3270,10 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
           {network?.embeddedServer?.networkUrl && <div className="server-network-address"><span>عنوان توصيل الأجهزة الجديدة</span><code>{network.embeddedServer.networkUrl}</code></div>}
         </div>
         <div className="network-address-form">
-          <label>وظيفة هذا الجهاز<select value={deviceRole} onChange={(event) => setDeviceRole(event.target.value as DeviceRole)}>
+          <label>وظيفة هذا الجهاز<select value={selectableDeviceRole} onChange={(event) => setDeviceRole(event.target.value as DeviceRole)}>
             <option value="server">السيرفر الرئيسي</option>
             <option value="cashier">كاشير</option>
-            <option value="kitchen">مطبخ</option>
+            {state.settings.kitchenDisplayEnabled !== false && <option value="kitchen">مطبخ</option>}
             <option value="assembly">تجميع</option>
             <option value="terminal">جهاز إضافي</option>
           </select></label>
@@ -3245,7 +3282,7 @@ export function SettingsView({ state, update, notify, network, updater }: ViewPr
             setNetworkTest("testing");
             testServerConnection(serverAddress).then(() => setNetworkTest("success")).catch(() => setNetworkTest("error"));
           }}><RefreshCw /> {networkTest === "testing" ? "جاري الاختبار..." : "اختبار الاتصال"}</button>
-          <button className="primary-button" onClick={() => { saveDeviceRole(deviceRole); network?.changeServerUrl(serverAddress); }}><Save /> حفظ وإعادة الاتصال</button>
+          <button className="primary-button" onClick={() => { setDeviceRole(selectableDeviceRole); saveDeviceRole(selectableDeviceRole); network?.changeServerUrl(serverAddress); }}><Save /> حفظ وإعادة الاتصال</button>
         </div>
         {networkTest === "success" && <p className="network-test-result success">تم الاتصال بالسيرفر بنجاح، ويمكن حفظ العنوان.</p>}
         {networkTest === "error" && <p className="network-test-result error">تعذر الوصول إلى هذا العنوان. راجع الشبكة وWindows Firewall.</p>}

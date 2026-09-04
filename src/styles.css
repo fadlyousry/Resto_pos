@@ -677,6 +677,7 @@ svg { flex: 0 0 auto; }
 .orders-page .mini-stat small { color: #171c19; font-size: 11px; font-weight: 600; }
 .orders-page .mini-stat strong { color: #0b0e0c; font-size: 17px; font-weight: 800; }
 .orders-panel { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: visible; }
+.orders-panel:has(.kitchen-print-failures) { grid-template-rows: auto auto minmax(0, 1fr); }
 .orders-toolbar { position: relative; z-index: 4; display: grid; grid-template-columns: minmax(270px, 1fr) auto auto; gap: 12px; }
 .orders-search { min-height: 42px; max-width: 430px; background: #f8faf8; }
 .orders-search input { color: #0b0e0c; font-size: 13px; font-weight: 600; }
@@ -687,6 +688,20 @@ svg { flex: 0 0 auto; }
 .orders-date-filter-wrap { position: relative; }
 .orders-toolbar-meta { display: flex; align-items: center; gap: 8px; }
 .orders-result-count { min-width: 64px; padding: 8px 10px; border-radius: 8px; background: var(--green-100); color: #12251e; font-size: 11px; font-weight: 800; text-align: center; }
+.kitchen-print-failures { display: grid; grid-template-columns: minmax(230px, .55fr) minmax(0, 1.45fr); align-items: stretch; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #efc9c2; background: #fff7f5; }
+.kitchen-print-failures-title { display: grid; grid-template-columns: 38px minmax(0, 1fr) auto; align-items: center; gap: 9px; }
+.kitchen-print-failures-title > svg { width: 38px; height: 38px; padding: 9px; border-radius: 10px; background: #fbe1dc; color: #a74638; }
+.kitchen-print-failures-title > span { display: grid; gap: 3px; }
+.kitchen-print-failures-title strong { color: #772f27; font-size: 11px; }
+.kitchen-print-failures-title small { color: #8d5d56; font-size: 8px; }
+.kitchen-print-failures-title > b { min-width: 27px; padding: 4px 7px; border-radius: 20px; background: #a74638; color: #fff; font-size: 10px; text-align: center; }
+.kitchen-print-failure-list { min-width: 0; display: flex; gap: 8px; overflow-x: auto; scrollbar-width: thin; }
+.kitchen-print-failure-list > div { min-width: 300px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid #e6b8b0; border-radius: 9px; background: #fff; }
+.kitchen-print-failure-list span { min-width: 0; display: grid; gap: 2px; }
+.kitchen-print-failure-list strong { color: #5e2922; font-size: 10px; }
+.kitchen-print-failure-list small { overflow: hidden; color: #8b5b54; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.kitchen-print-failure-list button { min-height: 34px; display: flex; align-items: center; gap: 5px; padding: 6px 9px; border: 0; border-radius: 8px; background: #a74638; color: #fff; font: 700 8px Cairo, sans-serif; cursor: pointer; }
+.kitchen-print-failure-list button svg { width: 13px; }
 .orders-date-filter-button { min-height: 42px; display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #52605a; font-family: inherit; cursor: pointer; }
 .orders-date-filter-button > svg:first-child { width: 18px; color: var(--green-700); }
 .orders-date-filter-button > svg:last-child { width: 14px; transition: transform .18s ease; }
@@ -832,6 +847,8 @@ button.orders-row.stage-delivered { background: #fff; }
 .orders-row small { color: var(--muted); font-size: 9px; }
 .orders-head { position: sticky; top: 0; z-index: 3; min-height: 43px; background: #f6f7f3; color: #737d78; font-size: 9px; font-weight: 700; }
 .order-number-cell strong { font-size: 14px; color: var(--green-800); }
+.kitchen-print-failed-badge { width: max-content; display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 6px; background: #fbe3de; color: #9d3e31; font-size: 7px; font-style: normal; font-weight: 800; }
+.kitchen-print-failed-badge svg { width: 11px; height: 11px; }
 .order-live-timer { width: max-content; min-width: 96px !important; display: flex !important; align-items: center; gap: 7px !important; padding: 8px 10px; border: 1px solid #dce5e0; border-radius: 9px; background: #f3f7f4; direction: ltr; }
 .order-live-timer svg { width: 16px; }
 .order-live-timer strong { color: #17251f; font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .2px; }
@@ -2209,6 +2226,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .receipt-print-settings-title .receipt-printers-refresh { min-height: 36px; margin-inline-start: auto; padding: 7px 11px; font-size: 9px; }
 .receipt-print-settings-title .receipt-printers-refresh svg { width: 15px; }
 .receipt-print-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.receipt-print-options.single { grid-template-columns: 1fr; }
 .settings-form .receipt-print-option { min-height: 132px; position: relative; display: grid; gap: 11px; padding: 11px 12px; border: 1px solid #d9e2dd; border-radius: 11px; background: #fff; transition: .18s ease; }
 .settings-form .receipt-print-option:hover { border-color: #a9beb3; transform: translateY(-1px); }
 .settings-form .receipt-print-option.active { border-color: #75a089; background: #f0f7f3; box-shadow: inset 0 0 0 1px #75a08930; }
@@ -2234,6 +2252,13 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
 .receipt-printer-status { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 9px; font-weight: 700; }
 .receipt-printer-status.success { background: #e7f4eb; color: #27623f; }
 .receipt-printer-status.error, .receipt-print-error { background: #fff0ed; color: #a54337; }
+.kitchen-system-settings { gap: 14px; }
+.kitchen-mode-summary { padding: 6px 9px; border-radius: 8px; background: #e5f2ea; color: #286447; font-size: 9px; white-space: nowrap; }
+.kitchen-mode-summary.warning { background: #fff0ed; color: #a54337; }
+.kitchen-display-rule { align-self: end; margin: 0; padding: 9px 10px; border-top: 1px solid #dfe7e2; color: #65736c; font-size: 8px; line-height: 1.6; }
+.settings-form label.setting-disabled { color: #8b958f; }
+.settings-form label.setting-disabled input { border-color: #e0e5e2; background: #f0f2f1; color: #8b958f; }
+.settings-form label > small { color: #7b8881; font-size: 8px; font-weight: 600; }
 .receipt-print-error { width: min(100%, 560px); margin: 10px auto 0; padding: 9px 11px; border-radius: 8px; font-size: 9px; font-weight: 700; }
 .settings-form .primary-button { grid-column: 1 / -1; min-height: 50px; align-self: end; font-size: 13px; box-shadow: 0 9px 22px #2c4d4226; }
 .settings-operations { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 26px; }
@@ -4798,6 +4823,7 @@ button.customers-row:hover { background: #f4f8f5; box-shadow: inset -4px 0 var(-
   .settings-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-brand { grid-template-columns: 1fr; }
   .receipt-print-options { grid-template-columns: 1fr; }
+  .kitchen-print-failures { grid-template-columns: 1fr; }
   .receipt-print-settings-title { flex-wrap: wrap; }
   .receipt-print-settings-title .receipt-printers-refresh { margin-inline-start: 0; }
   .network-guide { grid-template-columns: 1fr; }

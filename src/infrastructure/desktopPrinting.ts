@@ -120,6 +120,18 @@ export async function printOrderReceipts(order: Order, settings: AppState["setti
   await printEscPosDocuments(documents);
 }
 
+export async function printOrderReceipt(
+  kind: "customer" | "kitchen",
+  order: Order,
+  settings: AppState["settings"],
+  customers?: AppState["customers"]
+) {
+  if (!isDesktopRuntime()) throw new Error("الطباعة المباشرة متاحة في نسخة الديسكتوب فقط");
+  await printEscPosDocuments([
+    kind === "customer" ? customerReceipt(order, settings, customers) : kitchenReceipt(order, settings)
+  ]);
+}
+
 export async function printTestReceipt(
   kind: "customer" | "kitchen",
   printerName: string,

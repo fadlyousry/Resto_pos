@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  ArrowLeftRight, Banknote, BarChart3, Bike, CalendarRange, Check,
+  AlertTriangle, ArrowLeftRight, Banknote, BarChart3, Bike, CalendarRange, Check,
   ChevronDown, ChevronLeft, CircleDollarSign, ClipboardCheck, ClipboardList, Clock3, CookingPot, CreditCard,
   Edit3, Info, ListFilter, MapPin, MessageCircle, Minus, PackageCheck, Phone, Plus, Printer,
-  ReceiptText, Save, Scale, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
+  ReceiptText, RotateCw, Save, Scale, Search, ShoppingBag, Trash2, TrendingDown, TrendingUp, Truck, UserPlus,
   Utensils, WalletCards, X, Shuffle, BadgeDollarSign
 } from "lucide-react";
 import type {
@@ -19,7 +19,7 @@ import {
 import { uid } from "../../shared/id";
 import { isOrderRevenueReversal, purchasesTreasuryId, salesTreasuryId, treasuryName, transactionTreasuryId } from "../../shared/treasury";
 import { Empty, MiniStat, Modal, StatusBadge } from "../../shared/ui";
-import { errorMessage, isDesktopRuntime, printOrderReceipts } from "../../infrastructure/desktopPrinting";
+import { errorMessage, isDesktopRuntime, printOrderReceipt } from "../../infrastructure/desktopPrinting";
 import { playOrderConfirmedSound } from "../../shared/sound";
 
 const MEALS_SECTION = "__meals";
@@ -585,7 +585,8 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
       customerNotes: customer.notes || undefined,
       items: cart, subtotal, deliveryFee: details.deliveryFee, discount, total,
       paymentMethod: details.paymentMethod, paymentStatus: details.paymentStatus,
-      stage: "preparing", createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
+      stage: state.settings.kitchenDisplayEnabled === false ? "ready" : "preparing",
+      createdAt, scheduledFor: details.scheduledFor || undefined, note: details.note || undefined,
       driverId: details.driverId, driver: details.driver,
       inventoryDeducted: stockMovements.length > 0, source: "pos", treasuryId: orderTreasuryId
     };
@@ -611,12 +612,42 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
     setCustomer(null);
     setCheckout(false);
     playOrderConfirmedSound();
-    notify(`تم تسجيل الطلب #${orderDisplayNumber(order)}`);
+    notify(state.settings.kitchenDisplayEnabled === false
+      ? `تم تسجيل الطلب #${orderDisplayNumber(order)} وأصبح جاهزًا تلقائيًا`
+      : `تم تسجيل الطلب #${orderDisplayNumber(order)}`);
     if (state.settings.printCustomerReceipt !== false || state.settings.printKitchenReceipt !== false) {
       if (isDesktopRuntime()) {
-        void printOrderReceipts(order, state.settings, state.customers).catch((error) => {
-          notify(`تم تسجيل الطلب #${orderDisplayNumber(order)} لكن تعذرت الطباعة: ${errorMessage(error)}`);
-        });
+        void (async () => {
+          const failures: string[] = [];
+          if (state.settings.printCustomerReceipt !== false) {
+            try {
+              await printOrderReceipt("customer", order, state.settings, state.customers);
+            } catch (error) {
+              failures.push(`فاتورة العميل: ${errorMessage(error)}`);
+            }
+          }
+          if (state.settings.printKitchenReceipt !== false) {
+            try {
+              await printOrderReceipt("kitchen", order, state.settings, state.customers);
+              update((current) => ({
+                ...current,
+                orders: current.orders.map((item) => item.id === order.id
+                  ? { ...item, kitchenPrintError: undefined, kitchenPrintFailedAt: undefined }
+                  : item)
+              }));
+            } catch (error) {
+              const message = errorMessage(error);
+              failures.push(`ريسيت المطبخ: ${message}`);
+              update((current) => ({
+                ...current,
+                orders: current.orders.map((item) => item.id === order.id
+                  ? { ...item, kitchenPrintError: message, kitchenPrintFailedAt: new Date().toISOString() }
+                  : item)
+              }));
+            }
+          }
+          if (failures.length) notify(`تم تسجيل الطلب #${orderDisplayNumber(order)} لكن تعذرت الطباعة — ${failures.join("، ")}`);
+        })();
       } else {
         setReceiptOrder(order);
       }
@@ -1626,6 +1657,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
   const [detailsOrderId, setDetailsOrderId] = useState<string | null>(null);
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const [ordersClock, setOrdersClock] = useState(Date.now());
+  const [retryingKitchenPrintId, setRetryingKitchenPrintId] = useState<string | null>(null);
   const dateFilterRef = useRef<HTMLDivElement>(null);
   const statusFilterRef = useRef<HTMLDivElement>(null);
   const paymentFilterRef = useRef<HTMLDivElement>(null);
@@ -1806,6 +1838,38 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
   });
   const detailsOrder = detailsOrderId ? state.orders.find((order) => order.id === detailsOrderId) : null;
   const deleteOrder = deleteOrderId ? state.orders.find((order) => order.id === deleteOrderId) : null;
+  const failedKitchenPrintOrders = state.settings.printKitchenReceipt === false
+    ? []
+    : state.orders.filter((order) => order.stage !== "returned" && Boolean(order.kitchenPrintError));
+
+  const retryKitchenPrint = async (order: Order) => {
+    if (!isDesktopRuntime()) {
+      notify("إعادة الطباعة المباشرة متاحة في نسخة الديسكتوب فقط");
+      return;
+    }
+    setRetryingKitchenPrintId(order.id);
+    try {
+      await printOrderReceipt("kitchen", order, state.settings, state.customers);
+      update((current) => ({
+        ...current,
+        orders: current.orders.map((item) => item.id === order.id
+          ? { ...item, kitchenPrintError: undefined, kitchenPrintFailedAt: undefined }
+          : item)
+      }));
+      notify(`تمت إعادة طباعة ريسيت المطبخ للطلب #${orderDisplayNumber(order)} بنجاح`);
+    } catch (error) {
+      const message = errorMessage(error);
+      update((current) => ({
+        ...current,
+        orders: current.orders.map((item) => item.id === order.id
+          ? { ...item, kitchenPrintError: message, kitchenPrintFailedAt: new Date().toISOString() }
+          : item)
+      }));
+      notify(`ما زالت طباعة ريسيت المطبخ متعذرة: ${message}`);
+    } finally {
+      setRetryingKitchenPrintId(null);
+    }
+  };
 
   const collect = (order: Order) => {
     const createdAt = new Date().toISOString();
@@ -2190,6 +2254,21 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
             <span className="orders-result-count">{filtered.length} طلب</span>
           </div>
         </div>
+        {failedKitchenPrintOrders.length > 0 && <div className="kitchen-print-failures" role="alert">
+          <div className="kitchen-print-failures-title">
+            <AlertTriangle />
+            <span><strong>ريسيتات مطبخ لم تُطبع</strong><small>راجع اتصال الطابعة ثم أعد إرسال الطلبات التالية</small></span>
+            <b>{failedKitchenPrintOrders.length}</b>
+          </div>
+          <div className="kitchen-print-failure-list">
+            {failedKitchenPrintOrders.map((order) => <div key={order.id}>
+              <span><strong>طلب #{orderDisplayNumber(order)}</strong><small>{order.kitchenPrintError}</small></span>
+              <button type="button" disabled={retryingKitchenPrintId !== null} onClick={() => void retryKitchenPrint(order)}>
+                <RotateCw /> {retryingKitchenPrintId === order.id ? "جاري الطباعة..." : "إعادة طباعة ريسيت المطبخ"}
+              </button>
+            </div>)}
+          </div>
+        </div>}
         <div className="orders-table">
           <div className="orders-row orders-head">
             <span>الطلب</span><span>التايمر</span><span>العميل</span><span>الأصناف</span><span>الإجمالي</span><span>الدفع</span><span>الحالة والتوصيل</span><span />
@@ -2199,6 +2278,7 @@ export function OrdersView({ state, update, notify, onEditOrder }: ViewProps & {
               <span className="order-number-cell">
                 <strong>#{orderDisplayNumber(order)}</strong>
                 <small>{order.scheduledFor ? `موعد ${shortDate(order.scheduledFor)}` : shortDate(order.createdAt)}</small>
+                {order.kitchenPrintError && <em className="kitchen-print-failed-badge"><Printer /> فشل ريسيت المطبخ</em>}
               </span>
               <span className={`order-live-timer ${order.stage === "delivered" || order.stage === "returned" ? "done" : orderTimerTone(order)}`}>
                 <Clock3 />

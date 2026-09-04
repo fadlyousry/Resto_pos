@@ -20,6 +20,7 @@ import { useRestaurantState } from "./useRestaurantState";
 import { useAutomaticBackups } from "./useAutomaticBackups";
 import { useAppUpdater } from "./useAppUpdater";
 import { UpdatePrompt } from "../features/settings/UpdatePrompt";
+import { getDeviceRole } from "../infrastructure/dataClient";
 
 export default function App() {
   const {
@@ -42,6 +43,10 @@ export default function App() {
   const [serverDraft, setServerDraft] = useState(serverUrl);
   useAutomaticBackups(state);
   const updater = useAppUpdater(state, notify);
+  const deviceRole = getDeviceRole();
+  const kitchenDisplayAvailable = state?.settings.kitchenDisplayEnabled !== false
+    && (deviceRole === "server" || deviceRole === "kitchen");
+  const visibleNavigationItems = navigationItems.filter((item) => item.id !== "kitchen" || kitchenDisplayAvailable);
 
   const setWindowFullscreen = async (fullscreen: boolean) => {
     try {
@@ -77,6 +82,11 @@ export default function App() {
     setKitchenFocusMode(false);
     void setWindowFullscreen(false);
   }, [view, kitchenFocusMode]);
+
+  useEffect(() => {
+    if (view !== "kitchen" || kitchenDisplayAvailable) return;
+    setView("pos");
+  }, [view, kitchenDisplayAvailable]);
 
   if (!state) {
     if (connectionError) {
@@ -173,7 +183,7 @@ export default function App() {
         </div>
 
         <nav>
-          {navigationItems.map(({ id, label, icon: Icon }) => (
+          {visibleNavigationItems.map(({ id, label, icon: Icon }) => (
             <button className={view === id ? "nav-item active" : "nav-item"} title={label} onClick={() => setView(id)} key={id}>
               <Icon size={20} />
               <span>{label}</span>

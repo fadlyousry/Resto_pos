@@ -156,6 +156,8 @@ export interface Order {
   inventoryDeducted?: boolean;
   source?: "pos" | "online";
   treasuryId?: string;
+  kitchenPrintError?: string;
+  kitchenPrintFailedAt?: string;
 }
 
 export type LicenseType = "trial" | "subscription" | "lifetime";
@@ -180,6 +182,7 @@ export interface RestaurantSettings {
   logoDataUrl?: string;
   printCustomerReceipt: boolean;
   printKitchenReceipt: boolean;
+  kitchenDisplayEnabled: boolean;
   customerReceiptPrinter: string;
   kitchenReceiptPrinter: string;
   defaultDeliveryFee: number;
