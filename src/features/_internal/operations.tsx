@@ -764,13 +764,14 @@ export function PosView({ state, update, notify, editingOrder, onEditOrder, onFi
           </strong>
         </div>
         <div className="cart-items">
-          {cart.length > 0 && <div className="cart-table-head"><span>الصنف</span><span>الكمية</span><span>الإجمالي</span><span /></div>}
+          {cart.length > 0 && <div className="cart-table-head"><span>الصنف</span><span>الحجم</span><span>الكمية</span><span>الإجمالي</span><span /></div>}
           {cart.map((item) => (
             <div className="cart-item" key={`${item.productId}:${item.optionId ?? "base"}`}>
               <div className="cart-product-cell">
                 <strong>{item.name}</strong>
                 <small>{item.unit} · {money(item.price)}</small>
               </div>
+              <span className="cart-item-size">{item.optionName || "—"}</span>
               <CartQuantityInput
                 quantity={item.quantity}
                 onDelta={(delta) => setQuantity(item.productId, item.optionId, delta)}
@@ -2487,9 +2488,10 @@ function OrderDetailsModal({ order, drivers, busyDriverIds, onClose, onPrint, on
           <div className="order-details-main">
             <div className="order-details-section-title"><ShoppingBag /><span><strong>أصناف الطلب</strong><small>{order.items.length} صنف مسجل</small></span></div>
             <div className="order-details-items">
-              <div className="order-details-items-head"><span>الصنف</span><span>الكمية</span><span>الوحدة</span><span>السعر</span><span>الإجمالي</span></div>
+              <div className="order-details-items-head"><span>الصنف</span><span>الحجم</span><span>الكمية</span><span>الوحدة</span><span>السعر</span><span>الإجمالي</span></div>
               {order.items.map((item) => <div key={`${item.productId}:${item.optionId ?? "base"}`}>
                 <span><strong>{item.name}</strong>{item.note && <small>{item.note}</small>}</span>
+                <span className="order-item-size">{item.optionName || "—"}</span>
                 <b>{item.quantity}</b>
                 <span className="order-item-unit">{item.unit}</span>
                 <span>{money(item.price)}</span>
